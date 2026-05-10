@@ -1614,20 +1614,26 @@ function loadInstitutional(ticker) {
   var d = new Date();
   d.setDate(d.getDate() - 20);
   var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
-  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + start;
+  var fmToken = localStorage.getItem('tw_finmind') || '';
+  var body = 'dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + start
+           + (fmToken ? '&token=' + encodeURIComponent(fmToken) : '');
 
-  fetch(url)
+  fetch('https://api.finmindtrade.com/api/v4/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body
+  })
     .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
-        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無法人資料</p>';
+        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無法人資料（此股可能無三大法人揭露）</p>';
         return;
       }
       instCache[ticker] = json.data;
       renderInstitutional(json.data, ticker);
     })
     .catch(function(e) {
-      content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:8px 0;">載入失敗：' + e.message + '</p>';
+      content.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0;">⚠ 法人資料需要 FinMind Token 才能存取。<br>請至「⚙ API Key 設定」申請並填入 Token。</p>';
     });
 }
 
@@ -1699,13 +1705,18 @@ function loadPER(ticker) {
   var d = new Date();
   d.setMonth(d.getMonth() - 3);
   var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
-  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&data_id=' + ticker + '&start_date=' + start;
+  var fmToken2 = localStorage.getItem('tw_finmind') || '';
+  var body2 = 'dataset=TaiwanStockPER&data_id=' + ticker + '&start_date=' + start
+            + (fmToken2 ? '&token=' + encodeURIComponent(fmToken2) : '');
 
-  fetch(url)
+  fetch('https://api.finmindtrade.com/api/v4/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body2
+  })
     .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
-        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無估值資料（ETF 請看殖利率）</p>';
         box.style.display = 'none';
         return;
       }
@@ -1713,7 +1724,7 @@ function loadPER(ticker) {
       renderPER(json.data, ticker);
     })
     .catch(function(e) {
-      content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:8px 0;">載入失敗：' + e.message + '</p>';
+      box.style.display = 'none';
     });
 }
 
