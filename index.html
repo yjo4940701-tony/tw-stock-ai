@@ -1615,12 +1615,10 @@ function loadInstitutional(ticker) {
   var end = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
   var from = new Date(now); from.setDate(from.getDate() - 20);
   var start = from.getFullYear() + '-' + pad(from.getMonth()+1) + '-' + pad(from.getDate());
-  var fmToken = localStorage.getItem('tw_finmind') || '';
   var instUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell'
               + '&data_id=' + ticker + '&start_date=' + start + '&end_date=' + end;
-  var instHeaders = fmToken ? { 'Authorization': 'Bearer ' + fmToken } : {};
 
-  fetch(instUrl, { headers: instHeaders })
+  fetch(instUrl)
     .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
@@ -1704,12 +1702,10 @@ function loadPER(ticker) {
   var end2 = now2.getFullYear() + '-' + pad(now2.getMonth()+1) + '-' + pad(now2.getDate());
   var from2 = new Date(now2); from2.setMonth(from2.getMonth() - 3);
   var start2 = from2.getFullYear() + '-' + pad(from2.getMonth()+1) + '-01';
-  var fmToken2 = localStorage.getItem('tw_finmind') || '';
   var perUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER'
              + '&data_id=' + ticker + '&start_date=' + start2 + '&end_date=' + end2;
-  var perHeaders = fmToken2 ? { 'Authorization': 'Bearer ' + fmToken2 } : {};
 
-  fetch(perUrl, { headers: perHeaders })
+  fetch(perUrl)
     .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
