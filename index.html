@@ -721,7 +721,69 @@ function renderBrowseMode() {
 }
 
 function fetchMarketData() {
-  tryMarketDay(0);
+  // 策略：先試 TWSE 官方（透過 CORS proxy，一次拿全部）
+  // 失敗才退回 FinMind 1 天查詢
+  tryTWSEProxy(0);
+}
+
+var TWSE_PROXIES = [
+  'https://corsproxy.io/?url=',
+  'https://api.allorigins.win/raw?url=',
+  'https://api.codetabs.com/v1/proxy?quest='
+];
+
+function tryTWSEProxy(idx) {
+  if (idx >= TWSE_PROXIES.length) {
+    console.log('[市場] 全部 TWSE proxy 失敗，改用 FinMind');
+    tryMarketDay(0);
+    return;
+  }
+
+  var twseUrl = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+  var fullUrl = TWSE_PROXIES[idx] + encodeURIComponent(twseUrl);
+
+  document.getElementById('marketStatus').innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;"><div class="spin"></div>'
+    + '嘗試 TWSE 官方（proxy ' + (idx+1) + '/' + TWSE_PROXIES.length + '）...</div>';
+
+  console.log('[市場] TWSE proxy ' + (idx+1) + ': ' + TWSE_PROXIES[idx]);
+
+  fetch(fullUrl)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      if (!Array.isArray(data) || data.length === 0) throw new Error('回應為空');
+      processTWSEData(data);
+    })
+    .catch(function(e) {
+      console.warn('[市場] proxy ' + (idx+1) + ' 失敗: ' + e.message);
+      tryTWSEProxy(idx + 1);
+    });
+}
+
+function processTWSEData(data) {
+  marketData = data.map(function(s) {
+    var close = parseFloat(s.ClosingPrice) || 0;
+    var change = parseFloat(s.Change) || 0;
+    var prev = close - change;
+    var pct = prev ? (change / prev * 100) : 0;
+    return {
+      code: s.Code,
+      name: s.Name || STOCK_NAMES[s.Code] || s.Code,
+      open: parseFloat(s.OpeningPrice) || 0,
+      high: parseFloat(s.HighestPrice) || 0,
+      low: parseFloat(s.LowestPrice) || 0,
+      close: close,
+      change: change,
+      changePct: pct,
+      volume: parseInt(s.TradeVolume, 10) || 0,
+      value: parseFloat(s.TradeValue) || 0
+    };
+  }).filter(function(s) { return s.close > 0; });
+  console.log('[市場] ✓ TWSE 載入 ' + marketData.length + ' 檔');
+  applyMarketFilter();
 }
 
 function tryMarketDay(daysBack) {
