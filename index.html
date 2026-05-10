@@ -41,6 +41,15 @@ a{color:#60a5fa;}
 .fbtn:hover{background:#334155;color:#fff;}
 .fbtn.active{background:#2563eb;border-color:#2563eb;color:#fff;}
 
+/* GROUP TABS */
+.gtabs{max-width:1200px;margin:0 auto;padding:14px 16px 0;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #1e293b;}
+.gtab{background:transparent;border:none;color:#64748b;padding:9px 16px;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s;border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;}
+.gtab:hover{color:#94a3b8;background:#1e293b;}
+.gtab.active{color:#fff;border-bottom-color:#2563eb;background:#1e293b;}
+.gtab .gcount{background:#334155;color:#94a3b8;font-size:10px;padding:1px 6px;border-radius:8px;}
+.gtab.active .gcount{background:#2563eb;color:#fff;}
+.gtab-rename{background:#1e293b;border:1px solid #2563eb;color:#fff;padding:7px 12px;border-radius:6px;font-size:13px;outline:none;width:100px;}
+
 /* GRID */
 .main{max-width:1200px;margin:0 auto;padding:0 16px 60px;}
 .empty{text-align:center;padding:80px 20px;}
@@ -153,6 +162,9 @@ a{color:#60a5fa;}
   </button>
 </header>
 
+<!-- GROUP TABS -->
+<div id="gtabs" class="gtabs"></div>
+
 <!-- SEARCH -->
 <div class="search-wrap">
   <div class="search-row">
@@ -222,6 +234,16 @@ a{color:#60a5fa;}
         </div>
         <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
       </div>
+
+      <!-- 月營收區塊 -->
+      <div id="revBox" class="chart-box" style="display:none;">
+        <div class="chart-title">
+          <span>📊 月營收</span>
+          <span id="revLatest" style="color:#64748b;font-size:11px;"></span>
+        </div>
+        <div id="revContent" style="min-height:120px;"></div>
+      </div>
+
       <div class="ai-box">
         <div class="ai-box-hdr">
           <div class="ai-logo">
@@ -306,11 +328,38 @@ a{color:#60a5fa;}
 // ─────────────────────────────────
 // 狀態
 // ─────────────────────────────────
-var watchlist = JSON.parse(localStorage.getItem('tw_wl') || '[]');
+// ── 群組系統（5 群組） ──
+function loadGroups() {
+  var raw = localStorage.getItem('tw_groups');
+  if (raw) { try { return JSON.parse(raw); } catch(e) {} }
+  var old = JSON.parse(localStorage.getItem('tw_wl') || '[]');
+  return {
+    active: 0,
+    list: [
+      { name: '群組1', tickers: old },
+      { name: '群組2', tickers: [] },
+      { name: '群組3', tickers: [] },
+      { name: '群組4', tickers: [] },
+      { name: '群組5', tickers: [] }
+    ]
+  };
+}
+function saveGroups() { localStorage.setItem('tw_groups', JSON.stringify(GROUPS)); }
+function activeGroup() { return GROUPS.list[GROUPS.active]; }
+
+var GROUPS = loadGroups();
+saveGroups();
+
 var stocks    = {};
 var current   = null;
 var myChart   = null;
 var currentFilter = 'all';
+var monthlyRevCache = {};
+
+Object.defineProperty(window, 'watchlist', {
+  get: function() { return activeGroup().tickers; },
+  set: function(v) { activeGroup().tickers = v; saveGroups(); }
+});
 
 var PROXIES = [
   'https://corsproxy.io/?url=',
@@ -325,8 +374,9 @@ var PROXIES = [
 (function init() {
   var k = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (k) document.getElementById('apiKeyInput').value = k;
+  renderTabs();
   renderGrid();
-  setFilter('all'); // 初始 active 「全部」按鈕
+  setFilter('all');
   if (watchlist.length > 0) loadAll();
 })();
 
@@ -396,8 +446,9 @@ function addStock() {
     return;
   }
   watchlist.push(ticker);
-  localStorage.setItem('tw_wl', JSON.stringify(watchlist));
+  saveGroups();
   inp.value = '';
+  renderTabs();
   renderGrid();
   fetchStock(ticker);
 }
@@ -405,8 +456,14 @@ function addStock() {
 function removeStock(ticker, event) {
   if (event) event.stopPropagation();
   watchlist = watchlist.filter(function(t) { return t !== ticker; });
-  delete stocks[ticker];
-  localStorage.setItem('tw_wl', JSON.stringify(watchlist));
+  // stocks 是跨群組共用的快取，只有當沒有任何群組還在用這檔時才刪
+  var stillUsed = false;
+  for (var i = 0; i < GROUPS.list.length; i++) {
+    if (GROUPS.list[i].tickers.indexOf(ticker) !== -1) { stillUsed = true; break; }
+  }
+  if (!stillUsed) delete stocks[ticker];
+  saveGroups();
+  renderTabs();
   renderGrid();
 }
 
@@ -573,6 +630,56 @@ function pad(n) { return n < 10 ? '0'+n : ''+n; }
 // ─────────────────────────────────
 // 渲染
 // ─────────────────────────────────
+// ─────────────────────────────────
+// 群組頁籤
+// ─────────────────────────────────
+function renderTabs() {
+  var html = '';
+  for (var i = 0; i < GROUPS.list.length; i++) {
+    var g = GROUPS.list[i];
+    var active = (i === GROUPS.active) ? ' active' : '';
+    html += '<button class="gtab'+active+'" onclick="switchGroup('+i+')" ondblclick="startRenameGroup('+i+')" title="雙擊重新命名">'
+          +   '<span>📂 '+escapeHtml(g.name)+'</span>'
+          +   '<span class="gcount">'+g.tickers.length+'</span>'
+          + '</button>';
+  }
+  document.getElementById('gtabs').innerHTML = html;
+}
+
+function switchGroup(idx) {
+  if (idx === GROUPS.active) return;
+  GROUPS.active = idx;
+  saveGroups();
+  renderTabs();
+  renderGrid();
+  if (watchlist.length > 0) loadAll();
+}
+
+function startRenameGroup(idx) {
+  var btn = document.querySelectorAll('.gtab')[idx];
+  if (!btn) return;
+  var current = GROUPS.list[idx].name;
+  btn.innerHTML = '<input class="gtab-rename" value="'+escapeHtml(current)+'" onblur="finishRenameGroup('+idx+',this.value)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=\''+escapeHtml(current).replace(/'/g,"\\'")+'\';this.blur();}">';
+  var inp = btn.querySelector('input');
+  inp.focus();
+  inp.select();
+}
+
+function finishRenameGroup(idx, newName) {
+  newName = (newName || '').trim();
+  if (!newName) newName = '群組' + (idx+1);
+  if (newName.length > 12) newName = newName.slice(0, 12);
+  GROUPS.list[idx].name = newName;
+  saveGroups();
+  renderTabs();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
 function renderGrid() {
   var grid  = document.getElementById('watchGrid');
   var empty = document.getElementById('emptyState');
@@ -743,6 +850,126 @@ function openModal(ticker) {
   document.getElementById('analysisOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
   setTimeout(function() { drawChart(d); }, 150);
+
+  // 載入月營收
+  loadMonthlyRevenue(ticker);
+}
+
+// ─────────────────────────────────
+// 月營收（FinMind TaiwanStockMonthRevenue）
+// ─────────────────────────────────
+function loadMonthlyRevenue(ticker) {
+  var box = document.getElementById('revBox');
+  var content = document.getElementById('revContent');
+  var latest = document.getElementById('revLatest');
+
+  box.style.display = 'block';
+  content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;padding:14px 0;"><div class="spin"></div>載入月營收中...</div>';
+  latest.textContent = '';
+
+  if (monthlyRevCache[ticker]) {
+    renderRevenue(monthlyRevCache[ticker], ticker);
+    return;
+  }
+
+  // 抓近 18 個月，足夠算 12 個月 + 12 月 YoY
+  var d = new Date();
+  d.setMonth(d.getMonth() - 18);
+  var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
+  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=' + ticker + '&start_date=' + start;
+
+  console.log('[' + ticker + '] 載入月營收');
+  fetch(url)
+    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(json) {
+      if (!json.data || json.data.length === 0) {
+        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:10px 0;">無月營收資料（ETF 或新上市公司可能沒有）</p>';
+        return;
+      }
+      monthlyRevCache[ticker] = json.data;
+      renderRevenue(json.data, ticker);
+    })
+    .catch(function(e) {
+      content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:10px 0;">月營收載入失敗：'+e.message+'</p>';
+    });
+}
+
+function renderRevenue(records, ticker) {
+  // FinMind 回傳格式：{ date, stock_id, country, revenue, revenue_month, revenue_year }
+  // revenue 單位：元；轉為億
+  records.sort(function(a, b) {
+    var ka = a.revenue_year * 100 + a.revenue_month;
+    var kb = b.revenue_year * 100 + b.revenue_month;
+    return ka - kb;
+  });
+
+  // 取最近 12 個月
+  var last12 = records.slice(-12);
+  if (last12.length === 0) return;
+
+  var latestRow = last12[last12.length - 1];
+  var latestRev = latestRow.revenue;
+
+  // 計算 YoY（去年同月）
+  var yoy = null, yoyMom = null;
+  for (var i = 0; i < records.length; i++) {
+    if (records[i].revenue_year === latestRow.revenue_year - 1 &&
+        records[i].revenue_month === latestRow.revenue_month) {
+      yoy = ((latestRev - records[i].revenue) / records[i].revenue * 100);
+      break;
+    }
+  }
+  // MoM（上個月）
+  if (last12.length >= 2) {
+    var prev = last12[last12.length - 2].revenue;
+    if (prev) yoyMom = ((latestRev - prev) / prev * 100);
+  }
+
+  // 把資料存到 stocks[ticker] 給 AI prompt 用
+  if (stocks[ticker]) {
+    stocks[ticker].monthRev = {
+      latest: latestRev,
+      latestYM: latestRow.revenue_year + '-' + pad(latestRow.revenue_month),
+      yoy: yoy,
+      mom: yoyMom,
+      last12: last12.map(function(r) { return { ym: r.revenue_year+'-'+pad(r.revenue_month), rev: r.revenue }; })
+    };
+  }
+
+  // Header
+  var yoyStr = yoy != null ? ((yoy>=0?'+':'')+yoy.toFixed(1)+'% YoY') : 'YoY N/A';
+  var yoyColor = yoy == null ? '#64748b' : (yoy >= 0 ? '#22c55e' : '#ef4444');
+  document.getElementById('revLatest').innerHTML =
+    latestRow.revenue_year + '/' + pad(latestRow.revenue_month) + '：'
+    + '<strong style="color:#fff;">' + fmtRevenue(latestRev) + '</strong>　'
+    + '<span style="color:'+yoyColor+';">' + yoyStr + '</span>';
+
+  // 迷你長條圖
+  var max = Math.max.apply(null, last12.map(function(r){ return r.revenue; }));
+  var bars = last12.map(function(r) {
+    var h = max ? (r.revenue / max * 100) : 0;
+    var label = pad(r.revenue_month);
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;">'
+         +   '<div style="height:80px;display:flex;align-items:flex-end;width:100%;">'
+         +     '<div title="'+r.revenue_year+'/'+pad(r.revenue_month)+'  '+fmtRevenue(r.revenue)+'" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8);width:100%;height:'+h+'%;border-radius:3px 3px 0 0;min-height:2px;"></div>'
+         +   '</div>'
+         +   '<div style="color:#64748b;font-size:9px;">'+label+'</div>'
+         + '</div>';
+  }).join('');
+
+  var content = document.getElementById('revContent');
+  content.innerHTML = '<div style="display:flex;gap:3px;align-items:flex-end;">' + bars + '</div>'
+    + '<div style="display:flex;justify-content:space-between;color:#475569;font-size:10px;margin-top:6px;">'
+    +   '<span>近 12 個月（單位：億）</span>'
+    +   (yoyMom != null ? '<span>MoM '+(yoyMom>=0?'+':'')+yoyMom.toFixed(1)+'%</span>' : '')
+    + '</div>';
+}
+
+function fmtRevenue(v) {
+  if (v == null) return 'N/A';
+  if (v >= 1e8) return (v/1e8).toFixed(2) + ' 億';
+  if (v >= 1e4) return (v/1e4).toFixed(0) + ' 萬';
+  return Math.round(v).toString();
 }
 
 function metric(label, val, sub) {
@@ -947,6 +1174,18 @@ function runAnalysis() {
   var dist52h = d.high52w ? (((d.price-d.high52w)/d.high52w*100).toFixed(1)+'%') : 'N/A';
   var dist52l = d.low52w  ? ((+(((d.price-d.low52w)/d.low52w*100).toFixed(1))>0?'+':'')+((d.price-d.low52w)/d.low52w*100).toFixed(1)+'%') : 'N/A';
 
+  // 月營收（如果有）
+  var revBlock = '';
+  if (d.monthRev) {
+    var mr = d.monthRev;
+    var yoyStr = mr.yoy != null ? ((mr.yoy>=0?'+':'')+mr.yoy.toFixed(1)+'%') : 'N/A';
+    var momStr = mr.mom != null ? ((mr.mom>=0?'+':'')+mr.mom.toFixed(1)+'%') : 'N/A';
+    var trendList = mr.last12.slice(-6).map(function(r){ return r.ym+' '+fmtRevenue(r.rev); }).join(' / ');
+    revBlock = '【月營收（基本面）】\n最新（'+mr.latestYM+'）：'+fmtRevenue(mr.latest)
+             + '　YoY：'+yoyStr+'　MoM：'+momStr+'\n'
+             + '近 6 個月：'+trendList+'\n\n';
+  }
+
   var prompt = '你是專業的台灣股市技術分析師，請依照以下資料給出深度分析報告（使用繁體中文）。\n\n'
     +'【股票資訊】\n代號：'+d.ticker+'　名稱：'+d.name+'　市場：'+d.symbol+'\n'
     +'現價：'+fp(d.price)+' TWD　漲跌：'+(d.change>=0?'+':'')+d.change.toFixed(2)+' ('+d.changePct.toFixed(2)+'%)\n'
@@ -955,6 +1194,7 @@ function runAnalysis() {
     +'MA5：'+fp(last(ma5))+'　MA20：'+fp(last(ma20))+'　MA60：'+fp(last(ma60))+'\n'
     +'RSI(14)：'+(last(rsi)?last(rsi).toFixed(1):'N/A')+'　均線趨勢：'+trend+'\n'
     +'距52週高：'+dist52h+'　距52週低：'+dist52l+'\n\n'
+    +revBlock
     +'請用以下格式撰寫：\n\n'
     +'## 🟢 優勢分析\n（從技術面與市場地位分析優勢，列3-4點）\n\n'
     +'## 🔴 劣勢與風險\n（潛在風險與弱點，列2-3點）\n\n'
