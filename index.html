@@ -1968,6 +1968,98 @@ function runBatchAnalysis() {
     });
 }
 
+function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI) {
+  var lines = ['【技術訊號診斷（請以此為分析基礎）】'];
+
+  // 均線排列
+  var p = d.price;
+  var maIcon, maLabel;
+  if (p > lastMA5 && lastMA5 > lastMA20 && lastMA20 > lastMA60) {
+    maIcon = '✅'; maLabel = '多頭排列強勢（價>MA5>MA20>MA60）';
+  } else if (p > lastMA20 && lastMA20 > lastMA60) {
+    maIcon = '✅'; maLabel = '多頭偏多（價>MA20>MA60，MA5 暫落後）';
+  } else if (p < lastMA5 && lastMA5 < lastMA20 && lastMA20 < lastMA60) {
+    maIcon = '❌'; maLabel = '空頭排列（價<MA5<MA20<MA60）';
+  } else if (p < lastMA20) {
+    maIcon = '⚠️'; maLabel = '價格在 MA20 以下，趨勢偏弱';
+  } else {
+    maIcon = '⚠️'; maLabel = '均線糾結，方向不明，觀望為宜';
+  }
+  lines.push(maIcon + ' 均線：' + maLabel);
+
+  // RSI
+  if (lastRSI != null) {
+    var rsiIcon, rsiLabel;
+    if      (lastRSI < 25) { rsiIcon = '✅'; rsiLabel = lastRSI.toFixed(1) + ' 深度超賣，強力反彈訊號'; }
+    else if (lastRSI < 30) { rsiIcon = '✅'; rsiLabel = lastRSI.toFixed(1) + ' 超賣區（<30），關注反彈'; }
+    else if (lastRSI < 45) { rsiIcon = '✅'; rsiLabel = lastRSI.toFixed(1) + ' 偏低，有上漲空間'; }
+    else if (lastRSI < 55) { rsiIcon = '➡️'; rsiLabel = lastRSI.toFixed(1) + ' 中性區間'; }
+    else if (lastRSI < 65) { rsiIcon = '✅'; rsiLabel = lastRSI.toFixed(1) + ' 偏強'; }
+    else if (lastRSI < 70) { rsiIcon = '⚠️'; rsiLabel = lastRSI.toFixed(1) + ' 偏熱，接近超買區（70）'; }
+    else if (lastRSI < 80) { rsiIcon = '⚠️'; rsiLabel = lastRSI.toFixed(1) + ' 超買（>70），注意短線拉回'; }
+    else                   { rsiIcon = '❌'; rsiLabel = lastRSI.toFixed(1) + ' 嚴重超買（>80），高風險'; }
+    lines.push(rsiIcon + ' RSI(14)：' + rsiLabel);
+  }
+
+  // 月位置
+  if (d.high20 && d.low20) {
+    var dh = (p - d.high20) / d.high20 * 100;
+    var dl = (p - d.low20)  / d.low20  * 100;
+    var posIcon, posLabel;
+    if (dh > -3) {
+      posIcon = '⚠️'; posLabel = '距月高 ' + dh.toFixed(1) + '%，高檔整理，追高風險高';
+    } else if (dl < 5) {
+      posIcon = '✅'; posLabel = '距月低 +' + dl.toFixed(1) + '%，接近月底支撐，低風險進場區';
+    } else {
+      var mid = ((p - d.low20) / (d.high20 - d.low20) * 100).toFixed(0);
+      posIcon = '✅'; posLabel = '月區間中段（位置 ' + mid + '%），空間尚可';
+    }
+    lines.push(posIcon + ' 月位置：' + posLabel);
+  }
+
+  // 近5日動能
+  if (d.pct5d != null) {
+    var momIcon, momLabel;
+    var p5s = (d.pct5d >= 0 ? '+' : '') + d.pct5d.toFixed(1) + '%';
+    if      (d.pct5d > 5)              { momIcon = '⚠️'; momLabel = p5s + '，強勢衝刺，注意追高'; }
+    else if (d.pct5d > 2)              { momIcon = '✅'; momLabel = p5s + '，穩健上漲'; }
+    else if (d.pct5d >= -2)            { momIcon = '➡️'; momLabel = p5s + '，橫盤整理'; }
+    else if (d.pct5d >= -5 && d.isBullish) { momIcon = '✅'; momLabel = p5s + '，多頭回測，可能買點'; }
+    else if (d.pct5d >= -5)            { momIcon = '⚠️'; momLabel = p5s + '，回測中，等止穩'; }
+    else                               { momIcon = '❌'; momLabel = p5s + '，急跌，等止穩再看'; }
+    lines.push(momIcon + ' 近5日動能：' + momLabel);
+  }
+
+  // 月營收
+  if (d.monthRev && d.monthRev.yoy != null) {
+    var mr = d.monthRev;
+    var revIcon, revLabel;
+    var yoyStr = (mr.yoy >= 0 ? '+' : '') + mr.yoy.toFixed(1) + '%';
+    if      (mr.yoy > 30) { revIcon = '✅'; revLabel = 'YoY ' + yoyStr + '，高速成長'; }
+    else if (mr.yoy > 10) { revIcon = '✅'; revLabel = 'YoY ' + yoyStr + '，穩健成長'; }
+    else if (mr.yoy >  0) { revIcon = '✅'; revLabel = 'YoY ' + yoyStr + '，小幅成長'; }
+    else if (mr.yoy > -10){ revIcon = '⚠️'; revLabel = 'YoY ' + yoyStr + '，略為衰退'; }
+    else                  { revIcon = '❌'; revLabel = 'YoY ' + yoyStr + '，明顯衰退'; }
+    if (mr.mom != null) revLabel += '（MoM ' + (mr.mom >= 0 ? '+' : '') + mr.mom.toFixed(1) + '%）';
+    lines.push(revIcon + ' 月營收：' + revLabel);
+  }
+
+  // 估值
+  if (d.per && d.per.pe != null && !isNaN(+d.per.pe)) {
+    var pe = +d.per.pe;
+    var peIcon, peLabel;
+    if      (pe <= 0)   { peIcon = '❌'; peLabel = 'P/E N/A（虧損中）'; }
+    else if (pe < 10)   { peIcon = '✅'; peLabel = 'P/E ' + pe.toFixed(1) + 'x 低估'; }
+    else if (pe < 20)   { peIcon = '✅'; peLabel = 'P/E ' + pe.toFixed(1) + 'x 合理'; }
+    else if (pe < 30)   { peIcon = '⚠️'; peLabel = 'P/E ' + pe.toFixed(1) + 'x 偏高'; }
+    else                { peIcon = '❌'; peLabel = 'P/E ' + pe.toFixed(1) + 'x 高估'; }
+    if (d.per.yield != null) peLabel += '　殖利率 ' + (+d.per.yield).toFixed(1) + '%';
+    lines.push(peIcon + ' 估值：' + peLabel);
+  }
+
+  return lines.join('\n');
+}
+
 function runAnalysis() {
   var apiKey = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (!apiKey) { openSettings(); toast('請先設定 Groq API Key', 'err'); return; }
@@ -1996,45 +2088,35 @@ function runAnalysis() {
   else trend='均線糾結 / 盤整';
 
   var r5 = prices.slice(-5).filter(Boolean).map(fp).join('、');
-  var dist20h = d.high20 ? (((d.price - d.high20) / d.high20 * 100).toFixed(1) + '%') : 'N/A';
-  var dist20l = d.low20  ? ((d.price >= d.low20 ? '+' : '') + ((d.price - d.low20) / d.low20 * 100).toFixed(1) + '%') : 'N/A';
 
-  // 月營收
-  var revBlock = '';
+  // 月營收補充數據
+  var revSupp = '';
   if (d.monthRev) {
     var mr = d.monthRev;
-    var yoyStr = mr.yoy != null ? ((mr.yoy>=0?'+':'')+mr.yoy.toFixed(1)+'%') : 'N/A';
-    var momStr = mr.mom != null ? ((mr.mom>=0?'+':'')+mr.mom.toFixed(1)+'%') : 'N/A';
     var trendList = mr.last12.slice(-6).map(function(r){ return r.ym+' '+fmtRevenue(r.rev); }).join(' / ');
-    revBlock = '【月營收】最新（'+mr.latestYM+'）：'+fmtRevenue(mr.latest)+'　YoY：'+yoyStr+'　MoM：'+momStr+'\n近6月：'+trendList+'\n\n';
+    revSupp = '月營收近6月走勢：' + trendList + '\n';
   }
 
-  // 估值
-  var perBlock = '';
-  if (d.per) {
-    var pe = d.per;
-    perBlock = '【估值指標】P/E：'+(pe.pe!=null?(+pe.pe).toFixed(1)+'x':'N/A')
-      +'　P/B：'+(pe.pb!=null?(+pe.pb).toFixed(1)+'x':'N/A')
-      +'　殖利率：'+(pe.yield!=null?(+pe.yield).toFixed(2)+'%':'N/A')+'\n\n';
-  }
+  // 建立結構化診斷
+  var diag = buildDiagnostics(d, last(ma5), last(ma20), last(ma60), last(rsi));
 
-  var prompt = '你是專業的台灣股市分析師，專門服務「短線操作（1個月內進出）」的投資人。請根據以下資料給出精準分析（繁體中文）。\n\n'
-    + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　漲跌：' + (d.change>=0?'+':'') + d.change.toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)\n'
-    + '近20日高：' + fp(d.high20) + '　近20日低：' + fp(d.low20) + '　月振幅：' + (d.range20||0).toFixed(1) + '%\n'
-    + '距月高：' + dist20h + '　距月低：' + dist20l + '\n\n'
-    + '【技術指標】近5日收盤：' + r5 + '\n'
+  var prompt = '你是專業的台灣股市分析師，專門服務「短線操作（1個月內進出）」的投資人。\n\n'
+    + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　'
+    + '漲跌：' + (d.change>=0?'+':'') + d.change.toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)\n'
+    + '月振幅：' + (d.range20||0).toFixed(1) + '%　月高：' + fp(d.high20) + '　月低：' + fp(d.low20) + '\n\n'
+    + diag + '\n\n'
+    + '【補充參考數據】\n'
     + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
-    + 'RSI(14)：' + (last(rsi)?last(rsi).toFixed(1):'N/A') + '　均線趨勢：' + trend + '\n\n'
-    + revBlock
-    + perBlock
-    + '請依序用以下格式撰寫（精簡有力，每點不超過2行）：\n\n'
-    + '## 🟢 優勢分析\n（技術面 + 基本面優勢，列3點）\n\n'
-    + '## 🔴 劣勢與風險\n（短線潛在風險，列2點）\n\n'
-    + '## 🏭 產業需求評估\n（此公司屬於哪個產業？目前是「現在需求」還是「未來需求」？景氣循環位置？需求是擴張還是收縮？用1-2句話說明）\n\n'
-    + '## 📰 近期重要事件\n（根據你的訓練資料，列出3則關於此公司最近值得短線投資人注意的消息或事件，每則一行，格式：・事件摘要。若資料不足請如實說明）\n\n'
-    + '## 📊 技術面解讀（短線）\n（針對1個月內進出：月高低支撐壓力位、MA5/MA20位置、RSI短線研判）\n\n'
-    + '## 🎯 短線進場建議\n（具體進場價區間、停損價、1個月目標價）\n\n'
-    + '## 💡 操作策略\n（一段話直接說：現在應該買進/等待/觀望，並說明原因）';
+    + '近5日收盤：' + r5 + '\n'
+    + revSupp
+    + '\n請依序用以下格式撰寫（繁體中文，精簡有力，每點不超過2行）：\n\n'
+    + '## 🟢 優勢分析\n（根據診斷訊號，列3個最強的做多理由）\n\n'
+    + '## 🔴 劣勢與風險\n（根據診斷訊號，列2個最大短線風險）\n\n'
+    + '## 🏭 產業需求評估\n（此公司屬於哪個產業？現在需求 or 未來需求？景氣循環位置？1-2句）\n\n'
+    + '## 📰 近期重要事件\n（根據訓練資料，列3則值得短線投資人注意的消息，格式：・事件摘要）\n\n'
+    + '## 📊 技術面解讀\n（月高低支撐壓力、MA位置、RSI研判，針對1個月進出）\n\n'
+    + '## 🎯 短線進場建議\n（進場價區間、停損價、1個月目標價）\n\n'
+    + '## 💡 操作策略\n（一句話：現在買進/等待/觀望，原因）';
 
   // 自動判斷 API：AIza... → Gemini，gsk_... → Groq
   var isGemini = apiKey.indexOf('AIza') === 0;
