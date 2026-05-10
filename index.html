@@ -140,6 +140,10 @@ a{color:#60a5fa;}
 @keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 #toast-inner{padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;white-space:nowrap;box-shadow:0 8px 30px rgba(0,0,0,.4);}
 
+.param-val{display:inline-block;background:rgba(59,130,246,.2);color:#60a5fa;border-radius:3px;padding:0 4px;cursor:pointer;min-width:18px;text-align:center;font-weight:600;}
+.param-val:hover{background:rgba(59,130,246,.4);}
+.period-btn{background:#1e293b;border:1px solid #334155;color:#64748b;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;text-transform:none;letter-spacing:0;}
+.period-btn.active,.period-btn:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
 @media(max-width:600px){
   .metrics{grid-template-columns:1fr 1fr;}
   .hdr-sub{display:none;}
@@ -216,13 +220,14 @@ a{color:#60a5fa;}
   <!-- 篩選列 -->
   <div id="filterBar" style="display:none;margin-bottom:14px;">
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;">
-      <span style="color:#64748b;font-size:12px;margin-right:4px;">📋 篩選條件：</span>
-      <button class="fbtn" data-filter="all" onclick="setFilter('all')">全部</button>
-      <button class="fbtn" data-filter="oversold" onclick="setFilter('oversold')">🟢 超賣機會</button>
-      <button class="fbtn" data-filter="breakout" onclick="setFilter('breakout')">📈 突破 MA20</button>
-      <button class="fbtn" data-filter="near-low" onclick="setFilter('near-low')">🎯 接近年低</button>
-      <button class="fbtn" data-filter="bullish" onclick="setFilter('bullish')">🔥 多頭排列</button>
-      <button class="fbtn" data-filter="pullback" onclick="setFilter('pullback')">💎 回檔買點</button>
+      <span style="color:#64748b;font-size:12px;margin-right:4px;">📋 多選 AND：</span>
+      <button class="fbtn" id="fbtn-all" onclick="clearFilters()">全部（清除）</button>
+      <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">🟢 RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
+      <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">📈 突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
+      <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">🎯 距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
+      <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">🔥 多頭排列</button>
+      <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">💎 回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
+      <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">📊 YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <span id="filterCount" style="color:#94a3b8;font-size:13px;"></span>
@@ -250,8 +255,13 @@ a{color:#60a5fa;}
       <div id="mMetrics" class="metrics"></div>
       <div class="chart-box">
         <div class="chart-title">
-          <span>近 3 個月走勢</span>
-          <span id="chartLeg" style="color:#64748b;font-size:11px;"></span>
+          <span id="chartTitle">近 3 個月走勢</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button class="period-btn active" id="pb-day" onclick="switchPeriod('day')">日K</button>
+            <button class="period-btn" id="pb-week" onclick="switchPeriod('week')">週K</button>
+            <button class="period-btn" id="pb-month" onclick="switchPeriod('month')">月K</button>
+            <span id="chartLeg" style="color:#64748b;font-size:11px;margin-left:4px;"></span>
+          </div>
         </div>
         <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
       </div>
@@ -387,7 +397,9 @@ saveGroups();
 var stocks    = {};
 var current   = null;
 var myChart   = null;
-var currentFilter = 'all';
+var activeFilters = {};
+var filterParams  = { rsi: 30, maN: 20, nearLow: 10, pullback: 3, revYoy: 10 };
+var chartPeriod   = 'day';
 var monthlyRevCache = {};
 
 Object.defineProperty(window, 'watchlist', {
@@ -671,7 +683,9 @@ function parseFinMind(records, ticker) {
       isBearish:  isBearish,
       pctFromHigh: pctFromHigh,
       pctFromLow:  pctFromLow,
-      pct5d:       pct5d
+      pct5d:       pct5d,
+      closes:      allCloses.slice(-65),
+      rawRecords:  validRecords
     };
   } catch(e) {
     console.error('parseFinMind 錯誤:', e);
@@ -1124,39 +1138,163 @@ function renderGrid() {
   updateFilterStatus(filtered.length);
 }
 
+function matchFilter(d, name) {
+  switch (name) {
+    case 'oversold':
+      return d.rsi != null && d.rsi < filterParams.rsi;
+    case 'breakout': {
+      if (!d.closes || d.closes.length < filterParams.maN) return false;
+      var maArr = calcMA(d.closes, filterParams.maN);
+      var n = d.closes.length - 1;
+      return maArr[n] != null && d.closes[n] > maArr[n]
+          && n > 0 && maArr[n-1] != null && d.closes[n-1] <= maArr[n-1];
+    }
+    case 'near-low':
+      return d.pctFromLow != null && d.pctFromLow < filterParams.nearLow;
+    case 'bullish':
+      return d.isBullish === true;
+    case 'pullback':
+      return d.isBullish === true && d.pct5d < -filterParams.pullback;
+    case 'rev-yoy':
+      return !!(d.monthRev && d.monthRev.yoy != null && d.monthRev.yoy >= filterParams.revYoy);
+    default:
+      return true;
+  }
+}
+
 function filterTickers(list) {
-  if (currentFilter === 'all') return list.slice();
+  var keys = Object.keys(activeFilters);
+  if (keys.length === 0) return list.slice();
   return list.filter(function(t) {
     var d = stocks[t];
-    if (!d || d.rsi == null) return false;
-    switch (currentFilter) {
-      case 'oversold':  return d.rsi < 30;
-      case 'breakout':  return d.price > d.ma20 && d.prevClose <= d.ma20;
-      case 'near-low':  return d.pctFromLow != null && d.pctFromLow < 10;
-      case 'bullish':   return d.isBullish === true;
-      case 'pullback':  return d.isBullish === true && d.pct5d < -3;
-      default: return true;
+    if (!d) return false;
+    for (var i = 0; i < keys.length; i++) {
+      if (!matchFilter(d, keys[i])) return false;
     }
+    return true;
   });
 }
 
-function setFilter(name) {
-  currentFilter = name;
-  // 更新按鈕 active 狀態
-  var btns = document.querySelectorAll('.fbtn');
-  for (var i = 0; i < btns.length; i++) {
-    if (btns[i].dataset.filter === name) btns[i].classList.add('active');
-    else btns[i].classList.remove('active');
+function toggleFilter(name) {
+  if (activeFilters[name]) {
+    delete activeFilters[name];
+  } else {
+    activeFilters[name] = true;
+    if (name === 'rev-yoy') ensureRevenueLoaded();
   }
+  var btn = document.getElementById('fbtn-' + name);
+  if (btn) btn.classList.toggle('active', !!activeFilters[name]);
   renderGrid();
+}
+
+function clearFilters() {
+  activeFilters = {};
+  var btns = document.querySelectorAll('[id^="fbtn-"]');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  renderGrid();
+}
+
+function setFilter(name) { clearFilters(); }
+
+function editParam(name, e) {
+  e.stopPropagation();
+  var idMap = { rsi: 'pv-rsi', maN: 'pv-man', nearLow: 'pv-nearlow', pullback: 'pv-pb', revYoy: 'pv-ryoy' };
+  var el = document.getElementById(idMap[name]);
+  if (!el || el.tagName === 'INPUT') return;
+  var cur = filterParams[name];
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = cur;
+  inp.style.cssText = 'width:36px;font-size:12px;padding:0 3px;border:1px solid #3b82f6;border-radius:3px;background:#1e293b;color:#fff;outline:none;text-align:center;';
+  el.parentNode.replaceChild(inp, el);
+  inp.focus();
+  inp.select();
+  function save() {
+    var n = parseFloat(inp.value);
+    if (!isNaN(n)) filterParams[name] = (name === 'maN') ? Math.max(2, Math.round(n)) : n;
+    var span = document.createElement('span');
+    span.className = 'param-val';
+    span.id = idMap[name];
+    span.setAttribute('onclick', 'editParam("' + name + '",event)');
+    span.textContent = filterParams[name];
+    inp.parentNode.replaceChild(span, inp);
+    renderGrid();
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') inp.blur();
+    if (ev.key === 'Escape') { filterParams[name] = cur; inp.value = cur; inp.blur(); }
+  });
+}
+
+function ensureRevenueLoaded() {
+  var pending = watchlist.filter(function(t) { return !monthlyRevCache[t]; });
+  if (pending.length === 0) { renderGrid(); return; }
+  toast('載入 ' + pending.length + ' 檔月營收中...', 'ok');
+  var i = 0;
+  (function next() {
+    if (i >= pending.length) { renderGrid(); return; }
+    var t = pending[i++];
+    var d2 = new Date();
+    d2.setMonth(d2.getMonth() - 18);
+    var start = d2.getFullYear() + '-' + pad(d2.getMonth() + 1) + '-01';
+    var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=' + t + '&start_date=' + start;
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.data && json.data.length > 0) {
+          monthlyRevCache[t] = json.data;
+          if (stocks[t]) {
+            var recs = json.data.slice().sort(function(a, b) {
+              return (a.revenue_year * 100 + a.revenue_month) - (b.revenue_year * 100 + b.revenue_month);
+            });
+            var last12 = recs.slice(-12);
+            if (last12.length > 0) {
+              var lr = last12[last12.length - 1];
+              var yov = null, mom = null;
+              for (var j = 0; j < recs.length; j++) {
+                if (recs[j].revenue_year === lr.revenue_year - 1 && recs[j].revenue_month === lr.revenue_month) {
+                  yov = (lr.revenue - recs[j].revenue) / recs[j].revenue * 100;
+                  break;
+                }
+              }
+              if (last12.length >= 2) {
+                var pv = last12[last12.length - 2].revenue;
+                if (pv) mom = (lr.revenue - pv) / pv * 100;
+              }
+              stocks[t].monthRev = {
+                latest: lr.revenue,
+                latestYM: lr.revenue_year + '-' + pad(lr.revenue_month),
+                yoy: yov, mom: mom,
+                last12: last12.map(function(r) { return { ym: r.revenue_year + '-' + pad(r.revenue_month), rev: r.revenue }; })
+              };
+            }
+          }
+        }
+      })
+      .catch(function() {})
+      .then(function() { setTimeout(next, 400); });
+  })();
+}
+
+function activeFilterLabel() {
+  var keys = Object.keys(activeFilters);
+  if (keys.length === 0) return '全部';
+  var map = {
+    'oversold': 'RSI<' + filterParams.rsi,
+    'breakout': '突破MA' + filterParams.maN,
+    'near-low': '距年低<' + filterParams.nearLow + '%',
+    'bullish':  '多頭排列',
+    'pullback': '回檔<-' + filterParams.pullback + '%',
+    'rev-yoy':  'YoY>' + filterParams.revYoy + '%'
+  };
+  return keys.map(function(k) { return map[k] || k; }).join(' + ');
 }
 
 function updateFilterStatus(count) {
   var el = document.getElementById('filterCount');
   var btn = document.getElementById('batchBtn');
-  var label = currentFilter === 'all' ? '全部' : ({
-    'oversold':'超賣機會','breakout':'突破 MA20','near-low':'接近年低','bullish':'多頭排列','pullback':'回檔買點'
-  })[currentFilter];
+  var label = activeFilterLabel();
 
   el.innerHTML = '已顯示 <strong style="color:#fff;">' + count + '</strong> / ' + watchlist.length + ' 檔（' + label + '）';
 
@@ -1221,7 +1359,7 @@ function buildCard(ticker, d) {
 
 function updateCard(ticker) {
   // 若目前有套用非「全部」的篩選，直接重繪整個 grid（確保符合條件的卡片正確顯示）
-  if (currentFilter !== 'all') { renderGrid(); return; }
+  if (Object.keys(activeFilters).length > 0) { renderGrid(); return; }
   var el = document.getElementById('card-'+ticker);
   if (!el) { renderGrid(); return; }
   var tmp = document.createElement('div');
@@ -1260,6 +1398,13 @@ function openModal(ticker) {
     metric('市值', fcap(d.marketCap), fvol(d.volume));
 
   resetAI();
+  chartPeriod = 'day';
+  ['day', 'week', 'month'].forEach(function(p) {
+    var btn = document.getElementById('pb-' + p);
+    if (btn) btn.classList.toggle('active', p === 'day');
+  });
+  var titleEl = document.getElementById('chartTitle');
+  if (titleEl) titleEl.textContent = '近 3 個月走勢';
   document.getElementById('analysisOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
   setTimeout(function() { drawChart(d); }, 150);
@@ -1407,45 +1552,96 @@ function resetAI() {
 // ─────────────────────────────────
 // Chart
 // ─────────────────────────────────
+function aggregatePeriod(rawRecords, period) {
+  var grouped = {}, order = [];
+  for (var i = 0; i < rawRecords.length; i++) {
+    var r = rawRecords[i];
+    var key;
+    if (period === 'month') {
+      key = r.date.slice(0, 7);
+    } else {
+      var dt = new Date(r.date);
+      var dow = dt.getDay();
+      var diff = dt.getDate() - dow + (dow === 0 ? -6 : 1);
+      var mon = new Date(dt.getFullYear(), dt.getMonth(), diff);
+      key = mon.getFullYear() + '-' + pad(mon.getMonth() + 1) + '-' + pad(mon.getDate());
+    }
+    if (!grouped[key]) {
+      grouped[key] = { label: period === 'month' ? key : key.slice(5), close: r.close, high: r.max, low: r.min };
+      order.push(key);
+    } else {
+      var g = grouped[key];
+      if (r.max > g.high) g.high = r.max;
+      if (r.min < g.low)  g.low  = r.min;
+      g.close = r.close;
+    }
+  }
+  return order.map(function(k) { return grouped[k]; });
+}
+
+function switchPeriod(p) {
+  chartPeriod = p;
+  ['day', 'week', 'month'].forEach(function(id) {
+    var btn = document.getElementById('pb-' + id);
+    if (btn) btn.classList.toggle('active', id === p);
+  });
+  var titleEl = document.getElementById('chartTitle');
+  if (titleEl) titleEl.textContent = { day: '近 3 個月走勢', week: '週K 走勢', month: '月K 走勢' }[p] || '走勢';
+  var d = stocks[current];
+  if (d) drawChart(d);
+}
+
 function drawChart(d) {
   var canvas = document.getElementById('priceChart');
   if (myChart) { myChart.destroy(); myChart = null; }
-  if (!d.chartData || !d.chartData.length) return;
 
-  var cd     = d.chartData.slice(-60);
-  var prices = cd.map(function(x){return x.close;});
-  var labels = cd.map(function(x){return x.date;});
-  var ma20   = calcMA(prices, 20);
-  var up     = prices[prices.length-1] >= prices[0];
+  var prices, labels, maN;
+  if (chartPeriod !== 'day' && d.rawRecords && d.rawRecords.length > 0) {
+    var agg = aggregatePeriod(d.rawRecords, chartPeriod);
+    prices = agg.map(function(x) { return x.close; });
+    labels = agg.map(function(x) { return x.label; });
+    maN = chartPeriod === 'week' ? 10 : 6;
+  } else {
+    if (!d.chartData || !d.chartData.length) return;
+    var cd = d.chartData.slice(-60);
+    prices = cd.map(function(x) { return x.close; });
+    labels = cd.map(function(x) { return x.date; });
+    maN = 20;
+  }
+
+  if (!prices.length) return;
+  var maArr  = calcMA(prices, maN);
+  var up     = prices[prices.length - 1] >= prices[0];
   var lc     = up ? '#22c55e' : '#ef4444';
   var fc     = up ? 'rgba(34,197,94,.07)' : 'rgba(239,68,68,.07)';
+  var maLabel = 'MA' + maN;
 
   document.getElementById('chartLeg').innerHTML =
-    '<span style="color:'+lc+';">● 收盤</span>  <span style="color:#f59e0b;">● MA20</span>';
+    '<span style="color:' + lc + ';">● 收盤</span>  <span style="color:#f59e0b;">● ' + maLabel + '</span>';
 
   myChart = new Chart(canvas, {
     type: 'line',
     data: {
       labels: labels,
       datasets: [
-        { label:'收盤', data:prices, borderColor:lc, backgroundColor:fc, borderWidth:2, pointRadius:0, pointHoverRadius:3, fill:true, tension:.1 },
-        { label:'MA20', data:ma20, borderColor:'#f59e0b', borderWidth:1.5, pointRadius:0, fill:false, tension:.1, spanGaps:true }
+        { label: '收盤', data: prices, borderColor: lc, backgroundColor: fc, borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, fill: true, tension: .1 },
+        { label: maLabel, data: maArr, borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, fill: false, tension: .1, spanGaps: true }
       ]
     },
     options: {
-      responsive:true, maintainAspectRatio:false,
-      interaction:{ mode:'index', intersect:false },
-      plugins:{
-        legend:{ display:false },
-        tooltip:{
-          backgroundColor:'#1e293b', borderColor:'#334155', borderWidth:1,
-          titleColor:'#94a3b8', bodyColor:'#e2e8f0',
-          callbacks:{ label:function(c){return ' '+c.dataset.label+': '+(c.raw!=null?fp(c.raw):'-'); } }
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
+          titleColor: '#94a3b8', bodyColor: '#e2e8f0',
+          callbacks: { label: function(c) { return ' ' + c.dataset.label + ': ' + (c.raw != null ? fp(c.raw) : '-'); } }
         }
       },
-      scales:{
-        x:{ grid:{color:'rgba(51,65,85,.4)'}, ticks:{color:'#475569',maxTicksLimit:7,font:{size:10}} },
-        y:{ position:'right', grid:{color:'rgba(51,65,85,.4)'}, ticks:{color:'#475569',font:{size:10},callback:function(v){return fp(v);}} }
+      scales: {
+        x: { grid: { color: 'rgba(51,65,85,.4)' }, ticks: { color: '#475569', maxTicksLimit: 7, font: { size: 10 } } },
+        y: { position: 'right', grid: { color: 'rgba(51,65,85,.4)' }, ticks: { color: '#475569', font: { size: 10 }, callback: function(v) { return fp(v); } } }
       }
     }
   });
@@ -1472,9 +1668,8 @@ function runBatchAnalysis() {
   var filtered = filterTickers(watchlist).filter(function(t){ return stocks[t]; });
   if (filtered.length < 2) { toast('需要至少 2 檔股票才能比較', 'err'); return; }
 
-  var label = currentFilter === 'all' ? '全部追蹤股' : ({
-    'oversold':'超賣機會','breakout':'突破 MA20','near-low':'接近年低','bullish':'多頭排列','pullback':'回檔買點'
-  })[currentFilter];
+  var label = activeFilterLabel();
+  if (label === '全部') label = '全部追蹤股';
 
   document.getElementById('batchSub').textContent = '篩選條件：' + label + ' · 共 ' + filtered.length + ' 檔 · 一次 AI 呼叫';
 
