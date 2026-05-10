@@ -686,62 +686,70 @@ function renderBrowseMode() {
 }
 
 function fetchMarketData() {
-  // 用 FinMind（CORS 友善）：抓近 7 天，自動取最新交易日
-  var d = new Date();
-  d.setDate(d.getDate() - 7);
-  var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
-  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&start_date=' + startDate;
+  tryMarketDay(0);
+}
 
-  console.log('[市場] 載入 FinMind 全市場（' + startDate + ' 起）...');
-  document.getElementById('marketStatus').innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div class="spin"></div>正在抓全台股最新交易日資料（約 5-15 秒，資料量大）...</div>';
+// 從今天往前推，找到第一個有資料的交易日（每次只查 1 天，請求小）
+function tryMarketDay(daysBack) {
+  if (daysBack > 7) {
+    document.getElementById('marketStatus').innerHTML =
+      '<span style="color:#f87171;">⚠️ 載入失敗：FinMind 可能暫時擋住請求（剛才查太大）。</span><br>'
+      + '<span style="color:#94a3b8;font-size:11px;">解法：等 30-60 分鐘後再試，或先用搜尋功能（自選股那邊）手動加入個股。</span>';
+    return;
+  }
+
+  var d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  var dateStr = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+
+  document.getElementById('marketStatus').innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;"><div class="spin"></div>'
+    + '正在抓 ' + dateStr + ' 全市場資料...</div>';
+
+  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&start_date=' + dateStr + '&end_date=' + dateStr;
+  console.log('[市場] 嘗試 ' + dateStr);
 
   fetch(url)
     .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
-        throw new Error('FinMind 未回傳資料');
+        // 那天可能是假日，往前一天試
+        console.log('[市場] ' + dateStr + ' 無資料，往前一天');
+        setTimeout(function(){ tryMarketDay(daysBack + 1); }, 300);
+        return;
       }
-
-      // 找最新交易日
-      var latestDate = json.data.reduce(function(max, r) { return r.date > max ? r.date : max; }, '');
-      console.log('[市場] 最新交易日：' + latestDate + '，共 ' + json.data.length + ' 筆');
-
-      // 只取最新交易日的資料
-      var todayData = json.data.filter(function(r) { return r.date === latestDate; });
-
-      // 標準化
-      marketData = todayData.map(function(r) {
-        var close = r.close;
-        var change = r.spread || 0;  // FinMind 用 spread 表示漲跌
-        var prev = close - change;
-        var pct = prev ? (change / prev * 100) : 0;
-        return {
-          code: r.stock_id,
-          name: STOCK_NAMES[r.stock_id] || r.stock_id,
-          open: r.open,
-          high: r.max,
-          low: r.min,
-          close: close,
-          change: change,
-          changePct: pct,
-          volume: r.Trading_Volume || 0,
-          value: r.Trading_money || 0,
-          date: r.date
-        };
-      }).filter(function(s) { return s.close > 0; });
-
-      // 排除 ETF/權證等（簡單規則：5位數以上代號通常為權證、可選）
-      marketData = marketData.filter(function(s) {
-        return s.code && s.code.length <= 6;  // 保留 4-6 位代號（含 ETF）
-      });
-
-      console.log('[市場] ✓ 載入 ' + marketData.length + ' 檔（' + latestDate + '）');
-      applyMarketFilter();
+      processMarketData(json.data);
     })
     .catch(function(e) {
-      console.error('[市場] 失敗:', e);
-      document.getElementById('marketStatus').innerHTML = '<span style="color:#f87171;">載入失敗：'+e.message+'。可能 FinMind 暫時無法存取，請稍後重試。</span>';
+      console.error('[市場] ' + dateStr + ' 失敗:', e.message);
+      // 再試前一天
+      setTimeout(function(){ tryMarketDay(daysBack + 1); }, 600);
     });
+}
+
+function processMarketData(records) {
+  marketData = records.map(function(r) {
+    var close = r.close || 0;
+    var change = r.spread || 0;
+    var prev = close - change;
+    var pct = prev ? (change / prev * 100) : 0;
+    return {
+      code: r.stock_id,
+      name: STOCK_NAMES[r.stock_id] || r.stock_id,
+      open: r.open,
+      high: r.max,
+      low: r.min,
+      close: close,
+      change: change,
+      changePct: pct,
+      volume: r.Trading_Volume || 0,
+      value: r.Trading_money || 0,
+      date: r.date
+    };
+  }).filter(function(s) { return s.close > 0 && s.code && s.code.length <= 6; });
+
+  console.log('[市場] ✓ 載入 ' + marketData.length + ' 檔（' + (records[0] && records[0].date) + '）');
+  applyMarketFilter();
 }
 
 function reloadMarket() {
