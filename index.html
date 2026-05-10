@@ -142,6 +142,9 @@ a{color:#60a5fa;}
 
 .param-val{display:inline-block;background:rgba(59,130,246,.2);color:#60a5fa;border-radius:3px;padding:0 4px;cursor:pointer;min-width:18px;text-align:center;font-weight:600;}
 .param-val:hover{background:rgba(59,130,246,.4);}
+.suggest-list{background:#0f172a;border:1px solid #334155;border-radius:8px;z-index:20;max-height:280px;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.6);}
+.suggest-item{padding:9px 14px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.suggest-item:hover{background:#1e293b;}
 .period-btn{background:#1e293b;border:1px solid #334155;color:#64748b;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;text-transform:none;letter-spacing:0;}
 .period-btn.active,.period-btn:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
 @media(max-width:600px){
@@ -171,13 +174,16 @@ a{color:#60a5fa;}
 
 <!-- SEARCH -->
 <div id="searchWrap" class="search-wrap">
-  <div class="search-row">
-    <input id="tickerInput" class="search-input" type="text"
-      placeholder="輸入台股代號，例：2330、0050、2454（按 Enter 加入）"
-      onkeydown="if(event.key==='Enter') addStock()">
+  <div class="search-row" style="position:relative;">
+    <input id="tickerInput" class="search-input" type="text" autocomplete="off"
+      placeholder="代號（2330）或公司名稱（台積電、鴻海）按 Enter 加入"
+      onkeydown="if(event.key==='Enter')addStock();if(event.key==='Escape')hideSuggestions();"
+      oninput="onSearchInput()"
+      onblur="setTimeout(hideSuggestions,150)">
     <button class="btn-add" onclick="addStock()">＋ 加入</button>
+    <div id="searchSuggestions" class="suggest-list" style="display:none;position:absolute;top:100%;left:0;right:72px;margin-top:4px;"></div>
   </div>
-  <div class="search-hint">支援上市（.TW）與上櫃（.TWO），輸入純數字代號即可</div>
+  <div class="search-hint">支援代號（2330）或公司名稱（台積電）搜尋，打中文字會自動搜尋</div>
   <div class="quick-row">
     <span class="quick-label">快速加入：</span>
     <button class="btn-quick" onclick="quickAdd('2330')">2330 台積電</button>
@@ -401,6 +407,9 @@ var activeFilters = {};
 var filterParams  = { rsi: 30, maN: 20, nearLow: 10, pullback: 3, revYoy: 10 };
 var chartPeriod   = 'day';
 var monthlyRevCache = {};
+var stockInfoCache    = null;
+var stockInfoLoading  = false;
+var stockInfoCbs      = [];
 
 Object.defineProperty(window, 'watchlist', {
   get: function() { return activeGroup().tickers; },
@@ -499,21 +508,134 @@ function fmUrl(baseUrl) {
 // ─────────────────────────────────
 function quickAdd(t) {
   document.getElementById('tickerInput').value = t;
+  hideSuggestions();
   addStock();
+}
+
+// ─── 股票名稱搜尋 ───────────────────────────────────────
+function ensureStockInfo(cb) {
+  if (stockInfoCache) { cb(stockInfoCache); return; }
+  stockInfoCbs.push(cb);
+  if (stockInfoLoading) return;
+  stockInfoLoading = true;
+  fetch('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      stockInfoCache = (json.data && json.data.length > 0) ? json.data : [];
+      stockInfoCache.forEach(function(s) {
+        if (s.stock_id && s.stock_name && !STOCK_NAMES[s.stock_id]) {
+          STOCK_NAMES[s.stock_id] = s.stock_name;
+        }
+      });
+      stockInfoLoading = false;
+      stockInfoCbs.forEach(function(fn) { fn(stockInfoCache); });
+      stockInfoCbs = [];
+    })
+    .catch(function() {
+      stockInfoCache = [];
+      stockInfoLoading = false;
+      stockInfoCbs.forEach(function(fn) { fn([]); });
+      stockInfoCbs = [];
+    });
+}
+
+function searchByName(query, limit) {
+  query = query.toLowerCase();
+  var results = [], seen = {};
+  var keys = Object.keys(STOCK_NAMES);
+  for (var i = 0; i < keys.length && results.length < limit; i++) {
+    if (STOCK_NAMES[keys[i]].toLowerCase().indexOf(query) !== -1) {
+      seen[keys[i]] = true;
+      results.push({ code: keys[i], name: STOCK_NAMES[keys[i]] });
+    }
+  }
+  if (stockInfoCache) {
+    for (var j = 0; j < stockInfoCache.length && results.length < limit; j++) {
+      var s = stockInfoCache[j];
+      if (!seen[s.stock_id] && (s.stock_name || '').toLowerCase().indexOf(query) !== -1) {
+        results.push({ code: s.stock_id, name: s.stock_name });
+      }
+    }
+  }
+  return results;
+}
+
+var searchTimer = null;
+function onSearchInput() {
+  var raw = document.getElementById('tickerInput').value.trim();
+  if (!raw || /^[\dA-Za-z]+$/.test(raw)) { hideSuggestions(); return; }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function() {
+    var matches = searchByName(raw, 8);
+    if (matches.length > 0) { showSuggestions(matches); return; }
+    ensureStockInfo(function() {
+      var m2 = searchByName(raw, 8);
+      if (m2.length > 0) showSuggestions(m2); else hideSuggestions();
+    });
+  }, 180);
+}
+
+function showSuggestions(matches) {
+  var el = document.getElementById('searchSuggestions');
+  if (!el) return;
+  el.innerHTML = matches.map(function(m) {
+    return '<div class="suggest-item" onmousedown="pickSuggestion(\'' + m.code + '\')">'
+         +   '<span style="font-weight:600;color:#e2e8f0;">' + escapeHtml(m.name) + '</span>'
+         +   '<span style="color:#64748b;font-size:12px;">' + escapeHtml(m.code) + '</span>'
+         + '</div>';
+  }).join('');
+  el.style.display = 'block';
+}
+
+function hideSuggestions() {
+  var el = document.getElementById('searchSuggestions');
+  if (el) el.style.display = 'none';
+}
+
+function pickSuggestion(code) {
+  document.getElementById('tickerInput').value = '';
+  hideSuggestions();
+  doAddTicker(code);
 }
 
 function addStock() {
   var inp = document.getElementById('tickerInput');
-  var ticker = inp.value.trim().replace(/\s/g, '').toUpperCase();
-  if (!ticker) { toast('請輸入股票代號', 'err'); return; }
+  var raw = inp.value.trim();
+  hideSuggestions();
+  if (!raw) { toast('請輸入股票代號或名稱', 'err'); return; }
+
+  // 純代號（數字或英數）
+  if (/^[\dA-Za-z]+$/.test(raw)) {
+    doAddTicker(raw.toUpperCase(), inp);
+    return;
+  }
+
+  // 中文名稱 → 先查已載入字典
+  var matches = searchByName(raw, 1);
+  if (matches.length > 0) { doAddTicker(matches[0].code, inp); return; }
+
+  // 字典沒有 → 載入全市場清單再查
+  toast('搜尋中...', 'ok');
+  ensureStockInfo(function() {
+    var m2 = searchByName(raw, 1);
+    if (m2.length > 0) {
+      doAddTicker(m2[0].code, inp);
+    } else {
+      toast('找不到「' + raw + '」，請確認名稱或改用代號', 'err');
+      if (inp) inp.value = '';
+    }
+  });
+}
+
+function doAddTicker(ticker, inp) {
   if (watchlist.indexOf(ticker) !== -1) {
     toast(ticker + ' 已在追蹤清單中');
-    inp.value = '';
+    if (inp) inp.value = '';
     return;
   }
   watchlist.push(ticker);
   saveGroups();
-  inp.value = '';
+  if (inp) inp.value = '';
   renderTabs();
   renderGrid();
   fetchStock(ticker);
