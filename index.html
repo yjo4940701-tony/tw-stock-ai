@@ -166,7 +166,7 @@ a{color:#60a5fa;}
 <div id="gtabs" class="gtabs"></div>
 
 <!-- SEARCH -->
-<div class="search-wrap">
+<div id="searchWrap" class="search-wrap">
   <div class="search-row">
     <input id="tickerInput" class="search-input" type="text"
       placeholder="輸入台股代號，例：2330、0050、2454（按 Enter 加入）"
@@ -182,6 +182,27 @@ a{color:#60a5fa;}
     <button class="btn-quick" onclick="quickAdd('2317')">2317 鴻海</button>
     <button class="btn-quick" onclick="quickAdd('2382')">2382 廣達</button>
   </div>
+</div>
+
+<!-- BROWSE MARKET FILTERS -->
+<div id="browseFilters" class="search-wrap" style="display:none;">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+    <input id="marketSearch" class="search-input" type="text" placeholder="🔍 搜尋代號或公司名（即時過濾）" oninput="renderBrowseMode()" style="flex:1;min-width:200px;">
+    <button class="btn-add" onclick="reloadMarket()" style="padding:12px 16px;">🔄 重新載入</button>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+    <span style="color:#64748b;font-size:12px;margin-right:4px;">快速篩選：</span>
+    <button class="fbtn mfbtn" data-mfilter="all" onclick="setMarketFilter('all')">全部</button>
+    <button class="fbtn mfbtn" data-mfilter="up3" onclick="setMarketFilter('up3')">💹 漲幅&gt;3%</button>
+    <button class="fbtn mfbtn" data-mfilter="up5" onclick="setMarketFilter('up5')">🔥 漲幅&gt;5%</button>
+    <button class="fbtn mfbtn" data-mfilter="dn3" onclick="setMarketFilter('dn3')">📉 跌幅&gt;3%</button>
+    <button class="fbtn mfbtn" data-mfilter="dn5" onclick="setMarketFilter('dn5')">⚠️ 跌幅&gt;5%</button>
+    <button class="fbtn mfbtn" data-mfilter="lt50" onclick="setMarketFilter('lt50')">💰 股價&lt;50</button>
+    <button class="fbtn mfbtn" data-mfilter="50to200" onclick="setMarketFilter('50to200')">中價股 50~200</button>
+    <button class="fbtn mfbtn" data-mfilter="gt200" onclick="setMarketFilter('gt200')">高價股&gt;200</button>
+    <button class="fbtn mfbtn" data-mfilter="hot" onclick="setMarketFilter('hot')">⚡ 成交爆量</button>
+  </div>
+  <div id="marketStatus" style="color:#94a3b8;font-size:12px;margin-top:8px;"></div>
 </div>
 
 <!-- MAIN -->
@@ -375,9 +396,13 @@ var PROXIES = [
   var k = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (k) document.getElementById('apiKeyInput').value = k;
   renderTabs();
-  renderGrid();
   setFilter('all');
-  if (watchlist.length > 0) loadAll();
+  if (GROUPS.active === -1) {
+    renderBrowseMode();
+  } else {
+    renderGrid();
+    if (watchlist.length > 0) loadAll();
+  }
 })();
 
 // ─────────────────────────────────
@@ -631,10 +656,259 @@ function pad(n) { return n < 10 ? '0'+n : ''+n; }
 // 渲染
 // ─────────────────────────────────
 // ─────────────────────────────────
+// 瀏覽全市場
+// ─────────────────────────────────
+var marketData = null;          // 全市場原始資料快取
+var marketFilter = 'all';
+var addToGroupOpen = null;      // 目前打開的「加入群組」下拉是哪個 ticker
+
+function renderBrowseMode() {
+  document.getElementById('searchWrap').style.display = 'none';
+  document.getElementById('browseFilters').style.display = 'block';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('filterBar').style.display = 'none';
+  document.getElementById('watchGrid').style.display = 'grid';
+  document.getElementById('watchGrid').innerHTML = '';
+
+  // 設定初始 filter button active
+  var btns = document.querySelectorAll('.mfbtn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].dataset.mfilter === marketFilter);
+  }
+
+  if (!marketData) {
+    document.getElementById('marketStatus').innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div class="spin"></div>首次載入全市場資料中（約 5 秒）...</div>';
+    fetchMarketData();
+    return;
+  }
+
+  applyMarketFilter();
+}
+
+function fetchMarketData() {
+  // TWSE 官方 OpenAPI - 一個 endpoint 拿全部上市股票今日資料
+  var url = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+  console.log('[市場] 載入 TWSE...');
+
+  fetch(url)
+    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(data) {
+      // 標準化資料
+      marketData = data.map(function(s) {
+        var close  = parseFloat(s.ClosingPrice) || 0;
+        var change = parseFloat(s.Change)        || 0;
+        var prev   = close - change;
+        var pct    = prev ? (change / prev * 100) : 0;
+        var vol    = parseInt(s.TradeVolume, 10)  || 0;
+        return {
+          code: s.Code,
+          name: s.Name,
+          open:  parseFloat(s.OpeningPrice) || 0,
+          high:  parseFloat(s.HighestPrice) || 0,
+          low:   parseFloat(s.LowestPrice)  || 0,
+          close: close,
+          change: change,
+          changePct: pct,
+          volume: vol,
+          value: parseFloat(s.TradeValue) || 0
+        };
+      }).filter(function(s) { return s.close > 0; });
+
+      console.log('[市場] ✓ 載入 ' + marketData.length + ' 檔上市股票');
+      applyMarketFilter();
+    })
+    .catch(function(e) {
+      console.error('[市場] 失敗:', e);
+      document.getElementById('marketStatus').innerHTML = '<span style="color:#f87171;">載入失敗：'+e.message+'。可能是非交易日或 TWSE API 暫時無法存取。</span>';
+    });
+}
+
+function reloadMarket() {
+  marketData = null;
+  renderBrowseMode();
+}
+
+function setMarketFilter(name) {
+  marketFilter = name;
+  var btns = document.querySelectorAll('.mfbtn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].classList.toggle('active', btns[i].dataset.mfilter === name);
+  }
+  applyMarketFilter();
+}
+
+function applyMarketFilter() {
+  if (!marketData) return;
+  var search = (document.getElementById('marketSearch').value || '').trim().toLowerCase();
+
+  // 計算 top 50 成交量門檻（用於 hot filter）
+  var sortedByVol = marketData.slice().sort(function(a,b){ return b.value - a.value; });
+  var hotThreshold = sortedByVol.length > 50 ? sortedByVol[49].value : 0;
+
+  var filtered = marketData.filter(function(s) {
+    if (search) {
+      var hit = (s.code || '').toLowerCase().indexOf(search) !== -1
+             || (s.name || '').toLowerCase().indexOf(search) !== -1;
+      if (!hit) return false;
+    }
+    switch (marketFilter) {
+      case 'up3':     return s.changePct >  3;
+      case 'up5':     return s.changePct >  5;
+      case 'dn3':     return s.changePct < -3;
+      case 'dn5':     return s.changePct < -5;
+      case 'lt50':    return s.close < 50;
+      case '50to200': return s.close >= 50 && s.close <= 200;
+      case 'gt200':   return s.close > 200;
+      case 'hot':     return s.value >= hotThreshold;
+      default:        return true;
+    }
+  });
+
+  // 排序：依漲跌幅
+  filtered.sort(function(a,b){ return b.changePct - a.changePct; });
+
+  // 限制最多顯示 200 檔（避免渲染太久）
+  var limited = filtered.slice(0, 200);
+  var more = filtered.length - limited.length;
+
+  document.getElementById('marketStatus').innerHTML =
+    '已顯示 <strong style="color:#fff;">' + limited.length + '</strong> / 全市場 ' + marketData.length + ' 檔'
+    + (more > 0 ? '（已限制顯示前 200 檔，請用搜尋或更嚴格篩選）' : '');
+
+  var html = '';
+  if (limited.length === 0) {
+    html = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#475569;font-size:14px;">😶 沒有股票符合此篩選條件</div>';
+  } else {
+    for (var i = 0; i < limited.length; i++) {
+      html += buildBrowseCard(limited[i]);
+    }
+  }
+  document.getElementById('watchGrid').innerHTML = html;
+}
+
+function buildBrowseCard(s) {
+  var up = s.change >= 0;
+  var arr = up ? '▲' : '▼';
+  var cc = up ? 'up' : 'down';
+  var bc = up ? 'badge-up' : 'badge-down';
+  var name = (s.name || '').length > 10 ? (s.name.slice(0,10)+'…') : s.name;
+
+  // 已加入哪些群組（顯示徽章）
+  var inGroups = [];
+  for (var i = 0; i < GROUPS.list.length; i++) {
+    if (GROUPS.list[i].tickers.indexOf(s.code) !== -1) inGroups.push(i+1);
+  }
+  var badge = inGroups.length > 0
+    ? '<span style="background:rgba(34,197,94,.15);color:#22c55e;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:600;">已在群組 '+inGroups.join('、')+'</span>'
+    : '';
+
+  return '<div class="card" style="cursor:default;">'
+       +   '<div class="card-head">'
+       +     '<div><div class="card-ticker">'+s.code+'</div><div class="card-name" title="'+(s.name||'')+'">'+name+'</div></div>'
+       +     badge
+       +   '</div>'
+       +   '<div style="display:flex;align-items:flex-end;justify-content:space-between;">'
+       +     '<div>'
+       +       '<div class="card-price">'+fp(s.close)+'</div>'
+       +       '<div class="card-change '+cc+'">'+arr+' '+Math.abs(s.change).toFixed(2)+' ('+s.changePct.toFixed(2)+'%)</div>'
+       +     '</div>'
+       +     '<span class="badge '+bc+'">'+(up?'上漲':'下跌')+'</span>'
+       +   '</div>'
+       +   '<div class="card-bottom">'
+       +     '<div><div class="label">最高/最低</div><div style="color:#cbd5e1;font-size:11px;">'+fp(s.high)+' / '+fp(s.low)+'</div></div>'
+       +     '<div><div class="label">成交額</div><div style="color:#cbd5e1;font-size:11px;">'+fmtRevenue(s.value)+'</div></div>'
+       +   '</div>'
+       +   '<div style="position:relative;margin-top:10px;">'
+       +     '<button onclick="toggleAddDropdown(\''+s.code+'\',event)" style="width:100%;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:#22c55e;padding:7px;border-radius:8px;font-size:12px;cursor:pointer;">+ 加入群組 ▼</button>'
+       +     '<div id="addDD-'+s.code+'" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#0f172a;border:1px solid #334155;border-radius:8px;z-index:5;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.5);">'
+       +       buildAddDropdownHTML(s.code)
+       +     '</div>'
+       +   '</div>'
+       + '</div>';
+}
+
+function buildAddDropdownHTML(ticker) {
+  var html = '';
+  for (var i = 0; i < GROUPS.list.length; i++) {
+    var g = GROUPS.list[i];
+    var inGroup = g.tickers.indexOf(ticker) !== -1;
+    html += '<div onclick="toggleStockInGroup(\''+ticker+'\','+i+',event)" '
+         +    'style="display:flex;align-items:center;justify-content:space-between;padding:7px 9px;border-radius:5px;cursor:pointer;font-size:12px;color:'+(inGroup?'#22c55e':'#94a3b8')+';"'
+         +    'onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\'transparent\'">'
+         +   '<span>'+(inGroup?'✓ ':'')+escapeHtml(g.name)+'</span>'
+         +   '<span style="color:#475569;font-size:10px;">'+g.tickers.length+' 檔</span>'
+         + '</div>';
+  }
+  return html;
+}
+
+function toggleAddDropdown(ticker, e) {
+  if (e) e.stopPropagation();
+  // 關掉其他打開的下拉
+  if (addToGroupOpen && addToGroupOpen !== ticker) {
+    var oldDD = document.getElementById('addDD-'+addToGroupOpen);
+    if (oldDD) oldDD.style.display = 'none';
+  }
+  var dd = document.getElementById('addDD-'+ticker);
+  if (!dd) return;
+  if (dd.style.display === 'none') {
+    dd.style.display = 'block';
+    addToGroupOpen = ticker;
+  } else {
+    dd.style.display = 'none';
+    addToGroupOpen = null;
+  }
+}
+
+function toggleStockInGroup(ticker, groupIdx, e) {
+  if (e) e.stopPropagation();
+  var g = GROUPS.list[groupIdx];
+  var idx = g.tickers.indexOf(ticker);
+  if (idx === -1) {
+    g.tickers.push(ticker);
+    toast('已加入「' + g.name + '」', 'ok');
+    // 背景抓 FinMind 詳細資料
+    if (!stocks[ticker]) fetchStock(ticker);
+  } else {
+    g.tickers.splice(idx, 1);
+    toast('已從「' + g.name + '」移除');
+  }
+  saveGroups();
+  renderTabs();
+  // 重繪當前的下拉和卡片徽章
+  applyMarketFilter();
+  // 保持下拉開啟並重新顯示
+  setTimeout(function() {
+    var dd = document.getElementById('addDD-'+ticker);
+    if (dd) {
+      dd.innerHTML = buildAddDropdownHTML(ticker);
+      dd.style.display = 'block';
+      addToGroupOpen = ticker;
+    }
+  }, 30);
+}
+
+// 點空白處關掉下拉
+document.addEventListener('click', function(e) {
+  if (addToGroupOpen) {
+    var dd = document.getElementById('addDD-'+addToGroupOpen);
+    if (dd && !dd.contains(e.target) && !e.target.closest || (dd && !dd.contains(e.target))) {
+      // 簡化：直接關掉
+      dd.style.display = 'none';
+      addToGroupOpen = null;
+    }
+  }
+});
+
+// ─────────────────────────────────
 // 群組頁籤
 // ─────────────────────────────────
 function renderTabs() {
-  var html = '';
+  // 瀏覽全市場（第一個）
+  var browseActive = (GROUPS.active === -1) ? ' active' : '';
+  var html = '<button class="gtab'+browseActive+'" onclick="switchGroup(-1)" style="border-right:1px solid #1e293b;margin-right:4px;">'
+           +   '<span>🌐 瀏覽全市場</span>'
+           + '</button>';
   for (var i = 0; i < GROUPS.list.length; i++) {
     var g = GROUPS.list[i];
     var active = (i === GROUPS.active) ? ' active' : '';
@@ -651,8 +925,16 @@ function switchGroup(idx) {
   GROUPS.active = idx;
   saveGroups();
   renderTabs();
-  renderGrid();
-  if (watchlist.length > 0) loadAll();
+  if (idx === -1) {
+    // 切到瀏覽全市場
+    renderBrowseMode();
+  } else {
+    // 切到群組
+    document.getElementById('searchWrap').style.display = '';
+    document.getElementById('browseFilters').style.display = 'none';
+    renderGrid();
+    if (watchlist.length > 0) loadAll();
+  }
 }
 
 function startRenameGroup(idx) {
