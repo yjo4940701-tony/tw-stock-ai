@@ -724,12 +724,9 @@ function fetchMarketData() {
   tryMarketDay(0);
 }
 
-// 從今天往前推，找到第一個有資料的交易日（每次只查 1 天，請求小）
 function tryMarketDay(daysBack) {
-  if (daysBack > 7) {
-    document.getElementById('marketStatus').innerHTML =
-      '<span style="color:#f87171;">⚠️ 載入失敗：FinMind 可能暫時擋住請求（剛才查太大）。</span><br>'
-      + '<span style="color:#94a3b8;font-size:11px;">解法：等 30-60 分鐘後再試，或先用搜尋功能（自選股那邊）手動加入個股。</span>';
+  if (daysBack > 5) {
+    showMarketError('連 5 天的資料都拿不到，可能是 FinMind 服務異常。');
     return;
   }
 
@@ -745,21 +742,38 @@ function tryMarketDay(daysBack) {
   console.log('[市場] 嘗試 ' + dateStr);
 
   fetch(url)
-    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' (' + r.statusText + ')');
+      return r.json();
+    })
     .then(function(json) {
+      // 只在 API 正常回應但無資料（假日）才重試
       if (!json.data || json.data.length === 0) {
-        // 那天可能是假日，往前一天試
-        console.log('[市場] ' + dateStr + ' 無資料，往前一天');
+        console.log('[市場] ' + dateStr + ' 無資料（假日？），往前一天');
         setTimeout(function(){ tryMarketDay(daysBack + 1); }, 300);
         return;
       }
       processMarketData(json.data);
     })
     .catch(function(e) {
-      console.error('[市場] ' + dateStr + ' 失敗:', e.message);
-      // 再試前一天
-      setTimeout(function(){ tryMarketDay(daysBack + 1); }, 600);
+      // 真正的錯誤（網路/CORS/被擋）：直接停下來，不要繼續打
+      console.error('[市場] 失敗:', e.message);
+      showMarketError(e.message);
     });
+}
+
+function showMarketError(msg) {
+  var hasToken = !!localStorage.getItem('tw_finmind');
+  var hint = hasToken
+    ? '你已設定 Token，但仍失敗。可能 FinMind 服務暫時不穩，等 5-10 分鐘後重試。'
+    : '⚠️ 你還沒設定 FinMind Token！這就是為什麼一直被擋。<br>'
+      + '👉 <strong style="color:#22c55e;">解法：點右上角「⚙ API Key 設定」→ 申請 FinMind Token（5 分鐘）→ 貼上儲存</strong>';
+
+  document.getElementById('marketStatus').innerHTML =
+    '<div style="background:#7f1d1d;border:1px solid #dc2626;color:#fff;padding:12px;border-radius:8px;font-size:13px;">'
+    +   '❌ <strong>載入失敗：</strong>' + msg + '<br><br>'
+    +   '<span style="color:#fecaca;">' + hint + '</span>'
+    + '</div>';
 }
 
 function processMarketData(records) {
