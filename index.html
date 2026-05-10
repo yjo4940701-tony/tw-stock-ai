@@ -272,12 +272,6 @@ a{color:#60a5fa;}
         <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
       </div>
 
-      <!-- 三大法人區塊 -->
-      <div id="instBox" class="chart-box" style="display:none;">
-        <div class="chart-title"><span>🏦 三大法人（近 10 日）</span><span id="instLatest" style="color:#64748b;font-size:11px;"></span></div>
-        <div id="instContent" style="min-height:60px;"></div>
-      </div>
-
       <!-- 估值指標區塊 -->
       <div id="perBox" class="chart-box" style="display:none;">
         <div class="chart-title"><span>📐 估值指標</span><span id="perDate" style="color:#64748b;font-size:11px;"></span></div>
@@ -422,7 +416,6 @@ var monthlyRevCache = {};
 var stockInfoCache    = null;
 var stockInfoLoading  = false;
 var stockInfoCbs      = [];
-var instCache = {};
 var perCache  = {};
 
 Object.defineProperty(window, 'watchlist', {
@@ -451,6 +444,20 @@ var PROXIES = [
   setFilter('all');
   renderGrid();
   if (watchlist.length > 0) loadAll();
+
+  // 背景載入全市場名稱，補齊字典沒有的公司名稱
+  ensureStockInfo(function() {
+    var changed = false;
+    GROUPS.list.forEach(function(g) {
+      g.tickers.forEach(function(t) {
+        if (stocks[t] && STOCK_NAMES[t] && stocks[t].name !== STOCK_NAMES[t]) {
+          stocks[t].name = STOCK_NAMES[t];
+          changed = true;
+        }
+      });
+    });
+    if (changed) renderGrid();
+  });
 })();
 
 // ─────────────────────────────────
@@ -1554,9 +1561,8 @@ function openModal(ticker) {
   document.body.style.overflow = 'hidden';
   setTimeout(function() { drawChart(d); }, 150);
 
-  // 載入月營收 + 三大法人 + 估值
+  // 載入月營收 + 估值
   loadMonthlyRevenue(ticker);
-  loadInstitutional(ticker);
   loadPER(ticker);
 }
 
@@ -1597,93 +1603,6 @@ function loadMonthlyRevenue(ticker) {
     .catch(function(e) {
       content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:10px 0;">月營收載入失敗：'+e.message+'</p>';
     });
-}
-
-// ─────────────────────────────────
-// 三大法人
-// ─────────────────────────────────
-function loadInstitutional(ticker) {
-  var box = document.getElementById('instBox');
-  var content = document.getElementById('instContent');
-  box.style.display = 'block';
-  content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;padding:10px 0;"><div class="spin"></div>載入三大法人中...</div>';
-  document.getElementById('instLatest').textContent = '';
-
-  if (instCache[ticker]) { renderInstitutional(instCache[ticker], ticker); return; }
-
-  var now = new Date();
-  var end = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
-  var from = new Date(now); from.setDate(from.getDate() - 20);
-  var start = from.getFullYear() + '-' + pad(from.getMonth()+1) + '-' + pad(from.getDate());
-  var instUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell'
-              + '&data_id=' + ticker + '&start_date=' + start + '&end_date=' + end;
-
-  fetch(instUrl)
-    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(function(json) {
-      if (!json.data || json.data.length === 0) {
-        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無法人資料（此股可能無揭露）</p>';
-        return;
-      }
-      instCache[ticker] = json.data;
-      renderInstitutional(json.data, ticker);
-    })
-    .catch(function(e) {
-      content.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0;">⚠ 法人資料載入失敗（' + e.message + '）<br>可至「⚙ 設定」填入 FinMind Token 提升成功率。</p>';
-    });
-}
-
-function renderInstitutional(records, ticker) {
-  // 彙整近 10 個交易日，按日期分組
-  var byDate = {};
-  records.forEach(function(r) {
-    if (!byDate[r.date]) byDate[r.date] = { foreign: 0, trust: 0, dealer: 0 };
-    var net = (r.buy || 0) - (r.sell || 0);
-    var n = (r.name || '');
-    if (n.indexOf('外資') !== -1) byDate[r.date].foreign += net;
-    else if (n.indexOf('投信') !== -1) byDate[r.date].trust  += net;
-    else if (n.indexOf('自營') !== -1) byDate[r.date].dealer += net;
-  });
-
-  var dates = Object.keys(byDate).sort().slice(-10);
-  var totalForeign = 0, totalTrust = 0, totalDealer = 0;
-  dates.forEach(function(d) {
-    totalForeign += byDate[d].foreign;
-    totalTrust   += byDate[d].trust;
-    totalDealer  += byDate[d].dealer;
-  });
-  var totalNet = totalForeign + totalTrust + totalDealer;
-
-  // 存入 stocks 供 AI prompt 使用
-  if (stocks[ticker]) {
-    stocks[ticker].inst = { foreign: totalForeign, trust: totalTrust, dealer: totalDealer, total: totalNet, days: dates.length };
-  }
-
-  function fmtLot(v) {
-    var s = v >= 0 ? '+' : '';
-    if (Math.abs(v) >= 1000) return s + (v/1000).toFixed(0) + '張K';
-    return s + v + '張';
-  }
-  function netColor(v) { return v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#64748b'; }
-
-  document.getElementById('instLatest').textContent = '近 ' + dates.length + ' 日';
-
-  var rows = [
-    { label: '外資', val: totalForeign },
-    { label: '投信', val: totalTrust },
-    { label: '自營', val: totalDealer }
-  ];
-  var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">';
-  rows.forEach(function(r) {
-    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center;">'
-          +   '<div style="color:#64748b;font-size:11px;margin-bottom:4px;">' + r.label + '</div>'
-          +   '<div style="font-weight:700;font-size:15px;color:' + netColor(r.val) + ';">' + fmtLot(r.val) + '</div>'
-          + '</div>';
-  });
-  html += '</div>';
-  html += '<div style="text-align:right;font-size:12px;color:' + netColor(totalNet) + ';font-weight:600;">三方合計 ' + fmtLot(totalNet) + '</div>';
-
-  document.getElementById('instContent').innerHTML = html;
 }
 
 // ─────────────────────────────────
@@ -2090,17 +2009,6 @@ function runAnalysis() {
     revBlock = '【月營收】最新（'+mr.latestYM+'）：'+fmtRevenue(mr.latest)+'　YoY：'+yoyStr+'　MoM：'+momStr+'\n近6月：'+trendList+'\n\n';
   }
 
-  // 三大法人
-  var instBlock = '';
-  if (d.inst) {
-    var ins = d.inst;
-    instBlock = '【三大法人（近'+ins.days+'日合計）】\n'
-      + '外資：'+(ins.foreign>=0?'+':'')+ins.foreign+'張'
-      + '　投信：'+(ins.trust>=0?'+':'')+ins.trust+'張'
-      + '　自營：'+(ins.dealer>=0?'+':'')+ins.dealer+'張\n'
-      + '合計：'+(ins.total>=0?'+':'')+ins.total+'張（'+(ins.total>5000?'法人強力買超，偏多':ins.total>0?'法人小幅買超':ins.total<-5000?'法人大量賣超，偏空':ins.total<0?'法人小幅賣超':'法人中立')+'）\n\n';
-  }
-
   // 估值
   var perBlock = '';
   if (d.per) {
@@ -2118,7 +2026,6 @@ function runAnalysis() {
     + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
     + 'RSI(14)：' + (last(rsi)?last(rsi).toFixed(1):'N/A') + '　均線趨勢：' + trend + '\n\n'
     + revBlock
-    + instBlock
     + perBlock
     + '請依序用以下格式撰寫（精簡有力，每點不超過2行）：\n\n'
     + '## 🟢 優勢分析\n（技術面 + 基本面優勢，列3點）\n\n'
