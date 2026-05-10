@@ -1611,29 +1611,27 @@ function loadInstitutional(ticker) {
 
   if (instCache[ticker]) { renderInstitutional(instCache[ticker], ticker); return; }
 
-  var d = new Date();
-  d.setDate(d.getDate() - 20);
-  var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  var now = new Date();
+  var end = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+  var from = new Date(now); from.setDate(from.getDate() - 20);
+  var start = from.getFullYear() + '-' + pad(from.getMonth()+1) + '-' + pad(from.getDate());
   var fmToken = localStorage.getItem('tw_finmind') || '';
-  var body = 'dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + start
-           + (fmToken ? '&token=' + encodeURIComponent(fmToken) : '');
+  var instUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+              + '&data_id=' + ticker + '&start_date=' + start + '&end_date=' + end;
+  var instHeaders = fmToken ? { 'Authorization': 'Bearer ' + fmToken } : {};
 
-  fetch('https://api.finmindtrade.com/api/v4/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body
-  })
-    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+  fetch(instUrl, { headers: instHeaders })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
-        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無法人資料（此股可能無三大法人揭露）</p>';
+        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無法人資料（此股可能無揭露）</p>';
         return;
       }
       instCache[ticker] = json.data;
       renderInstitutional(json.data, ticker);
     })
     .catch(function(e) {
-      content.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0;">⚠ 法人資料需要 FinMind Token 才能存取。<br>請至「⚙ API Key 設定」申請並填入 Token。</p>';
+      content.innerHTML = '<p style="color:#94a3b8;font-size:12px;padding:8px 0;">⚠ 法人資料載入失敗（' + e.message + '）<br>可至「⚙ 設定」填入 FinMind Token 提升成功率。</p>';
     });
 }
 
@@ -1702,19 +1700,17 @@ function loadPER(ticker) {
 
   if (perCache[ticker]) { renderPER(perCache[ticker], ticker); return; }
 
-  var d = new Date();
-  d.setMonth(d.getMonth() - 3);
-  var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
+  var now2 = new Date();
+  var end2 = now2.getFullYear() + '-' + pad(now2.getMonth()+1) + '-' + pad(now2.getDate());
+  var from2 = new Date(now2); from2.setMonth(from2.getMonth() - 3);
+  var start2 = from2.getFullYear() + '-' + pad(from2.getMonth()+1) + '-01';
   var fmToken2 = localStorage.getItem('tw_finmind') || '';
-  var body2 = 'dataset=TaiwanStockPER&data_id=' + ticker + '&start_date=' + start
-            + (fmToken2 ? '&token=' + encodeURIComponent(fmToken2) : '');
+  var perUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER'
+             + '&data_id=' + ticker + '&start_date=' + start2 + '&end_date=' + end2;
+  var perHeaders = fmToken2 ? { 'Authorization': 'Bearer ' + fmToken2 } : {};
 
-  fetch('https://api.finmindtrade.com/api/v4/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body2
-  })
-    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+  fetch(perUrl, { headers: perHeaders })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(function(json) {
       if (!json.data || json.data.length === 0) {
         box.style.display = 'none';
@@ -1723,9 +1719,7 @@ function loadPER(ticker) {
       perCache[ticker] = json.data;
       renderPER(json.data, ticker);
     })
-    .catch(function(e) {
-      box.style.display = 'none';
-    });
+    .catch(function() { box.style.display = 'none'; });
 }
 
 function renderPER(records, ticker) {
