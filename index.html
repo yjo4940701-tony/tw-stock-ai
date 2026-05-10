@@ -332,11 +332,24 @@ a{color:#60a5fa;}
       ④ 貼在下方儲存即可<br><br>
       <span style="color:#475569;">Key 僅存於你的瀏覽器，不會上傳。</span>
     </div>
-    <label class="form-label">API Key</label>
-    <input id="apiKeyInput" class="form-input" type="text" placeholder="gsk_...">
+    <label class="form-label">AI API Key（Groq 或 Gemini）</label>
+    <input id="apiKeyInput" class="form-input" type="text" placeholder="gsk_... 或 AIza...">
+
+    <!-- FinMind Token（選填，提高股票資料查詢配額） -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
+      <label class="form-label">FinMind Token <span style="color:#64748b;font-size:11px;">（選填，提高股票資料配額）</span></label>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;color:#64748b;line-height:1.6;">
+        🆓 沒設定 = 600 次/小時（爬太快會被擋 IP）<br>
+        ✅ 設定 = <strong style="color:#22c55e;">6,000 次/小時</strong>，瀏覽全市場才不會被擋<br>
+        ① 前往 <a href="https://finmindtrade.com/analysis/#/account/login" target="_blank" style="color:#60a5fa;">finmindtrade.com</a> 用 Email 註冊<br>
+        ② 登入後 → 個人資料 → 複製 API Token
+      </div>
+      <input id="finmindInput" class="form-input" type="text" placeholder="留空也可以（匿名使用）">
+    </div>
+
     <div id="keyStatus" class="status-msg"></div>
     <div class="btn-row">
-      <button type="button" class="btn-save" onclick="saveKey()">儲存</button>
+      <button type="button" class="btn-save" onclick="saveKey()">儲存全部</button>
       <button type="button" class="btn-cancel" onclick="closeSettings()">取消</button>
     </div>
   </div>
@@ -395,6 +408,8 @@ var PROXIES = [
 (function init() {
   var k = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (k) document.getElementById('apiKeyInput').value = k;
+  var fm = localStorage.getItem('tw_finmind');
+  if (fm) document.getElementById('finmindInput').value = fm;
   renderTabs();
   setFilter('all');
   if (GROUPS.active === -1) {
@@ -438,19 +453,39 @@ function settingsOverlayClick(e) {
 }
 function saveKey() {
   var k = document.getElementById('apiKeyInput').value.trim();
+  var fm = document.getElementById('finmindInput').value.trim();
   var s = document.getElementById('keyStatus');
   s.style.cssText = 'font-size:13px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:block;';
-  if (!k) {
+
+  if (!k && !fm) {
     s.style.background = '#7f1d1d';
     s.style.color = '#fca5a5';
-    s.textContent = '⚠ 請輸入 API Key';
+    s.textContent = '⚠ 至少要填一個 Key 或 Token';
     return;
   }
-  localStorage.setItem('tw_groq', k);
-  localStorage.removeItem('tw_gemini');
+
+  if (k) {
+    localStorage.setItem('tw_groq', k);
+    localStorage.removeItem('tw_gemini');
+  }
+  if (fm) {
+    localStorage.setItem('tw_finmind', fm);
+  } else {
+    localStorage.removeItem('tw_finmind');
+  }
+
   s.style.background = '#14532d';
   s.style.color = '#86efac';
-  s.textContent = '✅ 儲存成功！按取消關閉此視窗。';
+  s.textContent = '✅ 儲存成功！' + (fm ? '（含 FinMind Token）' : '') + ' 按取消關閉此視窗。';
+}
+
+// FinMind URL helper: 自動帶上 token（如果有設定）
+function fmUrl(baseUrl) {
+  var token = localStorage.getItem('tw_finmind');
+  if (token) {
+    return baseUrl + (baseUrl.indexOf('?') > -1 ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  }
+  return baseUrl;
 }
 
 // ─────────────────────────────────
@@ -531,9 +566,9 @@ function fetchStock(ticker) {
   var d = new Date();
   d.setFullYear(d.getFullYear() - 1);
   var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
-  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=' + ticker + '&start_date=' + startDate;
+  var url = fmUrl('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=' + ticker + '&start_date=' + startDate);
 
-  console.log('[' + ticker + '] 載入: ' + url);
+  console.log('[' + ticker + '] 載入個股');
   fetch(url)
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -706,7 +741,7 @@ function tryMarketDay(daysBack) {
     '<div style="display:flex;align-items:center;gap:8px;"><div class="spin"></div>'
     + '正在抓 ' + dateStr + ' 全市場資料...</div>';
 
-  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&start_date=' + dateStr + '&end_date=' + dateStr;
+  var url = fmUrl('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&start_date=' + dateStr + '&end_date=' + dateStr);
   console.log('[市場] 嘗試 ' + dateStr);
 
   fetch(url)
@@ -1187,7 +1222,7 @@ function loadMonthlyRevenue(ticker) {
   var d = new Date();
   d.setMonth(d.getMonth() - 18);
   var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
-  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=' + ticker + '&start_date=' + start;
+  var url = fmUrl('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=' + ticker + '&start_date=' + start);
 
   console.log('[' + ticker + '] 載入月營收');
   fetch(url)
