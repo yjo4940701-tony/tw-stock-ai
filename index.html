@@ -272,6 +272,18 @@ a{color:#60a5fa;}
         <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
       </div>
 
+      <!-- 三大法人區塊 -->
+      <div id="instBox" class="chart-box" style="display:none;">
+        <div class="chart-title"><span>🏦 三大法人（近 10 日）</span><span id="instLatest" style="color:#64748b;font-size:11px;"></span></div>
+        <div id="instContent" style="min-height:60px;"></div>
+      </div>
+
+      <!-- 估值指標區塊 -->
+      <div id="perBox" class="chart-box" style="display:none;">
+        <div class="chart-title"><span>📐 估值指標</span><span id="perDate" style="color:#64748b;font-size:11px;"></span></div>
+        <div id="perContent" style="min-height:40px;"></div>
+      </div>
+
       <!-- 月營收區塊 -->
       <div id="revBox" class="chart-box" style="display:none;">
         <div class="chart-title">
@@ -410,6 +422,8 @@ var monthlyRevCache = {};
 var stockInfoCache    = null;
 var stockInfoLoading  = false;
 var stockInfoCbs      = [];
+var instCache = {};
+var perCache  = {};
 
 Object.defineProperty(window, 'watchlist', {
   get: function() { return activeGroup().tickers; },
@@ -778,6 +792,12 @@ function parseFinMind(records, ticker) {
     var pctFromHigh = high52w ? ((price - high52w) / high52w * 100) : 0;
     var pctFromLow  = low52w  ? ((price - low52w)  / low52w  * 100) : 0;
 
+    // 近 20 日高低點（短線框架）
+    var last20 = validRecords.slice(-20);
+    var high20 = last20.length ? Math.max.apply(null, last20.map(function(r){ return r.max; })) : price;
+    var low20  = last20.length ? Math.min.apply(null, last20.map(function(r){ return r.min; })) : price;
+    var range20 = low20 ? ((high20 - low20) / low20 * 100) : 0;
+
     // 近 5 日漲跌幅
     var p5 = validRecords.length >= 6 ? validRecords[validRecords.length - 6].close : prevClose;
     var pct5d = p5 ? ((price - p5) / p5 * 100) : 0;
@@ -806,6 +826,9 @@ function parseFinMind(records, ticker) {
       pctFromHigh: pctFromHigh,
       pctFromLow:  pctFromLow,
       pct5d:       pct5d,
+      high20:      high20,
+      low20:       low20,
+      range20:     range20,
       closes:      allCloses.slice(-65),
       rawRecords:  validRecords
     };
@@ -1455,8 +1478,8 @@ function buildCard(ticker, d) {
   var cc   = up ? 'up' : 'down';
   var bc   = up ? 'badge-up' : 'badge-down';
   var name = d.name.length > 14 ? d.name.slice(0,14)+'…' : d.name;
-  var h52  = d.high52w ? Math.round(d.price/d.high52w*100) : null;
-  var pBar = h52 ? '<div style="margin-top:6px;"><div style="display:flex;justify-content:space-between;font-size:10px;color:#475569;margin-bottom:2px;"><span>距52週高</span><span>'+h52+'%</span></div><div style="height:3px;background:#334155;border-radius:2px;"><div style="height:3px;background:#3b82f6;border-radius:2px;width:'+h52+'%;"></div></div></div>' : '';
+  var h20pct = d.high20 ? Math.round(d.price/d.high20*100) : null;
+  var pBar = h20pct ? '<div style="margin-top:6px;"><div style="display:flex;justify-content:space-between;font-size:10px;color:#475569;margin-bottom:2px;"><span>距月高</span><span>'+h20pct+'%</span></div><div style="height:3px;background:#334155;border-radius:2px;"><div style="height:3px;background:#3b82f6;border-radius:2px;width:'+h20pct+'%;"></div></div></div>' : '';
 
   return '<div id="card-'+ticker+'" class="card" onclick="openModal(\''+ticker+'\')">' +
     '<div class="card-head">' +
@@ -1471,8 +1494,8 @@ function buildCard(ticker, d) {
       '<span class="badge '+bc+'">'+(up?'上漲':'下跌')+'</span>' +
     '</div>' +
     '<div class="card-bottom">' +
-      '<div><div class="label">52週高</div><div class="up">'+fp(d.high52w)+'</div></div>' +
-      '<div><div class="label">52週低</div><div class="down">'+fp(d.low52w)+'</div></div>' +
+      '<div><div class="label">月高</div><div class="up">'+fp(d.high20)+'</div></div>' +
+      '<div><div class="label">月低</div><div class="down">'+fp(d.low20)+'</div></div>' +
     '</div>' +
     pBar +
     '<button class="card-ai-btn" onclick="openModal(\''+ticker+'\')"><div style="width:14px;height:14px;background:#2563eb;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;flex-shrink:0;">AI</div> 查看 AI 分析</button>' +
@@ -1515,9 +1538,9 @@ function openModal(ticker) {
 
   document.getElementById('mMetrics').innerHTML =
     metric('現價', fp(d.price), '<span style="color:'+cc+';">'+arr+' '+Math.abs(d.change).toFixed(2)+' ('+d.changePct.toFixed(2)+'%)</span>') +
-    metric('昨收', fp(d.prevClose), '') +
-    metric('52週高/低', '<span class="up">'+fp(d.high52w)+'</span>', '<span class="down">'+fp(d.low52w)+'</span>') +
-    metric('市值', fcap(d.marketCap), fvol(d.volume));
+    metric('昨收', fp(d.prevClose), '<span style="color:#64748b;font-size:11px;">近5日 '+(d.pct5d>=0?'+':'')+d.pct5d.toFixed(1)+'%</span>') +
+    metric('月高/低', '<span class="up">'+fp(d.high20)+'</span>', '<span class="down">'+fp(d.low20)+'</span>') +
+    metric('月振幅', (d.range20||0).toFixed(1)+'%', '<span style="color:#64748b;font-size:11px;">量 '+fvol(d.volume)+'</span>');
 
   resetAI();
   chartPeriod = 'day';
@@ -1531,8 +1554,10 @@ function openModal(ticker) {
   document.body.style.overflow = 'hidden';
   setTimeout(function() { drawChart(d); }, 150);
 
-  // 載入月營收
+  // 載入月營收 + 三大法人 + 估值
   loadMonthlyRevenue(ticker);
+  loadInstitutional(ticker);
+  loadPER(ticker);
 }
 
 // ─────────────────────────────────
@@ -1572,6 +1597,156 @@ function loadMonthlyRevenue(ticker) {
     .catch(function(e) {
       content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:10px 0;">月營收載入失敗：'+e.message+'</p>';
     });
+}
+
+// ─────────────────────────────────
+// 三大法人
+// ─────────────────────────────────
+function loadInstitutional(ticker) {
+  var box = document.getElementById('instBox');
+  var content = document.getElementById('instContent');
+  box.style.display = 'block';
+  content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;padding:10px 0;"><div class="spin"></div>載入三大法人中...</div>';
+  document.getElementById('instLatest').textContent = '';
+
+  if (instCache[ticker]) { renderInstitutional(instCache[ticker], ticker); return; }
+
+  var d = new Date();
+  d.setDate(d.getDate() - 20);
+  var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + start;
+
+  fetch(url)
+    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(json) {
+      if (!json.data || json.data.length === 0) {
+        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無法人資料</p>';
+        return;
+      }
+      instCache[ticker] = json.data;
+      renderInstitutional(json.data, ticker);
+    })
+    .catch(function(e) {
+      content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:8px 0;">載入失敗：' + e.message + '</p>';
+    });
+}
+
+function renderInstitutional(records, ticker) {
+  // 彙整近 10 個交易日，按日期分組
+  var byDate = {};
+  records.forEach(function(r) {
+    if (!byDate[r.date]) byDate[r.date] = { foreign: 0, trust: 0, dealer: 0 };
+    var net = (r.buy || 0) - (r.sell || 0);
+    var n = (r.name || '');
+    if (n.indexOf('外資') !== -1) byDate[r.date].foreign += net;
+    else if (n.indexOf('投信') !== -1) byDate[r.date].trust  += net;
+    else if (n.indexOf('自營') !== -1) byDate[r.date].dealer += net;
+  });
+
+  var dates = Object.keys(byDate).sort().slice(-10);
+  var totalForeign = 0, totalTrust = 0, totalDealer = 0;
+  dates.forEach(function(d) {
+    totalForeign += byDate[d].foreign;
+    totalTrust   += byDate[d].trust;
+    totalDealer  += byDate[d].dealer;
+  });
+  var totalNet = totalForeign + totalTrust + totalDealer;
+
+  // 存入 stocks 供 AI prompt 使用
+  if (stocks[ticker]) {
+    stocks[ticker].inst = { foreign: totalForeign, trust: totalTrust, dealer: totalDealer, total: totalNet, days: dates.length };
+  }
+
+  function fmtLot(v) {
+    var s = v >= 0 ? '+' : '';
+    if (Math.abs(v) >= 1000) return s + (v/1000).toFixed(0) + '張K';
+    return s + v + '張';
+  }
+  function netColor(v) { return v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#64748b'; }
+
+  document.getElementById('instLatest').textContent = '近 ' + dates.length + ' 日';
+
+  var rows = [
+    { label: '外資', val: totalForeign },
+    { label: '投信', val: totalTrust },
+    { label: '自營', val: totalDealer }
+  ];
+  var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">';
+  rows.forEach(function(r) {
+    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center;">'
+          +   '<div style="color:#64748b;font-size:11px;margin-bottom:4px;">' + r.label + '</div>'
+          +   '<div style="font-weight:700;font-size:15px;color:' + netColor(r.val) + ';">' + fmtLot(r.val) + '</div>'
+          + '</div>';
+  });
+  html += '</div>';
+  html += '<div style="text-align:right;font-size:12px;color:' + netColor(totalNet) + ';font-weight:600;">三方合計 ' + fmtLot(totalNet) + '</div>';
+
+  document.getElementById('instContent').innerHTML = html;
+}
+
+// ─────────────────────────────────
+// 估值指標（PER / PBR / 殖利率）
+// ─────────────────────────────────
+function loadPER(ticker) {
+  var box = document.getElementById('perBox');
+  var content = document.getElementById('perContent');
+  box.style.display = 'block';
+  content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;padding:10px 0;"><div class="spin"></div>載入估值中...</div>';
+  document.getElementById('perDate').textContent = '';
+
+  if (perCache[ticker]) { renderPER(perCache[ticker], ticker); return; }
+
+  var d = new Date();
+  d.setMonth(d.getMonth() - 3);
+  var start = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-01';
+  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&data_id=' + ticker + '&start_date=' + start;
+
+  fetch(url)
+    .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(json) {
+      if (!json.data || json.data.length === 0) {
+        content.innerHTML = '<p style="color:#475569;font-size:12px;padding:8px 0;">無估值資料（ETF 請看殖利率）</p>';
+        box.style.display = 'none';
+        return;
+      }
+      perCache[ticker] = json.data;
+      renderPER(json.data, ticker);
+    })
+    .catch(function(e) {
+      content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:8px 0;">載入失敗：' + e.message + '</p>';
+    });
+}
+
+function renderPER(records, ticker) {
+  var last = records[records.length - 1];
+  if (!last) return;
+
+  document.getElementById('perDate').textContent = last.date || '';
+
+  if (stocks[ticker]) {
+    stocks[ticker].per = { pe: last.PER, pb: last.PBR, yield: last.dividend_yield };
+  }
+
+  function fmtVal(v, unit) {
+    if (v == null || v === '' || isNaN(+v)) return 'N/A';
+    return (+v).toFixed(2) + (unit || '');
+  }
+
+  var items = [
+    { label: 'P/E 本益比', val: fmtVal(last.PER, 'x') },
+    { label: 'P/B 股價淨值', val: fmtVal(last.PBR, 'x') },
+    { label: '殖利率', val: fmtVal(last.dividend_yield, '%') }
+  ];
+
+  var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+  items.forEach(function(item) {
+    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center;">'
+          +   '<div style="color:#64748b;font-size:11px;margin-bottom:4px;">' + item.label + '</div>'
+          +   '<div style="font-weight:700;font-size:15px;color:#e2e8f0;">' + item.val + '</div>'
+          + '</div>';
+  });
+  html += '</div>';
+  document.getElementById('perContent').innerHTML = html;
 }
 
 function renderRevenue(records, ticker) {
@@ -1816,8 +1991,8 @@ function runBatchAnalysis() {
       + '｜MA5/20/60 ' + fp(d.ma5) + '/' + fp(d.ma20) + '/' + fp(d.ma60)
       + '｜RSI ' + (d.rsi != null ? d.rsi.toFixed(0) : 'N/A')
       + '｜趨勢 ' + trend
-      + '｜距52週高 ' + d.pctFromHigh.toFixed(1) + '%'
-      + '｜距52週低 +' + d.pctFromLow.toFixed(1) + '%'
+      + '｜距月高 ' + (d.high20 ? ((d.price-d.high20)/d.high20*100).toFixed(1) : 'N/A') + '%'
+      + '｜距月低 +' + (d.low20 ? ((d.price-d.low20)/d.low20*100).toFixed(1) : 'N/A') + '%'
       + '｜近5日 ' + (d.pct5d>=0?'+':'') + d.pct5d.toFixed(1) + '%';
   }).join('\n');
 
@@ -1901,36 +2076,57 @@ function runAnalysis() {
   else trend='均線糾結 / 盤整';
 
   var r5 = prices.slice(-5).filter(Boolean).map(fp).join('、');
-  var dist52h = d.high52w ? (((d.price-d.high52w)/d.high52w*100).toFixed(1)+'%') : 'N/A';
-  var dist52l = d.low52w  ? ((+(((d.price-d.low52w)/d.low52w*100).toFixed(1))>0?'+':'')+((d.price-d.low52w)/d.low52w*100).toFixed(1)+'%') : 'N/A';
+  var dist20h = d.high20 ? (((d.price - d.high20) / d.high20 * 100).toFixed(1) + '%') : 'N/A';
+  var dist20l = d.low20  ? ((d.price >= d.low20 ? '+' : '') + ((d.price - d.low20) / d.low20 * 100).toFixed(1) + '%') : 'N/A';
 
-  // 月營收（如果有）
+  // 月營收
   var revBlock = '';
   if (d.monthRev) {
     var mr = d.monthRev;
     var yoyStr = mr.yoy != null ? ((mr.yoy>=0?'+':'')+mr.yoy.toFixed(1)+'%') : 'N/A';
     var momStr = mr.mom != null ? ((mr.mom>=0?'+':'')+mr.mom.toFixed(1)+'%') : 'N/A';
     var trendList = mr.last12.slice(-6).map(function(r){ return r.ym+' '+fmtRevenue(r.rev); }).join(' / ');
-    revBlock = '【月營收（基本面）】\n最新（'+mr.latestYM+'）：'+fmtRevenue(mr.latest)
-             + '　YoY：'+yoyStr+'　MoM：'+momStr+'\n'
-             + '近 6 個月：'+trendList+'\n\n';
+    revBlock = '【月營收】最新（'+mr.latestYM+'）：'+fmtRevenue(mr.latest)+'　YoY：'+yoyStr+'　MoM：'+momStr+'\n近6月：'+trendList+'\n\n';
   }
 
-  var prompt = '你是專業的台灣股市技術分析師，請依照以下資料給出深度分析報告（使用繁體中文）。\n\n'
-    +'【股票資訊】\n代號：'+d.ticker+'　名稱：'+d.name+'　市場：'+d.symbol+'\n'
-    +'現價：'+fp(d.price)+' TWD　漲跌：'+(d.change>=0?'+':'')+d.change.toFixed(2)+' ('+d.changePct.toFixed(2)+'%)\n'
-    +'52週高：'+fp(d.high52w)+'　52週低：'+fp(d.low52w)+'　市值：'+fcap(d.marketCap)+'\n\n'
-    +'【技術指標】\n近5日收盤：'+r5+'\n'
-    +'MA5：'+fp(last(ma5))+'　MA20：'+fp(last(ma20))+'　MA60：'+fp(last(ma60))+'\n'
-    +'RSI(14)：'+(last(rsi)?last(rsi).toFixed(1):'N/A')+'　均線趨勢：'+trend+'\n'
-    +'距52週高：'+dist52h+'　距52週低：'+dist52l+'\n\n'
-    +revBlock
-    +'請用以下格式撰寫：\n\n'
-    +'## 🟢 優勢分析\n（從技術面與市場地位分析優勢，列3-4點）\n\n'
-    +'## 🔴 劣勢與風險\n（潛在風險與弱點，列2-3點）\n\n'
-    +'## 📊 技術面解讀\n（說明均線排列、支撐壓力區間、RSI研判）\n\n'
-    +'## 🎯 建議進場位置\n（具體進場價位區間、建議停損價、短期目標價）\n\n'
-    +'## 💡 操作策略總結\n（一段話說明現在的操作建議）';
+  // 三大法人
+  var instBlock = '';
+  if (d.inst) {
+    var ins = d.inst;
+    instBlock = '【三大法人（近'+ins.days+'日合計）】\n'
+      + '外資：'+(ins.foreign>=0?'+':'')+ins.foreign+'張'
+      + '　投信：'+(ins.trust>=0?'+':'')+ins.trust+'張'
+      + '　自營：'+(ins.dealer>=0?'+':'')+ins.dealer+'張\n'
+      + '合計：'+(ins.total>=0?'+':'')+ins.total+'張（'+(ins.total>5000?'法人強力買超，偏多':ins.total>0?'法人小幅買超':ins.total<-5000?'法人大量賣超，偏空':ins.total<0?'法人小幅賣超':'法人中立')+'）\n\n';
+  }
+
+  // 估值
+  var perBlock = '';
+  if (d.per) {
+    var pe = d.per;
+    perBlock = '【估值指標】P/E：'+(pe.pe!=null?(+pe.pe).toFixed(1)+'x':'N/A')
+      +'　P/B：'+(pe.pb!=null?(+pe.pb).toFixed(1)+'x':'N/A')
+      +'　殖利率：'+(pe.yield!=null?(+pe.yield).toFixed(2)+'%':'N/A')+'\n\n';
+  }
+
+  var prompt = '你是專業的台灣股市分析師，專門服務「短線操作（1個月內進出）」的投資人。請根據以下資料給出精準分析（繁體中文）。\n\n'
+    + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　漲跌：' + (d.change>=0?'+':'') + d.change.toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)\n'
+    + '近20日高：' + fp(d.high20) + '　近20日低：' + fp(d.low20) + '　月振幅：' + (d.range20||0).toFixed(1) + '%\n'
+    + '距月高：' + dist20h + '　距月低：' + dist20l + '\n\n'
+    + '【技術指標】近5日收盤：' + r5 + '\n'
+    + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
+    + 'RSI(14)：' + (last(rsi)?last(rsi).toFixed(1):'N/A') + '　均線趨勢：' + trend + '\n\n'
+    + revBlock
+    + instBlock
+    + perBlock
+    + '請依序用以下格式撰寫（精簡有力，每點不超過2行）：\n\n'
+    + '## 🟢 優勢分析\n（技術面 + 基本面優勢，列3點）\n\n'
+    + '## 🔴 劣勢與風險\n（短線潛在風險，列2點）\n\n'
+    + '## 🏭 產業需求評估\n（此公司屬於哪個產業？目前是「現在需求」還是「未來需求」？景氣循環位置？需求是擴張還是收縮？用1-2句話說明）\n\n'
+    + '## 📰 近期重要事件\n（根據你的訓練資料，列出3則關於此公司最近值得短線投資人注意的消息或事件，每則一行，格式：・事件摘要。若資料不足請如實說明）\n\n'
+    + '## 📊 技術面解讀（短線）\n（針對1個月內進出：月高低支撐壓力位、MA5/MA20位置、RSI短線研判）\n\n'
+    + '## 🎯 短線進場建議\n（具體進場價區間、停損價、1個月目標價）\n\n'
+    + '## 💡 操作策略\n（一段話直接說：現在應該買進/等待/觀望，並說明原因）';
 
   // 自動判斷 API：AIza... → Gemini，gsk_... → Groq
   var isGemini = apiKey.indexOf('AIza') === 0;
