@@ -36,6 +36,11 @@ a{color:#60a5fa;}
 .btn-quick{background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:4px 12px;border-radius:20px;cursor:pointer;font-size:12px;}
 .btn-quick:hover{background:#334155;color:#fff;}
 
+/* FILTER BUTTONS */
+.fbtn{background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .15s;}
+.fbtn:hover{background:#334155;color:#fff;}
+.fbtn.active{background:#2563eb;border-color:#2563eb;color:#fff;}
+
 /* GRID */
 .main{max-width:1200px;margin:0 auto;padding:0 16px 60px;}
 .empty{text-align:center;padding:80px 20px;}
@@ -174,6 +179,27 @@ a{color:#60a5fa;}
     <div class="empty-title">還沒有追蹤的股票</div>
     <div class="empty-sub">輸入台股代號開始追蹤，AI 幫你找出最佳進場時機</div>
   </div>
+
+  <!-- 篩選列 -->
+  <div id="filterBar" style="display:none;margin-bottom:14px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;">
+      <span style="color:#64748b;font-size:12px;margin-right:4px;">📋 篩選條件：</span>
+      <button class="fbtn" data-filter="all" onclick="setFilter('all')">全部</button>
+      <button class="fbtn" data-filter="oversold" onclick="setFilter('oversold')">🟢 超賣機會</button>
+      <button class="fbtn" data-filter="breakout" onclick="setFilter('breakout')">📈 突破 MA20</button>
+      <button class="fbtn" data-filter="near-low" onclick="setFilter('near-low')">🎯 接近年低</button>
+      <button class="fbtn" data-filter="bullish" onclick="setFilter('bullish')">🔥 多頭排列</button>
+      <button class="fbtn" data-filter="pullback" onclick="setFilter('pullback')">💎 回檔買點</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="filterCount" style="color:#94a3b8;font-size:13px;"></span>
+      <button id="batchBtn" onclick="runBatchAnalysis()" disabled
+        style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;opacity:.4;">
+        🎯 批次比較分析
+      </button>
+    </div>
+  </div>
+
   <div id="watchGrid" class="grid" style="display:none;"></div>
 </div>
 
@@ -217,6 +243,35 @@ a{color:#60a5fa;}
 </div>
 
 <!-- SETTINGS MODAL -->
+<!-- BATCH ANALYSIS MODAL -->
+<div id="batchOverlay" class="overlay" onclick="batchOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">🎯 批次比較分析</div>
+        <div id="batchSub" class="modal-sub"></div>
+      </div>
+      <button class="btn-close" onclick="closeBatch()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="batchTickers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
+      <div class="ai-box" style="margin-top:0;">
+        <div class="ai-box-hdr">
+          <div class="ai-logo">
+            <div class="ai-badge">AI</div>
+            <span class="ai-title">AI 比較與排序</span>
+            <span class="ai-by">一次呼叫，省 token</span>
+          </div>
+        </div>
+        <div id="batchResult" class="ai-output" style="font-size:14px;">
+          <p style="color:#60a5fa;">AI 正在比較這幾檔股票，請稍候（約 3-10 秒）...</p>
+        </div>
+      </div>
+      <div class="disclaimer">以上分析僅供參考，不構成投資建議，投資人應自行判斷。</div>
+    </div>
+  </div>
+</div>
+
 <div id="settingsOverlay" class="overlay" onclick="settingsOverlayClick(event)">
   <div class="settings-modal">
     <div class="settings-hdr">
@@ -255,6 +310,7 @@ var watchlist = JSON.parse(localStorage.getItem('tw_wl') || '[]');
 var stocks    = {};
 var current   = null;
 var myChart   = null;
+var currentFilter = 'all';
 
 var PROXIES = [
   'https://corsproxy.io/?url=',
@@ -270,6 +326,7 @@ var PROXIES = [
   var k = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (k) document.getElementById('apiKeyInput').value = k;
   renderGrid();
+  setFilter('all'); // 初始 active 「全部」按鈕
   if (watchlist.length > 0) loadAll();
 })();
 
@@ -455,6 +512,31 @@ function parseFinMind(records, ticker) {
       };
     });
 
+    // 計算技術指標（用於篩選）
+    var allCloses = validRecords.map(function(r){ return r.close; });
+    var ma5  = calcMA(allCloses, 5);
+    var ma20 = calcMA(allCloses, 20);
+    var ma60 = calcMA(allCloses, 60);
+    var rsi  = calcRSI(allCloses, 14);
+    var L = function(a){ return a[a.length-1]; };
+
+    var lastMA5   = L(ma5);
+    var lastMA20  = L(ma20);
+    var lastMA60  = L(ma60);
+    var lastRSI   = L(rsi);
+
+    // 排列判斷
+    var isBullish = price > lastMA5 && lastMA5 > lastMA20 && lastMA20 > lastMA60;
+    var isBearish = price < lastMA5 && lastMA5 < lastMA20 && lastMA20 < lastMA60;
+
+    // 距 52 週高/低 百分比
+    var pctFromHigh = high52w ? ((price - high52w) / high52w * 100) : 0;
+    var pctFromLow  = low52w  ? ((price - low52w)  / low52w  * 100) : 0;
+
+    // 近 5 日漲跌幅
+    var p5 = validRecords.length >= 6 ? validRecords[validRecords.length - 6].close : prevClose;
+    var pct5d = p5 ? ((price - p5) / p5 * 100) : 0;
+
     return {
       symbol:    ticker + '.TW',
       ticker:    ticker,
@@ -468,7 +550,17 @@ function parseFinMind(records, ticker) {
       volume:    last.Trading_Volume,
       marketCap: null,
       exchange:  '台灣證券交易所',
-      chartData: chartData
+      chartData: chartData,
+      // 技術指標快取
+      ma5:        lastMA5,
+      ma20:       lastMA20,
+      ma60:       lastMA60,
+      rsi:        lastRSI,
+      isBullish:  isBullish,
+      isBearish:  isBearish,
+      pctFromHigh: pctFromHigh,
+      pctFromLow:  pctFromLow,
+      pct5d:       pct5d
     };
   } catch(e) {
     console.error('parseFinMind 錯誤:', e);
@@ -484,18 +576,88 @@ function pad(n) { return n < 10 ? '0'+n : ''+n; }
 function renderGrid() {
   var grid  = document.getElementById('watchGrid');
   var empty = document.getElementById('emptyState');
+  var fbar  = document.getElementById('filterBar');
+
   if (watchlist.length === 0) {
     empty.style.display = 'block';
     grid.style.display  = 'none';
+    fbar.style.display  = 'none';
     return;
   }
   empty.style.display = 'none';
   grid.style.display  = 'grid';
+  fbar.style.display  = 'block';
+
+  // 套用篩選
+  var filtered = filterTickers(watchlist);
+
   var html = '';
-  for (var i = 0; i < watchlist.length; i++) {
-    html += buildCard(watchlist[i], stocks[watchlist[i]]);
+  for (var i = 0; i < filtered.length; i++) {
+    html += buildCard(filtered[i], stocks[filtered[i]]);
+  }
+  if (filtered.length === 0) {
+    html = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#475569;font-size:14px;">😶 沒有股票符合此篩選條件</div>';
   }
   grid.innerHTML = html;
+
+  // 更新計數和批次按鈕狀態
+  updateFilterStatus(filtered.length);
+}
+
+function filterTickers(list) {
+  if (currentFilter === 'all') return list.slice();
+  return list.filter(function(t) {
+    var d = stocks[t];
+    if (!d || d.rsi == null) return false;
+    switch (currentFilter) {
+      case 'oversold':  return d.rsi < 30;
+      case 'breakout':  return d.price > d.ma20 && d.prevClose <= d.ma20;
+      case 'near-low':  return d.pctFromLow != null && d.pctFromLow < 10;
+      case 'bullish':   return d.isBullish === true;
+      case 'pullback':  return d.isBullish === true && d.pct5d < -3;
+      default: return true;
+    }
+  });
+}
+
+function setFilter(name) {
+  currentFilter = name;
+  // 更新按鈕 active 狀態
+  var btns = document.querySelectorAll('.fbtn');
+  for (var i = 0; i < btns.length; i++) {
+    if (btns[i].dataset.filter === name) btns[i].classList.add('active');
+    else btns[i].classList.remove('active');
+  }
+  renderGrid();
+}
+
+function updateFilterStatus(count) {
+  var el = document.getElementById('filterCount');
+  var btn = document.getElementById('batchBtn');
+  var label = currentFilter === 'all' ? '全部' : ({
+    'oversold':'超賣機會','breakout':'突破 MA20','near-low':'接近年低','bullish':'多頭排列','pullback':'回檔買點'
+  })[currentFilter];
+
+  el.innerHTML = '已顯示 <strong style="color:#fff;">' + count + '</strong> / ' + watchlist.length + ' 檔（' + label + '）';
+
+  // 批次按鈕：篩選後 ≥ 2 檔且都載入完成才能用
+  var loadedCount = 0;
+  var filtered = filterTickers(watchlist);
+  for (var i = 0; i < filtered.length; i++) {
+    if (stocks[filtered[i]]) loadedCount++;
+  }
+
+  if (loadedCount >= 2) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.innerHTML = '🎯 批次比較分析（' + loadedCount + ' 檔）';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '.4';
+    btn.style.cursor = 'not-allowed';
+    btn.innerHTML = '🎯 批次比較分析（需 ≥ 2 檔）';
+  }
 }
 
 function buildCard(ticker, d) {
@@ -538,11 +700,15 @@ function buildCard(ticker, d) {
 }
 
 function updateCard(ticker) {
+  // 若目前有套用非「全部」的篩選，直接重繪整個 grid（確保符合條件的卡片正確顯示）
+  if (currentFilter !== 'all') { renderGrid(); return; }
   var el = document.getElementById('card-'+ticker);
   if (!el) { renderGrid(); return; }
   var tmp = document.createElement('div');
   tmp.innerHTML = buildCard(ticker, stocks[ticker]);
   el.parentNode.replaceChild(tmp.firstElementChild, el);
+  // 刷新篩選計數和批次按鈕
+  updateFilterStatus(filterTickers(watchlist).length);
 }
 
 function setCardError(ticker) {
@@ -648,6 +814,108 @@ function drawChart(d) {
 // ─────────────────────────────────
 // AI 分析（Groq 免費版）
 // ─────────────────────────────────
+// ─────────────────────────────────
+// 批次比較分析
+// ─────────────────────────────────
+function batchOverlayClick(e) {
+  if (e.target === document.getElementById('batchOverlay')) closeBatch();
+}
+function closeBatch() {
+  document.getElementById('batchOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function runBatchAnalysis() {
+  var apiKey = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  if (!apiKey) { openSettings(); toast('請先設定 API Key', 'err'); return; }
+
+  var filtered = filterTickers(watchlist).filter(function(t){ return stocks[t]; });
+  if (filtered.length < 2) { toast('需要至少 2 檔股票才能比較', 'err'); return; }
+
+  var label = currentFilter === 'all' ? '全部追蹤股' : ({
+    'oversold':'超賣機會','breakout':'突破 MA20','near-low':'接近年低','bullish':'多頭排列','pullback':'回檔買點'
+  })[currentFilter];
+
+  document.getElementById('batchSub').textContent = '篩選條件：' + label + ' · 共 ' + filtered.length + ' 檔 · 一次 AI 呼叫';
+
+  // 顯示參與比較的股票標籤
+  var tagsHTML = filtered.map(function(t) {
+    var d = stocks[t];
+    var up = d.change >= 0;
+    return '<span style="background:#1e293b;border:1px solid #334155;color:'+(up?'#22c55e':'#ef4444')+';padding:4px 10px;border-radius:6px;font-size:12px;">' + t + ' ' + d.name + ' ' + (up?'+':'') + d.changePct.toFixed(1) + '%</span>';
+  }).join('');
+  document.getElementById('batchTickers').innerHTML = tagsHTML;
+
+  document.getElementById('batchResult').innerHTML = '<p style="color:#60a5fa;">AI 正在比較這 ' + filtered.length + ' 檔股票，請稍候（約 5-15 秒）...</p>';
+  document.getElementById('batchOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+
+  // 組 prompt：簡短帶各檔關鍵數據
+  var stockLines = filtered.map(function(t, idx) {
+    var d = stocks[t];
+    var trend = d.isBullish ? '多頭排列' : (d.isBearish ? '空頭排列' : '盤整');
+    return (idx+1) + '. 【' + t + ' ' + d.name + '】'
+      + ' 現價 ' + fp(d.price) + '（' + (d.change>=0?'+':'') + d.changePct.toFixed(2) + '%）'
+      + '｜MA5/20/60 ' + fp(d.ma5) + '/' + fp(d.ma20) + '/' + fp(d.ma60)
+      + '｜RSI ' + (d.rsi != null ? d.rsi.toFixed(0) : 'N/A')
+      + '｜趨勢 ' + trend
+      + '｜距52週高 ' + d.pctFromHigh.toFixed(1) + '%'
+      + '｜距52週低 +' + d.pctFromLow.toFixed(1) + '%'
+      + '｜近5日 ' + (d.pct5d>=0?'+':'') + d.pct5d.toFixed(1) + '%';
+  }).join('\n');
+
+  var prompt = '你是專業台灣股市分析師。以下是用戶從自選股篩選出的「' + label + '」共 ' + filtered.length + ' 檔股票，請給出**比較與排序**：\n\n'
+    + stockLines + '\n\n'
+    + '請用以下格式（繁體中文，盡量精簡）：\n\n'
+    + '## 🏆 進場優先順序\n'
+    + '（依「目前進場性價比」排序，每檔一行：第N名 · 代號 名稱 · 一句話評語）\n\n'
+    + '## 📊 各檔簡評\n'
+    + '（每檔股票 1-2 句話：優勢/劣勢/技術面位置）\n\n'
+    + '## 💎 最推薦：\n'
+    + '（指出 1-2 檔最值得進場的，給具體進場價區間 + 停損價）\n\n'
+    + '## ⚠️ 暫時觀望：\n'
+    + '（不建議現在進場的，說明原因）';
+
+  var isGemini = apiKey.indexOf('AIza') === 0;
+  var url, headers, body;
+
+  if (isGemini) {
+    url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + apiKey;
+    headers = { 'Content-Type': 'application/json' };
+    body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+    });
+  } else {
+    url = 'https://api.groq.com/openai/v1/chat/completions';
+    headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey };
+    body = JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2048
+    });
+  }
+
+  console.log('[批次] 比較 ' + filtered.length + ' 檔，' + (isGemini ? 'Gemini' : 'Groq'));
+
+  fetch(url, { method: 'POST', headers: headers, body: body })
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(e){ throw new Error((e.error && e.error.message) || 'HTTP '+r.status); });
+      return r.json();
+    })
+    .then(function(data) {
+      var text = isGemini
+        ? (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text)
+        : (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+      if (!text) throw new Error('回應格式異常');
+      document.getElementById('batchResult').innerHTML = md2html(text);
+    })
+    .catch(function(e) {
+      document.getElementById('batchResult').innerHTML = '<p style="color:#f87171;">分析失敗：'+e.message+'</p>';
+    });
+}
+
 function runAnalysis() {
   var apiKey = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (!apiKey) { openSettings(); toast('請先設定 Groq API Key', 'err'); return; }
