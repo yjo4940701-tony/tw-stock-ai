@@ -686,40 +686,61 @@ function renderBrowseMode() {
 }
 
 function fetchMarketData() {
-  // TWSE 官方 OpenAPI - 一個 endpoint 拿全部上市股票今日資料
-  var url = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
-  console.log('[市場] 載入 TWSE...');
+  // 用 FinMind（CORS 友善）：抓近 7 天，自動取最新交易日
+  var d = new Date();
+  d.setDate(d.getDate() - 7);
+  var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&start_date=' + startDate;
+
+  console.log('[市場] 載入 FinMind 全市場（' + startDate + ' 起）...');
+  document.getElementById('marketStatus').innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div class="spin"></div>正在抓全台股最新交易日資料（約 5-15 秒，資料量大）...</div>';
 
   fetch(url)
     .then(function(r) { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-    .then(function(data) {
-      // 標準化資料
-      marketData = data.map(function(s) {
-        var close  = parseFloat(s.ClosingPrice) || 0;
-        var change = parseFloat(s.Change)        || 0;
-        var prev   = close - change;
-        var pct    = prev ? (change / prev * 100) : 0;
-        var vol    = parseInt(s.TradeVolume, 10)  || 0;
+    .then(function(json) {
+      if (!json.data || json.data.length === 0) {
+        throw new Error('FinMind 未回傳資料');
+      }
+
+      // 找最新交易日
+      var latestDate = json.data.reduce(function(max, r) { return r.date > max ? r.date : max; }, '');
+      console.log('[市場] 最新交易日：' + latestDate + '，共 ' + json.data.length + ' 筆');
+
+      // 只取最新交易日的資料
+      var todayData = json.data.filter(function(r) { return r.date === latestDate; });
+
+      // 標準化
+      marketData = todayData.map(function(r) {
+        var close = r.close;
+        var change = r.spread || 0;  // FinMind 用 spread 表示漲跌
+        var prev = close - change;
+        var pct = prev ? (change / prev * 100) : 0;
         return {
-          code: s.Code,
-          name: s.Name,
-          open:  parseFloat(s.OpeningPrice) || 0,
-          high:  parseFloat(s.HighestPrice) || 0,
-          low:   parseFloat(s.LowestPrice)  || 0,
+          code: r.stock_id,
+          name: STOCK_NAMES[r.stock_id] || r.stock_id,
+          open: r.open,
+          high: r.max,
+          low: r.min,
           close: close,
           change: change,
           changePct: pct,
-          volume: vol,
-          value: parseFloat(s.TradeValue) || 0
+          volume: r.Trading_Volume || 0,
+          value: r.Trading_money || 0,
+          date: r.date
         };
       }).filter(function(s) { return s.close > 0; });
 
-      console.log('[市場] ✓ 載入 ' + marketData.length + ' 檔上市股票');
+      // 排除 ETF/權證等（簡單規則：5位數以上代號通常為權證、可選）
+      marketData = marketData.filter(function(s) {
+        return s.code && s.code.length <= 6;  // 保留 4-6 位代號（含 ETF）
+      });
+
+      console.log('[市場] ✓ 載入 ' + marketData.length + ' 檔（' + latestDate + '）');
       applyMarketFilter();
     })
     .catch(function(e) {
       console.error('[市場] 失敗:', e);
-      document.getElementById('marketStatus').innerHTML = '<span style="color:#f87171;">載入失敗：'+e.message+'。可能是非交易日或 TWSE API 暫時無法存取。</span>';
+      document.getElementById('marketStatus').innerHTML = '<span style="color:#f87171;">載入失敗：'+e.message+'。可能 FinMind 暫時無法存取，請稍後重試。</span>';
     });
 }
 
