@@ -410,14 +410,12 @@ var PROXIES = [
   if (k) document.getElementById('apiKeyInput').value = k;
   var fm = localStorage.getItem('tw_finmind');
   if (fm) document.getElementById('finmindInput').value = fm;
+  // 之前停在瀏覽全市場模式的話，自動回到群組1
+  if (GROUPS.active === -1) { GROUPS.active = 0; saveGroups(); }
   renderTabs();
   setFilter('all');
-  if (GROUPS.active === -1) {
-    renderBrowseMode();
-  } else {
-    renderGrid();
-    if (watchlist.length > 0) loadAll();
-  }
+  renderGrid();
+  if (watchlist.length > 0) loadAll();
 })();
 
 // ─────────────────────────────────
@@ -479,12 +477,8 @@ function saveKey() {
   s.textContent = '✅ 儲存成功！' + (fm ? '（含 FinMind Token）' : '') + ' 按取消關閉此視窗。';
 }
 
-// FinMind URL helper: 自動帶上 token（如果有設定）
+// FinMind URL helper（已停用 token：FinMind 對帶 token 的請求不發 CORS header）
 function fmUrl(baseUrl) {
-  var token = localStorage.getItem('tw_finmind');
-  if (token) {
-    return baseUrl + (baseUrl.indexOf('?') > -1 ? '&' : '?') + 'token=' + encodeURIComponent(token);
-  }
   return baseUrl;
 }
 
@@ -1044,11 +1038,8 @@ document.addEventListener('click', function(e) {
 // 群組頁籤
 // ─────────────────────────────────
 function renderTabs() {
-  // 瀏覽全市場（第一個）
-  var browseActive = (GROUPS.active === -1) ? ' active' : '';
-  var html = '<button class="gtab'+browseActive+'" onclick="switchGroup(-1)" style="border-right:1px solid #1e293b;margin-right:4px;">'
-           +   '<span>🌐 瀏覽全市場</span>'
-           + '</button>';
+  // 瀏覽全市場已停用（CORS 限制不穩定）
+  var html = '';
   for (var i = 0; i < GROUPS.list.length; i++) {
     var g = GROUPS.list[i];
     var active = (i === GROUPS.active) ? ' active' : '';
