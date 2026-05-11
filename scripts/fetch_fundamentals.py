@@ -14,11 +14,13 @@ import os, json, time, requests
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-TOKEN    = os.environ.get("FINMIND_TOKEN", "")
-BASE     = "https://api.finmindtrade.com/api/v4/data"
-HEADERS  = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
-SLEEP    = 6.5   # 秒，安全在 600 req/hr 以下
-OUT_PATH = "data/fundamentals.json"
+TOKEN      = os.environ.get("FINMIND_TOKEN", "")
+BASE       = "https://api.finmindtrade.com/api/v4/data"
+HEADERS    = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+SLEEP      = 6.5   # 秒，安全在 600 req/hr 以下
+STOCK_RANGE = os.environ.get("STOCK_RANGE", "")   # e.g. "2000-2999"
+# 輸出檔：有 range 時存成分段檔，最後由 merge job 合併
+OUT_PATH   = f"data/fundamentals-{STOCK_RANGE}.json" if STOCK_RANGE else "data/fundamentals.json"
 
 # 開始日期：近 6 季（約 18 個月），足夠算 TTM EPS
 START = (datetime.now() - timedelta(days=548)).strftime("%Y-%m-%d")
@@ -53,11 +55,20 @@ all_stocks = r.json().get("data", [])
 time.sleep(SLEEP)
 
 # 只保留 4-5 位數字代號（主板股票，排除含字母的權證/轉換債）
-stock_ids = sorted(set(
+all_ids = sorted(set(
     s["stock_id"] for s in all_stocks
     if s.get("stock_id", "").isdigit() and len(s["stock_id"]) in (4, 5)
 ))
-print(f"目標股票數：{len(stock_ids)}", flush=True)
+
+# 若有 STOCK_RANGE 則只處理該段（格式：start-end，依代號數字篩選）
+if STOCK_RANGE and "-" in STOCK_RANGE:
+    parts = STOCK_RANGE.split("-")
+    lo, hi = int(parts[0]), int(parts[1])
+    stock_ids = [s for s in all_ids if lo <= int(s) <= hi]
+    print(f"區段 {STOCK_RANGE}：目標 {len(stock_ids)} 檔", flush=True)
+else:
+    stock_ids = all_ids
+    print(f"全範圍：目標 {len(stock_ids)} 檔", flush=True)
 
 # ── 2. 載入已有資料（resume） ────────────────────────
 existing = {}

@@ -2,43 +2,78 @@ name: Update Fundamentals
 
 on:
   schedule:
-    - cron: '0 18 * * 0'   # 每週日 18:00 UTC（週一凌晨 2 點台灣時間）
-  workflow_dispatch:         # 允許手動觸發
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
 
 jobs:
-  update:
+  fetch:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 4 個平行 job，各自負責不同區段的股票代號
+        range: ["1000-1999", "2000-2999", "3000-4999", "5000-9999"]
+      fail-fast: false   # 一個失敗不影響其他
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull latest
+        run: git pull origin main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests
+      - name: Fetch fundamentals (${{ matrix.range }})
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          STOCK_RANGE: ${{ matrix.range }}
+        run: python scripts/fetch_fundamentals.py
+      - name: Upload partial result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fundamentals-${{ matrix.range }}
+          path: data/fundamentals-${{ matrix.range }}.json
+          retention-days: 3
+
+  merge:
+    needs: fetch
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
-
-      # 跑之前先拉最新，避免最後 push 衝突
       - name: Pull latest
         run: git pull origin main
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Fetch fundamentals
-        env:
-          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
-        run: python scripts/fetch_fundamentals.py
-
-      # 無論成功失敗，都上傳 artifact 當備份（7天內可手動下載）
-      - name: Upload artifact backup
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Download all partial results
+        uses: actions/download-artifact@v4
         with:
-          name: fundamentals-${{ github.run_id }}
-          path: data/fundamentals.json
-          retention-days: 7
+          path: data/parts/
+      - name: Merge all parts
+        run: |
+          python3 - <<'EOF'
+          import json, os, glob
+          from datetime import datetime
 
+          merged = {}
+          for f in glob.glob("data/parts/*/*.json"):
+              try:
+                  data = json.load(open(f))
+                  merged.update(data.get("stocks", {}))
+                  print(f"Merged {f}: {len(data.get('stocks', {}))} stocks")
+              except Exception as e:
+                  print(f"Skip {f}: {e}")
+
+          print(f"Total merged: {len(merged)} stocks")
+          os.makedirs("data", exist_ok=True)
+          with open("data/fundamentals.json", "w") as out:
+              json.dump({"updated": datetime.now().strftime("%Y-%m-%d"), "stocks": merged},
+                        out, ensure_ascii=False, separators=(",", ":"))
+          EOF
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
