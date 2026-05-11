@@ -11,8 +11,23 @@ fetch_fundamentals.py
 """
 
 import os, json, time, requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from collections import defaultdict
+
+TODAY = date.today()
+REFRESH_DAYS = 80   # 超過 80 天就重抓（季報每 90 天更新）
+
+def is_fresh(entry):
+    """回傳 True 代表資料還新鮮，可以跳過"""
+    if not entry or entry.get("gm") is None:
+        return False  # 資料不完整，必須重抓
+    d_str = entry.get("d")  # 抓取日期 (YYYY-MM-DD)
+    if not d_str:
+        return False
+    try:
+        return (TODAY - datetime.strptime(d_str, "%Y-%m-%d").date()).days < REFRESH_DAYS
+    except Exception:
+        return False
 
 TOKEN      = os.environ.get("FINMIND_TOKEN", "")
 BASE       = "https://api.finmindtrade.com/api/v4/data"
@@ -79,8 +94,8 @@ err_count = 0
 
 # ── 3. 逐檔抓取 ─────────────────────────────────────
 for idx, sid in enumerate(stock_ids):
-    if sid in result and result[sid].get("gm") is not None:
-        continue  # 已有完整資料（含毛利率），跳過
+    if is_fresh(result.get(sid)):
+        continue  # 資料還新鮮（< 80 天），跳過
 
     try:
         resp = requests.get(BASE, params={
@@ -147,6 +162,7 @@ for idx, sid in enumerate(stock_ids):
             roe = safe_ratio(net_inc, equity)
             if roe is not None: entry["roe"] = roe
 
+        entry["d"] = TODAY.strftime("%Y-%m-%d")   # 記錄抓取日期
         result[sid] = entry
         new_count += 1
 
