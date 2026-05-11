@@ -147,6 +147,15 @@ a{color:#60a5fa;}
 .suggest-item:hover{background:#1e293b;}
 .period-btn{background:#1e293b;border:1px solid #334155;color:#64748b;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;text-transform:none;letter-spacing:0;}
 .period-btn.active,.period-btn:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
+/* 選股條件列 */
+.scond-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1e293b;}
+.scond-row:last-child{border-bottom:none;}
+.scond-chk{width:16px;height:16px;accent-color:#2563eb;cursor:pointer;flex-shrink:0;}
+.scond-label{color:#e2e8f0;font-size:13px;min-width:88px;}
+.scond-op{background:#1e293b;border:1px solid #334155;color:#60a5fa;padding:2px 10px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:700;min-width:32px;transition:all .15s;}
+.scond-op:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
+.scond-unit{color:#64748b;font-size:12px;min-width:18px;}
+.scond-off .scond-label,.scond-off .scond-op,.scond-off .param-val,.scond-off .scond-unit{opacity:.4;}
 @media(max-width:600px){
   .metrics{grid-template-columns:1fr 1fr;}
   .hdr-sub{display:none;}
@@ -164,9 +173,10 @@ a{color:#60a5fa;}
       <div class="hdr-sub">自選股 · AI 優劣分析 · 進場建議（免費版）</div>
     </div>
   </div>
-  <button class="btn-settings" onclick="openSettings()">
-    ⚙ API Key 設定
-  </button>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <button class="btn-settings" onclick="openScreener()" style="border-color:rgba(124,58,237,.5);color:#a78bfa;">📊 選股</button>
+    <button class="btn-settings" onclick="openSettings()">⚙ API Key 設定</button>
+  </div>
 </header>
 
 <!-- GROUP TABS -->
@@ -374,6 +384,27 @@ a{color:#60a5fa;}
     <div class="btn-row">
       <button type="button" class="btn-save" onclick="saveKey()">儲存全部</button>
       <button type="button" class="btn-cancel" onclick="closeSettings()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREENER MODAL -->
+<div id="screenerOverlay" class="overlay" onclick="screenerOverlayClick(event)">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">📊 財報靈活選股</div>
+        <div id="screenerSub" class="modal-sub">點條件數值可調整，運算子可切換</div>
+      </div>
+      <button class="btn-close" onclick="closeScreener()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="screenerConditions"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button onclick="runScreener()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;">篩選</button>
+        <button onclick="resetScreener()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">重置</button>
+      </div>
+      <div id="screenerResults" style="margin-top:14px;max-height:420px;overflow-y:auto;"></div>
     </div>
   </div>
 </div>
@@ -2211,6 +2242,200 @@ function runAnalysis() {
     btn.textContent = '重新分析';
     btn.disabled = false;
   });
+}
+
+// ─────────────────────────────────
+// 財報靈活選股
+// ─────────────────────────────────
+var screenConds = [
+  { key:'eps', label:'EPS TTM',    unit:'元', op:'>', val:5,  on:true  },
+  { key:'roe', label:'ROE',        unit:'%',  op:'>', val:10, on:false },
+  { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
+  { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
+  { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
+  { key:'dr',  label:'負債比率',   unit:'%',  op:'<', val:60, on:false }
+];
+
+function openScreener() {
+  document.getElementById('screenerOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+  renderScreenConds();
+  var sub = document.getElementById('screenerSub');
+  var res = document.getElementById('screenerResults');
+  if (fundamentalsCache && fundamentalsCache.stocks) {
+    var cnt = Object.keys(fundamentalsCache.stocks).length;
+    var valid = Object.values(fundamentalsCache.stocks).filter(function(f){ return f && f.eps != null; }).length;
+    sub.textContent = '財報日期：' + fundamentalsCache.updated + '　共 ' + valid + ' 檔有效（總 ' + cnt + ' 檔）';
+    res.innerHTML = '<p style="color:#64748b;font-size:13px;padding:8px 0;">設定條件後點「篩選」</p>';
+  } else {
+    sub.textContent = '財報資料尚未載入';
+    res.innerHTML = '<p style="color:#f87171;font-size:13px;padding:8px 0;">⚠ 請先至 GitHub repo → Actions → Update Fundamentals → Run workflow</p>';
+  }
+}
+
+function closeScreener() {
+  document.getElementById('screenerOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function screenerOverlayClick(e) {
+  if (e.target === document.getElementById('screenerOverlay')) closeScreener();
+}
+
+function renderScreenConds() {
+  var html = '';
+  screenConds.forEach(function(c, i) {
+    html += '<div class="scond-row' + (c.on ? '' : ' scond-off') + '">'
+          + '<input type="checkbox" class="scond-chk"' + (c.on ? ' checked' : '') + ' onchange="toggleScreenCond(' + i + ')">'
+          + '<span class="scond-label">' + c.label + '</span>'
+          + '<button class="scond-op" onclick="toggleScreenOp(' + i + ')">' + escapeHtml(c.op) + '</button>'
+          + '<span class="param-val" id="scv-' + i + '" onclick="editScreenVal(' + i + ',event)">' + c.val + '</span>'
+          + '<span class="scond-unit">' + c.unit + '</span>'
+          + '</div>';
+  });
+  document.getElementById('screenerConditions').innerHTML = html;
+}
+
+function toggleScreenCond(i) {
+  screenConds[i].on = !screenConds[i].on;
+  renderScreenConds();
+}
+
+function toggleScreenOp(i) {
+  screenConds[i].op = screenConds[i].op === '>' ? '<' : '>';
+  document.querySelectorAll('.scond-op')[i].textContent = screenConds[i].op;
+}
+
+function editScreenVal(i, e) {
+  e.stopPropagation();
+  var el = document.getElementById('scv-' + i);
+  if (!el || el.tagName === 'INPUT') return;
+  var cur = screenConds[i].val;
+  var inp = document.createElement('input');
+  inp.type = 'text'; inp.value = cur;
+  inp.style.cssText = 'width:42px;font-size:12px;padding:0 3px;border:1px solid #3b82f6;border-radius:3px;background:#1e293b;color:#fff;outline:none;text-align:center;';
+  el.parentNode.replaceChild(inp, el);
+  inp.focus(); inp.select();
+  function save() {
+    var n = parseFloat(inp.value);
+    if (!isNaN(n)) screenConds[i].val = n;
+    var span = document.createElement('span');
+    span.className = 'param-val'; span.id = 'scv-' + i;
+    span.setAttribute('onclick', 'editScreenVal(' + i + ',event)');
+    span.textContent = screenConds[i].val;
+    inp.parentNode.replaceChild(span, inp);
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') inp.blur();
+    if (ev.key === 'Escape') { screenConds[i].val = cur; inp.value = cur; inp.blur(); }
+  });
+}
+
+function resetScreener() {
+  screenConds = [
+    { key:'eps', label:'EPS TTM',    unit:'元', op:'>', val:5,  on:true  },
+    { key:'roe', label:'ROE',        unit:'%',  op:'>', val:10, on:false },
+    { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
+    { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
+    { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
+    { key:'dr',  label:'負債比率',   unit:'%',  op:'<', val:60, on:false }
+  ];
+  renderScreenConds();
+  document.getElementById('screenerResults').innerHTML = '';
+}
+
+function runScreener() {
+  var enabled = screenConds.filter(function(c) { return c.on; });
+  var resEl = document.getElementById('screenerResults');
+  if (!fundamentalsCache || !fundamentalsCache.stocks) {
+    resEl.innerHTML = '<p style="color:#f87171;">財報資料尚未載入</p>';
+    return;
+  }
+  if (enabled.length === 0) {
+    resEl.innerHTML = '<p style="color:#f87171;">請至少勾選一個條件</p>';
+    return;
+  }
+
+  resEl.innerHTML = '<p style="color:#64748b;font-size:13px;">篩選中...</p>';
+
+  var matches = [];
+  var fstocks = fundamentalsCache.stocks;
+  Object.keys(fstocks).forEach(function(sid) {
+    var f = fstocks[sid];
+    if (!f || f.eps == null) return;
+    var pass = enabled.every(function(c) {
+      var v = f[c.key];
+      if (v == null) return false;
+      return c.op === '>' ? v > c.val : v < c.val;
+    });
+    if (pass) matches.push({ sid:sid, f:f });
+  });
+
+  matches.sort(function(a,b) { return (b.f.eps||0) - (a.f.eps||0); });
+
+  var sub = document.getElementById('screenerSub');
+  sub.textContent = '財報：' + fundamentalsCache.updated
+    + '　符合：' + matches.length + ' 檔'
+    + (matches.length > 200 ? '（顯示前 200）' : '');
+
+  renderScreenResults(matches.slice(0, 200));
+}
+
+function renderScreenResults(matches) {
+  var resEl = document.getElementById('screenerResults');
+  if (matches.length === 0) {
+    resEl.innerHTML = '<p style="color:#64748b;padding:20px 0;text-align:center;">沒有符合條件的股票，試著放寬條件</p>';
+    return;
+  }
+  var html = '<table style="width:100%;border-collapse:collapse;">'
+    + '<tr style="color:#64748b;font-size:11px;border-bottom:1px solid #334155;">'
+    + '<th style="text-align:left;padding:5px 6px;">代號</th>'
+    + '<th style="text-align:left;padding:5px 6px;">名稱</th>'
+    + '<th style="text-align:right;padding:5px 6px;">EPS</th>'
+    + '<th style="text-align:right;padding:5px 6px;">ROE</th>'
+    + '<th style="text-align:right;padding:5px 6px;">毛利率</th>'
+    + '<th style="text-align:right;padding:5px 6px;">負債比</th>'
+    + '<th style="padding:5px 6px;"></th>'
+    + '</tr>';
+
+  matches.forEach(function(m) {
+    var name = STOCK_NAMES[m.sid] || m.sid;
+    if (name.length > 8) name = name.slice(0,8) + '…';
+    var inWl = false;
+    for (var g = 0; g < GROUPS.list.length; g++) {
+      if (GROUPS.list[g].tickers.indexOf(m.sid) !== -1) { inWl = true; break; }
+    }
+    var btn = inWl
+      ? '<span style="color:#22c55e;font-size:11px;">已加入</span>'
+      : '<button onclick="addFromScreener(\'' + m.sid + '\')" style="background:#2563eb;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;">+加入</button>';
+    var f = m.f;
+    html += '<tr style="border-bottom:1px solid #0f172a;" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\'\'">'
+      + '<td style="padding:7px 6px;font-weight:700;color:#60a5fa;">' + escapeHtml(m.sid) + '</td>'
+      + '<td style="padding:7px 6px;color:#e2e8f0;font-size:12px;">' + escapeHtml(name) + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.roe!=null?f.roe.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.dr!=null?f.dr.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;">' + btn + '</td>'
+      + '</tr>';
+  });
+  html += '</table>';
+  resEl.innerHTML = html;
+}
+
+function addFromScreener(ticker) {
+  if (watchlist.indexOf(ticker) === -1) {
+    watchlist.push(ticker);
+    saveGroups();
+    renderTabs();
+    renderGrid();
+    fetchStock(ticker);
+    toast(ticker + ' ' + (STOCK_NAMES[ticker]||'') + ' 已加入自選股', 'ok');
+  } else {
+    toast(ticker + ' 已在清單中');
+  }
+  runScreener();
 }
 
 // ─────────────────────────────────
