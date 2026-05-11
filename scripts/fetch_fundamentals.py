@@ -25,20 +25,13 @@ OUT_PATH   = f"data/fundamentals-{STOCK_RANGE}.json" if STOCK_RANGE else "data/f
 # 開始日期：近 6 季（約 18 個月），足夠算 TTM EPS
 START = (datetime.now() - timedelta(days=548)).strftime("%Y-%m-%d")
 
-EPS_KEYS = {"EPS", "每股盈餘"}
-ROE_KEYS = {"ROE", "股東權益報酬率", "ReturnOnEquity"}
-GM_KEYS  = {"GrossMargin", "毛利率", "GrossProfitMargin"}
-DR_KEYS  = {"DebtRatio", "負債比率", "LiabilitiesToAssets"}
-
-def find_val(d, keys):
-    for k in keys:
-        if k in d:
-            return float(d[k])
-    return None
-
-def pct(v):
-    if v is None: return None
-    return round(v * 100 if abs(v) <= 1.5 else v, 1)
+# FinMind TaiwanStockFinancialStatements 實際欄位名稱（從診斷腳本確認）
+EPS_KEY     = "EPS"
+REVENUE_KEY = "Revenue"
+GROSS_KEY   = "GrossProfit"
+OP_KEY      = "OperatingIncome"
+NET_KEY     = "IncomeAfterTaxes"
+EQUITY_KEY  = "EquityAttributableToOwnersOfParent"
 
 def save_result(r):
     os.makedirs("data", exist_ok=True)
@@ -116,24 +109,43 @@ for idx, sid in enumerate(stock_ids):
         # TTM EPS = 最近 4 季加總
         eps_vals = []
         for d in sorted_dates[:4]:
-            v = find_val(by_date[d], EPS_KEYS)
+            v = by_date[d].get(EPS_KEY)
             if v is not None:
-                eps_vals.append(v)
-        eps_ttm = round(sum(eps_vals), 2) if eps_vals else None
+                eps_vals.append(float(v))
 
-        if eps_ttm is None:
+        if not eps_vals:
             result[sid] = {}
             time.sleep(SLEEP); continue
 
-        latest = by_date[sorted_dates[0]] if sorted_dates else {}
-        entry  = {"eps": eps_ttm}
+        entry = {"eps": round(sum(eps_vals), 2)}
 
-        roe = pct(find_val(latest, ROE_KEYS))
-        gm  = pct(find_val(latest, GM_KEYS))
-        dr  = pct(find_val(latest, DR_KEYS))
-        if roe is not None: entry["roe"] = roe
-        if gm  is not None: entry["gm"]  = gm
-        if dr  is not None: entry["dr"]  = dr
+        # 優先用最近年報（12-31），否則用最新季
+        annual = [d for d in sorted_dates if d.endswith("-12-31")]
+        c = by_date[annual[0]] if annual else by_date[sorted_dates[0]]
+
+        def safe_ratio(num, den):
+            try:
+                n, d2 = float(num), float(den)
+                if d2 == 0: return None
+                v = n / d2 * 100
+                return round(v, 1) if -500 < v < 500 else None
+            except Exception:
+                return None
+
+        revenue = c.get(REVENUE_KEY)
+        if revenue:
+            gm = safe_ratio(c.get(GROSS_KEY), revenue)
+            om = safe_ratio(c.get(OP_KEY),    revenue)
+            nm = safe_ratio(c.get(NET_KEY),   revenue)
+            if gm is not None: entry["gm"] = gm
+            if om is not None: entry["om"] = om
+            if nm is not None: entry["nm"] = nm
+
+        equity  = c.get(EQUITY_KEY)
+        net_inc = c.get(NET_KEY)
+        if equity and net_inc:
+            roe = safe_ratio(net_inc, equity)
+            if roe is not None: entry["roe"] = roe
 
         result[sid] = entry
         new_count += 1
