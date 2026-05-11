@@ -18,14 +18,18 @@ TODAY = date.today()
 REFRESH_DAYS = 80   # 超過 80 天就重抓（季報每 90 天更新）
 
 def is_fresh(entry):
-    """回傳 True 代表資料還新鮮，可以跳過"""
-    if not entry or entry.get("gm") is None:
-        return False  # 資料不完整，必須重抓
-    d_str = entry.get("d")  # 抓取日期 (YYYY-MM-DD)
+    """回傳 True 代表可以跳過（不需重抓）"""
+    if not entry:
+        return False
+    d_str = entry.get("d")
     if not d_str:
         return False
     try:
-        return (TODAY - datetime.strptime(d_str, "%Y-%m-%d").date()).days < REFRESH_DAYS
+        days = (TODAY - datetime.strptime(d_str, "%Y-%m-%d").date()).days
+        if entry.get("gm") is not None:
+            return days < REFRESH_DAYS     # 有財報：80 天內跳過
+        else:
+            return days < 30               # 無財報（ETF 等）：30 天內跳過，之後重試
     except Exception:
         return False
 
@@ -111,7 +115,7 @@ for idx, sid in enumerate(stock_ids):
         rows = resp.json().get("data", [])
 
         if not rows:
-            result[sid] = {}  # 標記為「無財報」（ETF 等）
+            result[sid] = {"d": TODAY.strftime("%Y-%m-%d")}  # 無財報，記日期避免重複抓
             time.sleep(SLEEP); continue
 
         # 整理成 {date: {type: value}}
