@@ -234,6 +234,7 @@ a{color:#60a5fa;}
       <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">🔥 多頭排列</button>
       <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">💎 回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
       <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">📊 YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
+      <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')" title="需等財報資料載入">💰 EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <span id="filterCount" style="color:#94a3b8;font-size:13px;"></span>
@@ -410,13 +411,14 @@ var stocks    = {};
 var current   = null;
 var myChart   = null;
 var activeFilters = {};
-var filterParams  = { rsi: 30, maN: 20, nearLow: 10, pullback: 3, revYoy: 10 };
+var filterParams  = { rsi: 30, maN: 20, nearLow: 10, pullback: 3, revYoy: 10, epsMin: 3 };
 var chartPeriod   = 'day';
 var monthlyRevCache = {};
 var stockInfoCache    = null;
 var stockInfoLoading  = false;
 var stockInfoCbs      = [];
 var perCache  = {};
+var fundamentalsCache = null;
 
 Object.defineProperty(window, 'watchlist', {
   get: function() { return activeGroup().tickers; },
@@ -444,6 +446,16 @@ var PROXIES = [
   setFilter('all');
   renderGrid();
   if (watchlist.length > 0) loadAll();
+
+  // 載入財報基本面資料（GitHub Actions 每週更新）
+  fetch('data/fundamentals.json')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      fundamentalsCache = json;
+      console.log('[財報] 載入完成，共', Object.keys(json.stocks || {}).length, '檔，更新日期:', json.updated);
+      renderGrid();
+    })
+    .catch(function() { console.log('[財報] 尚無資料（首次需等 GitHub Actions 執行）'); });
 
   // 背景載入全市場名稱，補齊字典沒有的公司名稱
   ensureStockInfo(function() {
@@ -1309,6 +1321,11 @@ function matchFilter(d, name) {
       return d.isBullish === true && d.pct5d < -filterParams.pullback;
     case 'rev-yoy':
       return !!(d.monthRev && d.monthRev.yoy != null && d.monthRev.yoy >= filterParams.revYoy);
+    case 'eps-min': {
+      if (!fundamentalsCache || !fundamentalsCache.stocks) return false;
+      var f = fundamentalsCache.stocks[d.ticker];
+      return !!(f && f.eps != null && f.eps >= filterParams.epsMin);
+    }
     default:
       return true;
   }
@@ -1350,7 +1367,7 @@ function setFilter(name) { clearFilters(); }
 
 function editParam(name, e) {
   e.stopPropagation();
-  var idMap = { rsi: 'pv-rsi', maN: 'pv-man', nearLow: 'pv-nearlow', pullback: 'pv-pb', revYoy: 'pv-ryoy' };
+  var idMap = { rsi: 'pv-rsi', maN: 'pv-man', nearLow: 'pv-nearlow', pullback: 'pv-pb', revYoy: 'pv-ryoy', epsMin: 'pv-eps' };
   var el = document.getElementById(idMap[name]);
   if (!el || el.tagName === 'INPUT') return;
   var cur = filterParams[name];
@@ -1438,7 +1455,8 @@ function activeFilterLabel() {
     'near-low': '距年低<' + filterParams.nearLow + '%',
     'bullish':  '多頭排列',
     'pullback': '回檔<-' + filterParams.pullback + '%',
-    'rev-yoy':  'YoY>' + filterParams.revYoy + '%'
+    'rev-yoy':  'YoY>' + filterParams.revYoy + '%',
+    'eps-min':  'EPS>' + filterParams.epsMin
   };
   return keys.map(function(k) { return map[k] || k; }).join(' + ');
 }
@@ -2042,6 +2060,25 @@ function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI) {
     else                  { revIcon = '❌'; revLabel = 'YoY ' + yoyStr + '，明顯衰退'; }
     if (mr.mom != null) revLabel += '（MoM ' + (mr.mom >= 0 ? '+' : '') + mr.mom.toFixed(1) + '%）';
     lines.push(revIcon + ' 月營收：' + revLabel);
+  }
+
+  // EPS TTM（來自財報 JSON）
+  if (fundamentalsCache && fundamentalsCache.stocks) {
+    var fd = fundamentalsCache.stocks[d.ticker];
+    if (fd) {
+      if (fd.eps != null) {
+        var epsIcon = fd.eps >= 10 ? '✅' : fd.eps >= 3 ? '✅' : fd.eps > 0 ? '⚠️' : '❌';
+        var epsLine = epsIcon + ' EPS(TTM)：' + fd.eps.toFixed(2) + ' 元';
+        if (fd.roe != null) epsLine += '　ROE：' + fd.roe.toFixed(1) + '%';
+        lines.push(epsLine);
+      }
+      if (fd.gm != null) {
+        var gmIcon = fd.gm >= 40 ? '✅' : fd.gm >= 20 ? '✅' : '⚠️';
+        var gmLine = gmIcon + ' 毛利率：' + fd.gm.toFixed(1) + '%';
+        if (fd.dr != null) gmLine += '　負債比：' + fd.dr.toFixed(1) + '%';
+        lines.push(gmLine);
+      }
+    }
   }
 
   // 估值

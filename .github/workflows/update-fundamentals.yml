@@ -1,0 +1,35 @@
+name: Update Fundamentals
+
+on:
+  schedule:
+    - cron: '0 18 * * 0'   # 每週日 18:00 UTC（週一凌晨 2 點台灣時間）
+  workflow_dispatch:         # 允許手動觸發
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch fundamentals
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python scripts/fetch_fundamentals.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/fundamentals.json
+          git diff --staged --quiet || git commit -m "chore: update fundamentals $(date +%Y-%m-%d)"
+          git push
