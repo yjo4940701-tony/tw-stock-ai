@@ -79,8 +79,8 @@ err_count = 0
 
 # ── 3. 逐檔抓取 ─────────────────────────────────────
 for idx, sid in enumerate(stock_ids):
-    if sid in result:
-        continue  # 已有資料，跳過
+    if sid in result and result[sid].get("gm") is not None:
+        continue  # 已有完整資料（含毛利率），跳過
 
     try:
         resp = requests.get(BASE, params={
