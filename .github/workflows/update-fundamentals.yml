@@ -10,9 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 4 個平行 job，各自負責不同區段的股票代號
         range: ["1000-1999", "2000-2999", "3000-4999", "5000-9999"]
-      fail-fast: false   # 一個失敗不影響其他
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -49,11 +48,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests
       - name: Download all partial results
         uses: actions/download-artifact@v4
         with:
           path: data/parts/
-      - name: Merge all parts
+
+      # 1. 先合併財務報表
+      - name: Merge financial statements
         run: |
           python3 - <<'EOF'
           import json, os, glob
@@ -74,6 +77,13 @@ jobs:
               json.dump({"updated": datetime.now().strftime("%Y-%m-%d"), "stocks": merged},
                         out, ensure_ascii=False, separators=(",", ":"))
           EOF
+
+      # 2. 再更新月營收（bulk query，幾秒完成）
+      - name: Fetch monthly revenue
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python scripts/fetch_revenue.py
+
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"

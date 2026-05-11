@@ -2253,7 +2253,8 @@ var screenConds = [
   { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
   { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
   { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
-  { key:'dr',  label:'負債比率',   unit:'%',  op:'<', val:60, on:false }
+  { key:'dr',      label:'負債比率',   unit:'%',  op:'<', val:60,  on:false },
+  { key:'rev_yoy', label:'月營收 YoY', unit:'%',  op:'>', val:10,  on:false }
 ];
 
 function openScreener() {
@@ -2339,7 +2340,8 @@ function resetScreener() {
     { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
     { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
     { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
-    { key:'dr',  label:'負債比率',   unit:'%',  op:'<', val:60, on:false }
+    { key:'dr',      label:'負債比率',   unit:'%',  op:'<', val:60,  on:false },
+    { key:'rev_yoy', label:'月營收 YoY', unit:'%',  op:'>', val:10,  on:false }
   ];
   renderScreenConds();
   document.getElementById('screenerResults').innerHTML = '';
@@ -2396,6 +2398,7 @@ function renderScreenResults(matches) {
     + '<th style="text-align:right;padding:5px 6px;">ROE</th>'
     + '<th style="text-align:right;padding:5px 6px;">毛利率</th>'
     + '<th style="text-align:right;padding:5px 6px;">負債比</th>'
+    + '<th style="text-align:right;padding:5px 6px;">月收YoY</th>'
     + '<th style="padding:5px 6px;"></th>'
     + '</tr>';
 
@@ -2417,6 +2420,7 @@ function renderScreenResults(matches) {
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.roe!=null?f.roe.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.dr!=null?f.dr.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:' + (f.rev_yoy==null?'#64748b':f.rev_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.rev_yoy!=null?(f.rev_yoy>=0?'+':'')+f.rev_yoy.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;">' + btn + '</td>'
       + '</tr>';
   });
