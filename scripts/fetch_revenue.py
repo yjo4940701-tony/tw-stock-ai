@@ -13,7 +13,6 @@ from collections import defaultdict
 
 TOKEN   = os.environ.get("FINMIND_TOKEN", "")
 BASE    = "https://api.finmindtrade.com/api/v4/data"
-HEADERS = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
 TODAY   = date.today()
 FUND_PATH = "data/fundamentals.json"
 
@@ -22,10 +21,11 @@ start = (datetime.now() - timedelta(days=430)).strftime("%Y-%m-%d")
 
 print(f"=== Fetching TaiwanStockMonthRevenue (bulk, from {start}) ===", flush=True)
 
-r = requests.get(BASE, params={
-    "dataset":    "TaiwanStockMonthRevenue",
-    "start_date": start
-}, headers=HEADERS, timeout=180)
+params = {"dataset": "TaiwanStockMonthRevenue", "start_date": start}
+if TOKEN:
+    params["token"] = TOKEN
+
+r = requests.get(BASE, params=params, timeout=180)
 
 if r.status_code == 400:
     print("400 error：bulk query 不支援，月營收略過")

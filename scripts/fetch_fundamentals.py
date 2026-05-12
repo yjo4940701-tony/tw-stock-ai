@@ -35,7 +35,6 @@ def is_fresh(entry):
 
 TOKEN      = os.environ.get("FINMIND_TOKEN", "")
 BASE       = "https://api.finmindtrade.com/api/v4/data"
-HEADERS    = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
 SLEEP      = 6.5   # 秒，安全在 600 req/hr 以下
 STOCK_RANGE = os.environ.get("STOCK_RANGE", "")   # e.g. "2000-2999"
 # 輸出檔：有 range 時存成分段檔，最後由 merge job 合併
@@ -60,8 +59,9 @@ def save_result(r):
 
 # ── 1. 取得股票清單 ─────────────────────────────────
 print("=== 取得股票清單 ===", flush=True)
-r = requests.get(BASE, params={"dataset": "TaiwanStockInfo"},
-                 headers=HEADERS, timeout=60)
+_p = {"dataset": "TaiwanStockInfo"}
+if TOKEN: _p["token"] = TOKEN
+r = requests.get(BASE, params=_p, timeout=60)
 r.raise_for_status()
 all_stocks = r.json().get("data", [])
 time.sleep(SLEEP)
@@ -102,11 +102,13 @@ for idx, sid in enumerate(stock_ids):
         continue  # 資料還新鮮（< 80 天），跳過
 
     try:
-        resp = requests.get(BASE, params={
+        _params = {
             "dataset":    "TaiwanStockFinancialStatements",
             "data_id":    sid,
             "start_date": START
-        }, headers=HEADERS, timeout=30)
+        }
+        if TOKEN: _params["token"] = TOKEN
+        resp = requests.get(BASE, params=_params, timeout=30)
 
         if resp.status_code == 400:
             time.sleep(SLEEP); continue
