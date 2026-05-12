@@ -2100,13 +2100,11 @@ function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI) {
       if (fd.eps != null) {
         var epsIcon = fd.eps >= 10 ? '✅' : fd.eps >= 3 ? '✅' : fd.eps > 0 ? '⚠️' : '❌';
         var epsLine = epsIcon + ' EPS(TTM)：' + fd.eps.toFixed(2) + ' 元';
-        if (fd.roe != null) epsLine += '　ROE：' + fd.roe.toFixed(1) + '%';
         lines.push(epsLine);
       }
       if (fd.gm != null) {
         var gmIcon = fd.gm >= 40 ? '✅' : fd.gm >= 20 ? '✅' : '⚠️';
         var gmLine = gmIcon + ' 毛利率：' + fd.gm.toFixed(1) + '%';
-        if (fd.dr != null) gmLine += '　負債比：' + fd.dr.toFixed(1) + '%';
         lines.push(gmLine);
       }
     }
@@ -2249,7 +2247,6 @@ function runAnalysis() {
 // ─────────────────────────────────
 var screenConds = [
   { key:'eps', label:'EPS TTM',    unit:'元', op:'>', val:5,  on:true  },
-  { key:'roe', label:'ROE',        unit:'%',  op:'>', val:10, on:false },
   { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
   { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
   { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
@@ -2335,7 +2332,6 @@ function editScreenVal(i, e) {
 function resetScreener() {
   screenConds = [
     { key:'eps', label:'EPS TTM',    unit:'元', op:'>', val:5,  on:true  },
-    { key:'roe', label:'ROE',        unit:'%',  op:'>', val:10, on:false },
     { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
     { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
     { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
@@ -2393,7 +2389,6 @@ function renderScreenResults(matches) {
     + '<th style="text-align:left;padding:5px 6px;">代號</th>'
     + '<th style="text-align:left;padding:5px 6px;">名稱</th>'
     + '<th style="text-align:right;padding:5px 6px;">EPS</th>'
-    + '<th style="text-align:right;padding:5px 6px;">ROE</th>'
     + '<th style="text-align:right;padding:5px 6px;">毛利率</th>'
     + '<th style="text-align:right;padding:5px 6px;">月收YoY</th>'
     + '<th style="padding:5px 6px;"></th>'
@@ -2414,7 +2409,6 @@ function renderScreenResults(matches) {
       + '<td style="padding:7px 6px;font-weight:700;color:#60a5fa;">' + escapeHtml(m.sid) + '</td>'
       + '<td style="padding:7px 6px;color:#e2e8f0;font-size:12px;">' + escapeHtml(name) + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.roe!=null?f.roe.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:' + (f.rev_yoy==null?'#64748b':f.rev_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.rev_yoy!=null?(f.rev_yoy>=0?'+':'')+f.rev_yoy.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;">' + btn + '</td>'
