@@ -59,9 +59,7 @@ def save_result(r):
 
 # ── 1. 取得股票清單 ─────────────────────────────────
 print("=== 取得股票清單 ===", flush=True)
-_p = {"dataset": "TaiwanStockInfo"}
-if TOKEN: _p["token"] = TOKEN
-r = requests.get(BASE, params=_p, timeout=60)
+r = requests.get(BASE, params={"dataset": "TaiwanStockInfo"}, timeout=60)
 r.raise_for_status()
 all_stocks = r.json().get("data", [])
 time.sleep(SLEEP)
@@ -102,13 +100,11 @@ for idx, sid in enumerate(stock_ids):
         continue  # 資料還新鮮（< 80 天），跳過
 
     try:
-        _params = {
+        resp = requests.get(BASE, params={
             "dataset":    "TaiwanStockFinancialStatements",
             "data_id":    sid,
             "start_date": START
-        }
-        if TOKEN: _params["token"] = TOKEN
-        resp = requests.get(BASE, params=_params, timeout=30)
+        }, timeout=30)
 
         if resp.status_code == 400:
             time.sleep(SLEEP); continue
