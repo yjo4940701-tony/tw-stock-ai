@@ -88,18 +88,26 @@ for idx, sid in enumerate(stock_ids):
             "rev": float(r.get("revenue", 0))
         } for r in rows], key=lambda x: (x["y"], x["m"]))
 
-        latest  = recs[-1]
-        prev_yoy = next((r for r in recs if r["y"] == latest["y"]-1 and r["m"] == latest["m"]), None)
+        latest   = recs[-1]
+        ly, lm   = latest["y"], latest["m"]
+        prev_yoy = next((r for r in recs if r["y"] == ly-1 and r["m"] == lm), None)
         prev_mom = recs[-2] if len(recs) >= 2 else None
 
+        # 單月 YoY / MoM
         yoy = round((latest["rev"] - prev_yoy["rev"]) / prev_yoy["rev"] * 100, 1) if prev_yoy and prev_yoy["rev"] > 0 else None
         mom = round((latest["rev"] - prev_mom["rev"]) / prev_mom["rev"] * 100, 1) if prev_mom and prev_mom["rev"] > 0 else None
 
+        # 累計 YoY（1 月到最新月份，今年 vs 去年）
+        cum_this = sum(r["rev"] for r in recs if r["y"] == ly   and r["m"] <= lm)
+        cum_prev = sum(r["rev"] for r in recs if r["y"] == ly-1 and r["m"] <= lm)
+        cum_yoy  = round((cum_this - cum_prev) / cum_prev * 100, 1) if cum_prev > 0 else None
+
         result[sid] = {
-            "rev_yoy": yoy,
-            "rev_mom": mom,
-            "rev_ym":  f"{latest['y']}-{latest['m']:02d}",
-            "rev_d":   TODAY.strftime("%Y-%m-%d")
+            "rev_yoy":     yoy,
+            "rev_cum_yoy": cum_yoy,
+            "rev_mom":     mom,
+            "rev_ym":      f"{ly}-{lm:02d}",
+            "rev_d":       TODAY.strftime("%Y-%m-%d")
         }
 
     except Exception as e:
