@@ -2246,12 +2246,15 @@ function runAnalysis() {
 // 財報靈活選股
 // ─────────────────────────────────
 var screenConds = [
-  { key:'eps', label:'EPS TTM',    unit:'元', op:'>', val:5,  on:true  },
-  { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
-  { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
-  { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
-  { key:'rev_yoy',     label:'月營收 YoY',   unit:'%', op:'>', val:10, on:false },
-  { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%', op:'>', val:10, on:false }
+  { key:'eps',         label:'EPS TTM',      unit:'元', op:'>', val:5,  on:true  },
+  { key:'gm',          label:'毛利率',        unit:'%',  op:'>', val:20, on:false },
+  { key:'gm_yoy',      label:'毛利率年增',    unit:'pp', op:'>', val:0,  on:false },
+  { key:'om',          label:'營業利益率',    unit:'%',  op:'>', val:5,  on:false },
+  { key:'om_yoy',      label:'營業利益率年增',unit:'pp', op:'>', val:0,  on:false },
+  { key:'nm',          label:'淨利率',        unit:'%',  op:'>', val:5,  on:false },
+  { key:'nm_yoy',      label:'淨利率年增',    unit:'pp', op:'>', val:0,  on:false },
+  { key:'rev_yoy',     label:'月營收 YoY',   unit:'%',  op:'>', val:10, on:false },
+  { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false }
 ];
 
 function openScreener() {
@@ -2332,12 +2335,15 @@ function editScreenVal(i, e) {
 
 function resetScreener() {
   screenConds = [
-    { key:'eps', label:'EPS TTM',    unit:'元', op:'>', val:5,  on:true  },
-    { key:'gm',  label:'毛利率',     unit:'%',  op:'>', val:20, on:false },
-    { key:'om',  label:'營業利益率', unit:'%',  op:'>', val:5,  on:false },
-    { key:'nm',  label:'淨利率',     unit:'%',  op:'>', val:5,  on:false },
-    { key:'rev_yoy',     label:'月營收 YoY',   unit:'%', op:'>', val:10, on:false },
-  { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%', op:'>', val:10, on:false }
+    { key:'eps',         label:'EPS TTM',      unit:'元', op:'>', val:5,  on:true  },
+    { key:'gm',          label:'毛利率',        unit:'%',  op:'>', val:20, on:false },
+    { key:'gm_yoy',      label:'毛利率年增',    unit:'pp', op:'>', val:0,  on:false },
+    { key:'om',          label:'營業利益率',    unit:'%',  op:'>', val:5,  on:false },
+    { key:'om_yoy',      label:'營業利益率年增',unit:'pp', op:'>', val:0,  on:false },
+    { key:'nm',          label:'淨利率',        unit:'%',  op:'>', val:5,  on:false },
+    { key:'nm_yoy',      label:'淨利率年增',    unit:'pp', op:'>', val:0,  on:false },
+    { key:'rev_yoy',     label:'月營收 YoY',   unit:'%',  op:'>', val:10, on:false },
+    { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false }
   ];
   renderScreenConds();
   document.getElementById('screenerResults').innerHTML = '';
@@ -2392,8 +2398,11 @@ function renderScreenResults(matches) {
     + '<th style="text-align:left;padding:5px 6px;">名稱</th>'
     + '<th style="text-align:right;padding:5px 6px;">EPS</th>'
     + '<th style="text-align:right;padding:5px 6px;">毛利率</th>'
+    + '<th style="text-align:right;padding:5px 6px;">毛利率增</th>'
     + '<th style="text-align:right;padding:5px 6px;">營業利益率</th>'
+    + '<th style="text-align:right;padding:5px 6px;">營益率增</th>'
     + '<th style="text-align:right;padding:5px 6px;">淨利率</th>'
+    + '<th style="text-align:right;padding:5px 6px;">淨利率增</th>'
     + '<th style="text-align:right;padding:5px 6px;">月收YoY</th>'
     + '<th style="text-align:right;padding:5px 6px;">累計YoY</th>'
     + '<th style="padding:5px 6px;"></th>'
@@ -2415,8 +2424,11 @@ function renderScreenResults(matches) {
       + '<td style="padding:7px 6px;color:#e2e8f0;font-size:12px;">' + escapeHtml(name) + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:' + (f.gm_yoy==null?'#64748b':f.gm_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.gm_yoy!=null?(f.gm_yoy>=0?'+':'')+f.gm_yoy.toFixed(1)+'pp':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.om!=null?f.om.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:' + (f.om_yoy==null?'#64748b':f.om_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.om_yoy!=null?(f.om_yoy>=0?'+':'')+f.om_yoy.toFixed(1)+'pp':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.nm!=null?f.nm.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:7px 6px;text-align:right;color:' + (f.nm_yoy==null?'#64748b':f.nm_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.nm_yoy!=null?(f.nm_yoy>=0?'+':'')+f.nm_yoy.toFixed(1)+'pp':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:' + (f.rev_yoy==null?'#64748b':f.rev_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.rev_yoy!=null?(f.rev_yoy>=0?'+':'')+f.rev_yoy.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;text-align:right;color:' + (f.rev_cum_yoy==null?'#64748b':f.rev_cum_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.rev_cum_yoy!=null?(f.rev_cum_yoy>=0?'+':'')+f.rev_cum_yoy.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:7px 6px;">' + btn + '</td>'

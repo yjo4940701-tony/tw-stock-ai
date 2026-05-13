@@ -136,9 +136,14 @@ for idx, sid in enumerate(stock_ids):
 
         entry = {"eps": round(sum(eps_vals), 2)}
 
-        # 優先用最近年報（12-31），否則用最新季
-        annual = [d for d in sorted_dates if d.endswith("-12-31")]
-        c = by_date[annual[0]] if annual else by_date[sorted_dates[0]]
+        # 最新單季
+        latest_date = sorted_dates[0]
+        c = by_date[latest_date]
+
+        # 去年同季（找相同月日的前一年資料）
+        ld = datetime.strptime(latest_date, "%Y-%m-%d")
+        prev_date = f"{ld.year-1}-{ld.month:02d}-{ld.day:02d}"
+        p = by_date.get(prev_date, {})
 
         def safe_ratio(num, den):
             try:
@@ -158,13 +163,20 @@ for idx, sid in enumerate(stock_ids):
             if om is not None: entry["om"] = om
             if nm is not None: entry["nm"] = nm
 
-        equity  = c.get(EQUITY_KEY)
-        net_inc = c.get(NET_KEY)
-        if equity and net_inc:
-            roe = safe_ratio(net_inc, equity)
-            if roe is not None: entry["roe"] = roe
+            # 去年同季毛利率/營業利益率/淨利率 → 算年增（百分點）
+            p_rev = p.get(REVENUE_KEY)
+            if p_rev:
+                gm_p = safe_ratio(p.get(GROSS_KEY), p_rev)
+                om_p = safe_ratio(p.get(OP_KEY),    p_rev)
+                nm_p = safe_ratio(p.get(NET_KEY),   p_rev)
+                if gm is not None and gm_p is not None:
+                    entry["gm_yoy"] = round(gm - gm_p, 1)
+                if om is not None and om_p is not None:
+                    entry["om_yoy"] = round(om - om_p, 1)
+                if nm is not None and nm_p is not None:
+                    entry["nm_yoy"] = round(nm - nm_p, 1)
 
-        entry["d"] = TODAY.strftime("%Y-%m-%d")   # 記錄抓取日期
+        entry["d"] = TODAY.strftime("%Y-%m-%d")
         result[sid] = entry
         new_count += 1
 
