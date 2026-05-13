@@ -365,8 +365,10 @@ a{color:#60a5fa;}
       ④ 貼在下方儲存即可<br><br>
       <span style="color:#475569;">Key 僅存於你的瀏覽器，不會上傳。</span>
     </div>
-    <label class="form-label">AI API Key（Groq 或 Gemini）</label>
-    <input id="apiKeyInput" class="form-input" type="text" placeholder="gsk_... 或 AIza...">
+    <label class="form-label">主要 AI Key（Gemini 或 Groq）</label>
+    <input id="apiKeyInput" class="form-input" type="text" placeholder="AIza... 或 gsk_...">
+    <label class="form-label" style="margin-top:10px;">備用 AI Key <span style="color:#64748b;font-size:11px;">（主要用完自動切換）</span></label>
+    <input id="apiKeyInput2" class="form-input" type="text" placeholder="另一個 gsk_... 或 AIza...">
 
     <!-- FinMind Token（選填，提高股票資料查詢配額） -->
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
@@ -467,8 +469,10 @@ var PROXIES = [
 // 初始化
 // ─────────────────────────────────
 (function init() {
-  var k = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  var k = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (k) document.getElementById('apiKeyInput').value = k;
+  var k2 = localStorage.getItem('tw_key2');
+  if (k2) document.getElementById('apiKeyInput2').value = k2;
   var fm = localStorage.getItem('tw_finmind');
   if (fm) document.getElementById('finmindInput').value = fm;
   // 之前停在瀏覽全市場模式的話，自動回到群組1
@@ -548,9 +552,13 @@ function saveKey() {
   }
 
   if (k) {
-    localStorage.setItem('tw_groq', k);
+    localStorage.setItem('tw_key1', k);
+    localStorage.removeItem('tw_groq');
     localStorage.removeItem('tw_gemini');
   }
+  var k2 = document.getElementById('apiKeyInput2').value.trim();
+  if (k2) localStorage.setItem('tw_key2', k2);
+  else localStorage.removeItem('tw_key2');
   if (fm) {
     localStorage.setItem('tw_finmind', fm);
   } else {
@@ -2127,8 +2135,9 @@ function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI) {
 }
 
 function runAnalysis() {
-  var apiKey = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
-  if (!apiKey) { openSettings(); toast('請先設定 Groq API Key', 'err'); return; }
+  var apiKey = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  var apiKey2 = localStorage.getItem('tw_key2');
+  if (!apiKey) { openSettings(); toast('請先設定 AI API Key', 'err'); return; }
 
   var d = stocks[current];
   if (!d) return;
@@ -2227,35 +2236,33 @@ function runAnalysis() {
     });
   }
 
-  function callAI(useBackup) {
-    var modelName = 'Groq Llama 3.3 70B';
-    if (!isGemini && useBackup) {
-      body = JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7, max_tokens: 2048
-      });
-      modelName = 'Groq Llama 3.1 8B（備援）';
-      res.innerHTML = '<p style="color:#f59e0b;">⚡ 主模型忙碌，切換備援模型中...</p>';
+  function buildReqForKey(key) {
+    var isG = key.indexOf('AIza') === 0;
+    var u, h, b;
+    if (isG) {
+      u = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + key;
+      h = { 'Content-Type': 'application/json' };
+      b = JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.7,maxOutputTokens:2048} });
+    } else {
+      u = 'https://api.groq.com/openai/v1/chat/completions';
+      h = { 'Content-Type':'application/json', 'Authorization':'Bearer '+key };
+      b = JSON.stringify({ model:'llama-3.3-70b-versatile', messages:[{role:'user',content:prompt}], temperature:0.7, max_tokens:2048 });
     }
-    console.log('[AI] 使用：' + (isGemini ? 'Gemini 2.5 Flash Lite' : modelName));
+    return { u:u, h:h, b:b, isG:isG };
+  }
 
-    return fetch(url, { method: 'POST', headers: headers, body: body })
+  function callWithKey(key, label) {
+    var req = buildReqForKey(key);
+    console.log('[AI] 使用：' + label);
+    return fetch(req.u, { method:'POST', headers:req.h, body:req.b })
     .then(function(r) {
-      if (!r.ok) {
-        return r.json().then(function(e) {
-          throw new Error((e.error && e.error.message) || 'HTTP '+r.status);
-        });
-      }
+      if (!r.ok) return r.json().then(function(e){ throw new Error((e.error&&e.error.message)||'HTTP '+r.status); });
       return r.json();
     })
     .then(function(data) {
-      var text;
-      if (isGemini) {
-        text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-      } else {
-        text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      }
+      var text = req.isG
+        ? (data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text)
+        : (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content);
       if (!text) throw new Error('回應格式異常');
       res.innerHTML = md2html(text);
       btn.textContent = '🔄 重新分析';
@@ -2263,16 +2270,18 @@ function runAnalysis() {
     });
   }
 
-  callAI(false).catch(function(e) {
-    if (!isGemini && !e.message.indexOf('high demand') === -1 === false && e.message.indexOf('high demand') !== -1) {
-      return callAI(true).catch(function(e2) { throw e2; });
+  function isQuotaErr(msg) {
+    return msg.indexOf('quota') !== -1 || msg.indexOf('high demand') !== -1 || msg.indexOf('rate limit') !== -1 || msg.indexOf('429') !== -1;
+  }
+
+  callWithKey(apiKey, '主要 Key').catch(function(e) {
+    if (apiKey2 && isQuotaErr(e.message)) {
+      res.innerHTML = '<p style="color:#f59e0b;">⚡ 主要 Key 用盡，切換備用 Key...</p>';
+      return callWithKey(apiKey2, '備用 Key');
     }
     throw e;
   }).catch(function(e) {
-    var hint = isGemini
-      ? '若 Gemini 一直 quota 為 0，請改用 Groq：前往 <a href="https://console.groq.com/keys" target="_blank" style="color:#60a5fa;">console.groq.com/keys</a> 取得 gsk_ 開頭的 Key 替換即可。'
-      : '請確認 Groq API Key 是否正確。前往 <a href="https://console.groq.com/keys" target="_blank" style="color:#60a5fa;">console.groq.com/keys</a> 取得免費 Key（gsk_ 開頭）。';
-    res.innerHTML = '<p style="color:#f87171;">分析失敗：'+e.message+'</p><p style="color:#475569;font-size:12px;margin-top:8px;">'+hint+'</p>';
+    res.innerHTML = '<p style="color:#f87171;">分析失敗：'+e.message+'</p><p style="color:#475569;font-size:12px;margin-top:8px;">請確認兩組 Key 是否正確，或至設定頁更新。</p>';
     btn.textContent = '重新分析';
     btn.disabled = false;
   });
