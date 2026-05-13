@@ -2138,7 +2138,7 @@ function runAnalysis() {
   btn.innerHTML = '<div class="spin" style="width:12px;height:12px;"></div> 分析中...';
 
   var res = document.getElementById('aiResult');
-  res.innerHTML = '<p style="color:#60a5fa;">AI 正在分析，請稍候（約 10-20 秒）...</p>';
+  res.innerHTML = '<p style="color:#60a5fa;">📰 抓取最新新聞（1/2）...</p>';
 
   var prices = d.chartData.map(function(x){return x.close;});
   var ma5    = calcMA(prices, 5);
@@ -2166,6 +2166,23 @@ function runAnalysis() {
   // 建立結構化診斷
   var diag = buildDiagnostics(d, last(ma5), last(ma20), last(ma60), last(rsi));
 
+  // 抓取近期新聞
+  var newsDate = new Date(); newsDate.setMonth(newsDate.getMonth() - 3);
+  var newsUrl  = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockNews&data_id=' + d.ticker + '&start_date=' + newsDate.toISOString().slice(0,10);
+
+  fetch(newsUrl)
+  .then(function(r){ return r.ok ? r.json() : {data:[]}; })
+  .catch(function(){ return {data:[]}; })
+  .then(function(newsData) {
+    var newsRows = (newsData.data || [])
+      .sort(function(a,b){ return b.date > a.date ? 1 : -1; })
+      .slice(0, 5);
+    var newsStr = newsRows.length > 0
+      ? newsRows.map(function(n){ return '・' + n.date.slice(0,10) + ' ' + n.title; }).join('\n')
+      : '（近期無新聞資料）';
+
+    res.innerHTML = '<p style="color:#60a5fa;">🤖 AI 正在分析（2/2），請稍候...</p>';
+
   var prompt = '你是專業的台灣股市分析師，專門服務「短線操作（1個月內進出）」的投資人。\n\n'
     + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　'
     + '漲跌：' + (d.change>=0?'+':'') + d.change.toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)\n'
@@ -2175,11 +2192,12 @@ function runAnalysis() {
     + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
     + '近5日收盤：' + r5 + '\n'
     + revSupp
+    + '\n【近期新聞】\n' + newsStr + '\n'
     + '\n請依序用以下格式撰寫（繁體中文，精簡有力，每點不超過2行）：\n\n'
     + '## 🟢 優勢分析\n（根據診斷訊號，列3個最強的做多理由）\n\n'
     + '## 🔴 劣勢與風險\n（根據診斷訊號，列2個最大短線風險）\n\n'
     + '## 🏭 產業需求評估\n（此公司屬於哪個產業？現在需求 or 未來需求？景氣循環位置？1-2句）\n\n'
-    + '## 📰 近期重要事件\n（根據訓練資料，列3則值得短線投資人注意的消息，格式：・事件摘要）\n\n'
+    + '## 📰 近期重要事件\n（根據以上新聞，點評1-2則對短線最有影響的消息）\n\n'
     + '## 📊 技術面解讀\n（月高低支撐壓力、MA位置、RSI研判，針對1個月進出）\n\n'
     + '## 🎯 短線進場建議\n（進場價區間、停損價、1個月目標價）\n\n'
     + '## 💡 操作策略\n（一句話：現在買進/等待/觀望，原因）';
@@ -2240,6 +2258,7 @@ function runAnalysis() {
     btn.textContent = '重新分析';
     btn.disabled = false;
   });
+  }); // end news .then()
 }
 
 // ─────────────────────────────────
