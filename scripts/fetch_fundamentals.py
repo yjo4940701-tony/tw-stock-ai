@@ -35,7 +35,7 @@ def is_fresh(entry):
 
 TOKEN      = os.environ.get("FINMIND_TOKEN", "")
 BASE       = "https://api.finmindtrade.com/api/v4/data"
-SLEEP      = 6.5   # 秒，安全在 600 req/hr 以下
+SLEEP      = 12.0  # 秒，安全在 300 req/hr 匿名上限以內
 STOCK_RANGE = os.environ.get("STOCK_RANGE", "")   # e.g. "2000-2999"
 # 輸出檔：有 range 時存成分段檔，最後由 merge job 合併
 OUT_PATH   = f"data/fundamentals-{STOCK_RANGE}.json" if STOCK_RANGE else "data/fundamentals.json"

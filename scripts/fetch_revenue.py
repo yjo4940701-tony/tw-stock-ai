@@ -10,7 +10,7 @@ from collections import defaultdict
 
 TODAY       = date.today()
 BASE        = "https://api.finmindtrade.com/api/v4/data"
-SLEEP       = 6.5
+SLEEP       = 12.0
 STOCK_RANGE = os.environ.get("STOCK_RANGE", "")
 OUT_PATH    = f"data/revenue-{STOCK_RANGE}.json" if STOCK_RANGE else "data/revenue.json"
 FUND_PATH   = "data/fundamentals.json"
