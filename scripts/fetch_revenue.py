@@ -15,7 +15,7 @@ STOCK_RANGE = os.environ.get("STOCK_RANGE", "")
 OUT_PATH    = f"data/revenue-{STOCK_RANGE}.json" if STOCK_RANGE else "data/revenue.json"
 FUND_PATH   = "data/fundamentals.json"
 
-start = (datetime.now() - timedelta(days=430)).strftime("%Y-%m-%d")
+start = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
 
 def is_fresh(entry):
     rev_d = entry.get("rev_d")
