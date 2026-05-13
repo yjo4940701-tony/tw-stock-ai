@@ -2227,30 +2227,48 @@ function runAnalysis() {
     });
   }
 
-  console.log('[AI] 使用：' + (isGemini ? 'Gemini 2.5 Flash Lite' : 'Groq Llama 3.3 70B'));
-
-  fetch(url, { method: 'POST', headers: headers, body: body })
-  .then(function(r) {
-    if (!r.ok) {
-      return r.json().then(function(e) {
-        throw new Error((e.error && e.error.message) || 'HTTP '+r.status);
+  function callAI(useBackup) {
+    var modelName = 'Groq Llama 3.3 70B';
+    if (!isGemini && useBackup) {
+      body = JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7, max_tokens: 2048
       });
+      modelName = 'Groq Llama 3.1 8B（備援）';
+      res.innerHTML = '<p style="color:#f59e0b;">⚡ 主模型忙碌，切換備援模型中...</p>';
     }
-    return r.json();
-  })
-  .then(function(data) {
-    var text;
-    if (isGemini) {
-      text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-    } else {
-      text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    console.log('[AI] 使用：' + (isGemini ? 'Gemini 2.5 Flash Lite' : modelName));
+
+    return fetch(url, { method: 'POST', headers: headers, body: body })
+    .then(function(r) {
+      if (!r.ok) {
+        return r.json().then(function(e) {
+          throw new Error((e.error && e.error.message) || 'HTTP '+r.status);
+        });
+      }
+      return r.json();
+    })
+    .then(function(data) {
+      var text;
+      if (isGemini) {
+        text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+      } else {
+        text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      }
+      if (!text) throw new Error('回應格式異常');
+      res.innerHTML = md2html(text);
+      btn.textContent = '🔄 重新分析';
+      btn.disabled = false;
+    });
+  }
+
+  callAI(false).catch(function(e) {
+    if (!isGemini && !e.message.indexOf('high demand') === -1 === false && e.message.indexOf('high demand') !== -1) {
+      return callAI(true).catch(function(e2) { throw e2; });
     }
-    if (!text) throw new Error('回應格式異常');
-    res.innerHTML = md2html(text);
-    btn.textContent = '🔄 重新分析';
-    btn.disabled = false;
-  })
-  .catch(function(e) {
+    throw e;
+  }).catch(function(e) {
     var hint = isGemini
       ? '若 Gemini 一直 quota 為 0，請改用 Groq：前往 <a href="https://console.groq.com/keys" target="_blank" style="color:#60a5fa;">console.groq.com/keys</a> 取得 gsk_ 開頭的 Key 替換即可。'
       : '請確認 Groq API Key 是否正確。前往 <a href="https://console.groq.com/keys" target="_blank" style="color:#60a5fa;">console.groq.com/keys</a> 取得免費 Key（gsk_ 開頭）。';
