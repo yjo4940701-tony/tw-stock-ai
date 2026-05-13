@@ -1,104 +1,116 @@
 """
 fetch_revenue.py
-在 merge job 裡執行，bulk 抓全市場月營收並計算 YoY，
-更新進 data/fundamentals.json。
-
-月營收每月 10 日前更新，每次 merge 都執行一次，
-確保 fundamentals.json 裡的月營收資料是最新的。
+每月由 GitHub Actions 執行，逐檔查詢月營收並計算 YoY/MoM。
+4 個平行 job 各負責一段代號，匿名查詢不消耗 token 配額。
 """
 
-import os, json, requests, sys
+import os, json, time, requests, sys
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 
-TOKEN   = os.environ.get("FINMIND_TOKEN", "")
-BASE    = "https://api.finmindtrade.com/api/v4/data"
-TODAY   = date.today()
-FUND_PATH = "data/fundamentals.json"
+TODAY       = date.today()
+BASE        = "https://api.finmindtrade.com/api/v4/data"
+SLEEP       = 6.5
+STOCK_RANGE = os.environ.get("STOCK_RANGE", "")
+OUT_PATH    = f"data/revenue-{STOCK_RANGE}.json" if STOCK_RANGE else "data/revenue.json"
+FUND_PATH   = "data/fundamentals.json"
 
-# 抓近 14 個月，足夠算 YoY
 start = (datetime.now() - timedelta(days=430)).strftime("%Y-%m-%d")
 
-print(f"=== Fetching TaiwanStockMonthRevenue (bulk, from {start}) ===", flush=True)
+def is_fresh(entry):
+    rev_d = entry.get("rev_d")
+    if not rev_d:
+        return False
+    try:
+        d = datetime.strptime(rev_d, "%Y-%m-%d").date()
+        return d.year == TODAY.year and d.month == TODAY.month
+    except Exception:
+        return False
 
-params = {"dataset": "TaiwanStockMonthRevenue", "start_date": start}
-if TOKEN:
-    params["token"] = TOKEN
-
-r = requests.get(BASE, params=params, timeout=180)
-
-if r.status_code == 400:
-    print("400 error：bulk query 不支援，月營收略過")
-    sys.exit(0)
-
-r.raise_for_status()
-rows = r.json().get("data", [])
-print(f"共 {len(rows):,} 筆", flush=True)
-
-if not rows:
-    print("無資料，略過")
-    sys.exit(0)
-
-# ── 整理成 {stock_id: [{y, m, rev}, ...]} ────────────────
-by_stock = defaultdict(list)
-for row in rows:
-    by_stock[row["stock_id"]].append({
-        "y":   int(row["revenue_year"]),
-        "m":   int(row["revenue_month"]),
-        "rev": float(row.get("revenue", 0))
-    })
-
-# ── 計算各股最新月 YoY ────────────────────────────────────
-rev_map = {}
-for sid, recs in by_stock.items():
-    recs.sort(key=lambda x: (x["y"], x["m"]))
-    latest = recs[-1]
-    prev = next(
-        (r for r in recs if r["y"] == latest["y"]-1 and r["m"] == latest["m"]),
-        None
-    )
-    yoy = None
-    if prev and prev["rev"] > 0:
-        yoy = round((latest["rev"] - prev["rev"]) / prev["rev"] * 100, 1)
-
-    # MoM（上個月）
-    mom = None
-    if len(recs) >= 2:
-        prev_m = recs[-2]
-        if prev_m["rev"] > 0:
-            mom = round((latest["rev"] - prev_m["rev"]) / prev_m["rev"] * 100, 1)
-
-    rev_map[sid] = {
-        "rev_yoy": yoy,
-        "rev_mom": mom,
-        "rev_ym":  f"{latest['y']}-{latest['m']:02d}",
-        "rev_d":   TODAY.strftime("%Y-%m-%d")
-    }
-
-print(f"計算 YoY/MoM 完成，共 {len(rev_map):,} 檔", flush=True)
-
-# ── 更新 fundamentals.json ────────────────────────────────
 if not os.path.exists(FUND_PATH):
     print(f"找不到 {FUND_PATH}，略過")
     sys.exit(0)
 
 with open(FUND_PATH, encoding="utf-8") as f:
-    fund = json.load(f)
+    all_ids = sorted(json.load(f).get("stocks", {}).keys())
 
-stocks = fund.get("stocks", {})
-updated = 0
-for sid, rv in rev_map.items():
-    if sid in stocks:
-        stocks[sid].update(rv)
-    else:
-        stocks[sid] = rv
-    updated += 1
+if STOCK_RANGE and "-" in STOCK_RANGE:
+    parts = STOCK_RANGE.split("-")
+    lo, hi = int(parts[0]), int(parts[1])
+    stock_ids = [s for s in all_ids if s.isdigit() and lo <= int(s) <= hi]
+    print(f"區段 {STOCK_RANGE}：目標 {len(stock_ids)} 檔", flush=True)
+else:
+    stock_ids = all_ids
+    print(f"全範圍：目標 {len(stock_ids)} 檔", flush=True)
 
-fund["rev_updated"] = TODAY.strftime("%Y-%m-%d")
-fund["stocks"] = stocks
+existing = {}
+if os.path.exists(OUT_PATH):
+    try:
+        with open(OUT_PATH, encoding="utf-8") as f:
+            existing = json.load(f)
+        print(f"Resume：已有 {len(existing)} 檔", flush=True)
+    except Exception:
+        pass
 
-with open(FUND_PATH, "w", encoding="utf-8") as f:
-    json.dump(fund, f, ensure_ascii=False, separators=(",", ":"))
+result = dict(existing)
 
-size_kb = os.path.getsize(FUND_PATH) / 1024
-print(f"更新 {updated:,} 檔，存至 {FUND_PATH}（{size_kb:.0f} KB）")
+def save():
+    os.makedirs("data", exist_ok=True)
+    with open(OUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, separators=(",", ":"))
+
+for idx, sid in enumerate(stock_ids):
+    if is_fresh(result.get(sid, {})):
+        continue
+
+    try:
+        resp = requests.get(BASE, params={
+            "dataset":    "TaiwanStockMonthRevenue",
+            "data_id":    sid,
+            "start_date": start
+        }, timeout=30)
+
+        if resp.status_code in (400, 404):
+            result[sid] = {"rev_d": TODAY.strftime("%Y-%m-%d")}
+            time.sleep(SLEEP)
+            continue
+        resp.raise_for_status()
+
+        rows = resp.json().get("data", [])
+        if not rows:
+            result[sid] = {"rev_d": TODAY.strftime("%Y-%m-%d")}
+            time.sleep(SLEEP)
+            continue
+
+        recs = sorted([{
+            "y": int(r["revenue_year"]),
+            "m": int(r["revenue_month"]),
+            "rev": float(r.get("revenue", 0))
+        } for r in rows], key=lambda x: (x["y"], x["m"]))
+
+        latest  = recs[-1]
+        prev_yoy = next((r for r in recs if r["y"] == latest["y"]-1 and r["m"] == latest["m"]), None)
+        prev_mom = recs[-2] if len(recs) >= 2 else None
+
+        yoy = round((latest["rev"] - prev_yoy["rev"]) / prev_yoy["rev"] * 100, 1) if prev_yoy and prev_yoy["rev"] > 0 else None
+        mom = round((latest["rev"] - prev_mom["rev"]) / prev_mom["rev"] * 100, 1) if prev_mom and prev_mom["rev"] > 0 else None
+
+        result[sid] = {
+            "rev_yoy": yoy,
+            "rev_mom": mom,
+            "rev_ym":  f"{latest['y']}-{latest['m']:02d}",
+            "rev_d":   TODAY.strftime("%Y-%m-%d")
+        }
+
+    except Exception as e:
+        print(f"  [{sid}] 錯誤：{e}", flush=True)
+
+    time.sleep(SLEEP)
+
+    if (idx + 1) % 50 == 0:
+        save()
+        print(f"  進度：{idx+1}/{len(stock_ids)}", flush=True)
+
+save()
+valid = sum(1 for v in result.values() if v.get("rev_yoy") is not None)
+print(f"\n完成：{len(result)} 檔，有 YoY 值：{valid} 檔", flush=True)
