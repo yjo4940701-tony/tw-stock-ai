@@ -191,12 +191,10 @@ select.bt-input{cursor:pointer;}
 .nav-btn{background:none;border:1px solid #334155;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;transition:all .15s;}
 .nav-btn:hover{background:#1e293b;color:#fff;}
 .nav-btn.active{border-color:#2563eb;color:#60a5fa;background:rgba(37,99,235,.1);}
-/* SCREENER TABS */
-.scrn-tab{background:none;border:none;border-bottom:2px solid transparent;color:#64748b;padding:10px 18px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:-1px;}
-.scrn-tab:hover{color:#94a3b8;}
-.scrn-tab.active{color:#fff;border-bottom-color:#2563eb;}
-.scrn-tabs{display:flex;border-bottom:1px solid #1e293b;padding:0 4px;margin:-4px -4px 16px;}
 .indicator-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.scrn-section{margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #1e293b;}
+.scrn-section:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+.scrn-section-title{font-weight:700;font-size:13px;color:#e2e8f0;margin-bottom:10px;}
 @media(max-width:768px){
   #bt-layout{grid-template-columns:1fr!important;}
   .bt-metrics{grid-template-columns:1fr 1fr 1fr;}
@@ -580,83 +578,62 @@ select.bt-input{cursor:pointer;}
     <div class="modal-hdr">
       <div>
         <div class="modal-title">🔍 選股工具</div>
-        <div id="screenerSub" class="modal-sub">指標篩選套用於自選股，財報篩選搜尋全市場</div>
+        <div id="screenerSub" class="modal-sub">同時設定技術指標與財報條件，再選篩選範圍</div>
       </div>
       <button class="btn-close" onclick="closeScreener()">✕</button>
     </div>
-    <div class="modal-body" style="padding-top:0;">
+    <div class="modal-body">
 
-      <!-- 分類 Tabs -->
-      <div class="scrn-tabs">
-        <button class="scrn-tab active" id="stab-indicator" onclick="setScreenerTab('indicator')">📈 指標篩選</button>
-        <button class="scrn-tab" id="stab-fundamental" onclick="setScreenerTab('fundamental')">📊 財報篩選</button>
-      </div>
-
-      <!-- 指標篩選（原 filterBar） -->
-      <div id="scrn-indicator-panel">
-        <!-- 範圍切換 -->
-        <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;">
-          <span style="color:#64748b;font-size:12px;margin-right:4px;">套用範圍：</span>
-          <button class="bt-stab active" id="ind-scope-watch" onclick="setIndScope('watchlist')" style="flex:none;padding:5px 14px;font-size:12px;">自選股</button>
-          <button class="bt-stab" id="ind-scope-all" onclick="setIndScope('all')" style="flex:none;padding:5px 14px;font-size:12px;">全市場</button>
+      <!-- 技術指標區塊 -->
+      <div class="scrn-section">
+        <div class="scrn-section-title">📈 技術指標 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・點數值可調整</span></div>
+        <div id="filterBar" class="indicator-filters" style="margin-bottom:0;">
+          <button class="fbtn" id="fbtn-all" onclick="clearFilters()">清除全部</button>
+          <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
+          <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
+          <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
+          <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">多頭排列</button>
+          <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
+          <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
+          <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
         </div>
-        <div id="ind-scope-note" style="display:none;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:8px 10px;font-size:11px;color:#86efac;margin-bottom:10px;line-height:1.6;">
-          ⚠ 技術指標需即時股價資料，全市場模式會從 FinMind 批次抓取所有自選股計算，結果仍限自選股範圍
-        </div>
-        <div style="color:#64748b;font-size:12px;margin-bottom:10px;">多選 AND · 點數值可調整</div>
-
-        <!-- 指標類 -->
-        <div style="margin-bottom:14px;">
-          <div style="font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📈 技術指標</div>
-          <div id="filterBar" class="indicator-filters">
-            <button class="fbtn" id="fbtn-all" onclick="clearFilters()">全部（清除）</button>
-            <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">🟢 RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
-            <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">📈 突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
-            <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">🎯 距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
-            <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">🔥 多頭排列</button>
-            <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">💎 回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
-          </div>
-        </div>
-
-        <!-- 基本面快篩 -->
-        <div style="margin-bottom:16px;">
-          <div style="font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">💰 基本面快篩</div>
-          <div class="indicator-filters">
-            <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">📊 YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
-            <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">💰 EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
-          </div>
-        </div>
-
-        <!-- 套用結果列 -->
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #1e293b;padding-top:14px;">
-          <span id="filterCount" style="color:#94a3b8;font-size:13px;"></span>
-          <div style="display:flex;gap:8px;">
-            <button id="batchBtn" onclick="runBatchAnalysis()" disabled
-              style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;opacity:.4;">
-              🎯 批次 AI 分析
-            </button>
-            <button onclick="applyIndicatorAndClose()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;">
-              套用篩選 ✓
-            </button>
-          </div>
+        <div id="ind-global-note" style="display:none;margin-top:8px;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:7px 10px;font-size:11px;color:#86efac;">
+          ⚠ 全市場模式：技術指標會套用在財報篩選結果的前 50 檔（需抓取價格，約需 1 分鐘）
         </div>
       </div>
 
-      <!-- 財報篩選（原 screener） -->
-      <div id="scrn-fundamental-panel" style="display:none;">
-        <!-- 範圍切換 -->
-        <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;">
-          <span style="color:#64748b;font-size:12px;margin-right:4px;">套用範圍：</span>
-          <button class="bt-stab" id="fund-scope-watch" onclick="setFundScope('watchlist')" style="flex:none;padding:5px 14px;font-size:12px;">自選股</button>
-          <button class="bt-stab active" id="fund-scope-all" onclick="setFundScope('all')" style="flex:none;padding:5px 14px;font-size:12px;">全市場</button>
-        </div>
+      <!-- 財報條件區塊 -->
+      <div class="scrn-section">
+        <div class="scrn-section-title">📊 財報條件 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・勾選啟用</span></div>
         <div id="screenerConditions"></div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button id="screenerRunBtn" onclick="runScreener()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;">篩選全市場</button>
-          <button onclick="resetScreener()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">重置</button>
-        </div>
-        <div id="screenerResults" style="margin-top:14px;max-height:380px;overflow-y:auto;"></div>
       </div>
+
+      <!-- 底部：範圍 + 執行 -->
+      <div style="border-top:1px solid #1e293b;padding-top:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="color:#64748b;font-size:12px;">篩選範圍：</span>
+          <button class="bt-stab active" id="scope-watch" onclick="setScope('watchlist')" style="flex:none;padding:5px 16px;font-size:12px;">自選股</button>
+          <button class="bt-stab" id="scope-all" onclick="setScope('all')" style="flex:none;padding:5px 16px;font-size:12px;">全市場</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="filterCount" style="color:#94a3b8;font-size:12px;"></span>
+          <button id="batchBtn" onclick="runBatchAnalysis()" disabled
+            style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:500;cursor:pointer;opacity:.4;">
+            🎯 批次 AI
+          </button>
+          <button onclick="resetScreener()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;">重置</button>
+          <button id="screenerRunBtn" onclick="runUnifiedScreener()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;">篩選</button>
+        </div>
+      </div>
+
+      <!-- 進度條（全市場+技術指標時顯示） -->
+      <div id="scrn-fetch-progress" style="display:none;margin-top:12px;">
+        <div style="color:#94a3b8;font-size:12px;margin-bottom:6px;" id="scrn-fetch-text"></div>
+        <div class="bt-progress-bar-wrap"><div class="bt-progress-bar" id="scrn-fetch-bar"></div></div>
+      </div>
+
+      <!-- 結果 -->
+      <div id="screenerResults" style="margin-top:14px;max-height:360px;overflow-y:auto;"></div>
 
     </div>
   </div>
@@ -1628,6 +1605,12 @@ function matchFilter(d, name) {
 }
 
 function filterTickers(list) {
+  // 統一篩選結果優先（自選股模式下由 runUnifiedScreener 設定）
+  if (_unifiedResult !== null) {
+    var set = {};
+    _unifiedResult.forEach(function(t) { set[t] = true; });
+    return list.filter(function(t) { return !!set[t]; });
+  }
   var keys = Object.keys(activeFilters);
   if (keys.length === 0) return list.slice();
   return list.filter(function(t) {
@@ -1638,6 +1621,20 @@ function filterTickers(list) {
     }
     return true;
   });
+}
+
+// 儲存統一篩選結果（自選股模式用）
+var _unifiedResult = null;
+
+function _applyWatchlistResult(tickers, label) {
+  _unifiedResult = tickers;
+  closeScreener();
+  renderGrid();
+  toast('篩選完成：' + tickers.length + ' 檔符合', 'ok');
+  var bar = document.getElementById('filterActiveBar');
+  var cnt = document.getElementById('filterActiveCount');
+  if (bar) bar.style.display = tickers.length ? 'flex' : 'none';
+  if (cnt) cnt.innerHTML = label + '　符合 <strong>' + tickers.length + '</strong> / ' + activeGroup().tickers.length + ' 檔';
 }
 
 function toggleFilter(name) {
@@ -1654,6 +1651,7 @@ function toggleFilter(name) {
 
 function clearFilters() {
   activeFilters = {};
+  _unifiedResult = null;
   var btns = document.querySelectorAll('[id^="fbtn-"]');
   for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
   renderGrid();
@@ -2569,48 +2567,160 @@ var screenConds = [
   { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false }
 ];
 
-var _screenerTab = 'indicator';
-var _indScope  = 'watchlist';
-var _fundScope = 'all';
+var _scope = 'watchlist'; // 'watchlist' | 'all'
 
-function setScreenerTab(tab) {
-  _screenerTab = tab;
-  document.getElementById('stab-indicator').classList.toggle('active', tab === 'indicator');
-  document.getElementById('stab-fundamental').classList.toggle('active', tab === 'fundamental');
-  document.getElementById('scrn-indicator-panel').style.display   = tab === 'indicator'  ? '' : 'none';
-  document.getElementById('scrn-fundamental-panel').style.display = tab === 'fundamental' ? '' : 'none';
-  if (tab === 'fundamental') renderScreenConds();
+function setScope(s) {
+  _scope = s;
+  document.getElementById('scope-watch').classList.toggle('active', s === 'watchlist');
+  document.getElementById('scope-all').classList.toggle('active', s === 'all');
+  var hasInd = Object.keys(activeFilters).length > 0;
+  var note = document.getElementById('ind-global-note');
+  if (note) note.style.display = (s === 'all' && hasInd) ? '' : 'none';
+  document.getElementById('screenerRunBtn').textContent = s === 'watchlist' ? '篩選' : '篩選全市場';
 }
 
-function setIndScope(s) {
-  _indScope = s;
-  document.getElementById('ind-scope-watch').classList.toggle('active', s === 'watchlist');
-  document.getElementById('ind-scope-all').classList.toggle('active', s === 'all');
-  document.getElementById('ind-scope-note').style.display = s === 'all' ? '' : 'none';
-}
+// ── 統一選股器 ────────────────────────────────────
+function runUnifiedScreener() {
+  var hasInd  = Object.keys(activeFilters).length > 0;
+  var hasFund = screenConds.some(function(c) { return c.on; });
 
-function setFundScope(s) {
-  _fundScope = s;
-  document.getElementById('fund-scope-watch').classList.toggle('active', s === 'watchlist');
-  document.getElementById('fund-scope-all').classList.toggle('active', s === 'all');
-  var btn = document.getElementById('screenerRunBtn');
-  if (btn) btn.textContent = s === 'watchlist' ? '篩選自選股' : '篩選全市場';
-}
-
-function applyIndicatorAndClose() {
-  closeScreener();
-  renderGrid();
-  var count = filterTickers(watchlist).length;
-  if (Object.keys(activeFilters).length > 0) {
-    toast('篩選完成：' + count + ' / ' + watchlist.length + ' 檔符合', 'ok');
+  if (!hasInd && !hasFund) {
+    toast('請至少設定一個篩選條件', 'err');
+    return;
   }
+
+  if (_scope === 'watchlist') {
+    _runWatchlistScreener(hasInd, hasFund);
+  } else {
+    _runAllMarketScreener(hasInd, hasFund);
+  }
+}
+
+// 自選股篩選：財報 AND 技術指標，均從已有資料取
+function _runWatchlistScreener(hasInd, hasFund) {
+  var tickers = activeGroup().tickers;
+  if (!tickers.length) { toast('自選股清單是空的', 'err'); return; }
+  var enabled = screenConds.filter(function(c) { return c.on; });
+
+  var matches = tickers.filter(function(t) {
+    // 財報條件
+    if (hasFund) {
+      var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[t];
+      if (!f || f.eps == null) return false;
+      if (!enabled.every(function(c) {
+        var v = f[c.key]; if (v == null) return false;
+        return c.op === '>' ? v > c.val : v < c.val;
+      })) return false;
+    }
+    // 技術指標
+    if (hasInd) {
+      var d = stocks[t];
+      if (!d) return false;
+      if (!Object.keys(activeFilters).every(function(k) { return matchFilter(d, k); })) return false;
+    }
+    return true;
+  });
+
+  window.lastScreenerResults = matches.map(function(t) { return { sid: t }; });
+  var parts = [];
+  if (hasInd)  parts.push(Object.keys(activeFilters).map(function(k){
+    var m={'oversold':'RSI','breakout':'MA突破','near-low':'距年低','bullish':'多頭','pullback':'回檔','rev-yoy':'YoY','eps-min':'EPS'};
+    return m[k]||k;
+  }).join('+'));
+  if (hasFund) parts.push('財報條件');
+  _applyWatchlistResult(matches, parts.join(' + '));
+}
+
+// 全市場篩選：財報先篩 → 再取前 50 抓價格 → 套技術指標
+function _runAllMarketScreener(hasInd, hasFund) {
+  var resEl = document.getElementById('screenerResults');
+  if (!fundamentalsCache || !fundamentalsCache.stocks) {
+    resEl.innerHTML = '<p style="color:#f87171;">財報資料尚未載入</p>'; return;
+  }
+  var enabled = screenConds.filter(function(c) { return c.on; });
+
+  // Step 1：財報篩選
+  var fundMatches = [];
+  if (hasFund) {
+    Object.keys(fundamentalsCache.stocks).forEach(function(sid) {
+      var f = fundamentalsCache.stocks[sid];
+      if (!f || f.eps == null) return;
+      if (enabled.every(function(c) {
+        var v = f[c.key]; if (v == null) return false;
+        return c.op === '>' ? v > c.val : v < c.val;
+      })) fundMatches.push(sid);
+    });
+    fundMatches.sort(function(a, b) {
+      return (fundamentalsCache.stocks[b].eps||0) - (fundamentalsCache.stocks[a].eps||0);
+    });
+  } else {
+    // 只有技術指標，沒有財報條件 → 無法掃全市場
+    toast('全市場 + 技術指標需要至少一個財報條件縮小範圍', 'err'); return;
+  }
+
+  if (!hasInd) {
+    // 只有財報篩選
+    window.lastScreenerResults = fundMatches.slice(0,200).map(function(t) { return { sid:t, f: fundamentalsCache.stocks[t] }; });
+    renderScreenResults(window.lastScreenerResults);
+    document.getElementById('screenerSub').textContent = '全市場財報篩選　符合：' + fundMatches.length + ' 檔' + (fundMatches.length>200?' (顯示前200)':'');
+    return;
+  }
+
+  // 有技術指標：取前 50 → 抓價格 → 套指標
+  var toFetch = fundMatches.slice(0, 50);
+  var days    = 180; // 抓半年夠算技術指標
+  var done = 0, passed = [];
+  var prog = document.getElementById('scrn-fetch-progress');
+  var bar  = document.getElementById('scrn-fetch-bar');
+  var txt  = document.getElementById('scrn-fetch-text');
+  prog.style.display = '';
+  resEl.innerHTML = '';
+
+  var savedSrc = btDataSource; btDataSource = 'finmind'; // 技術指標用日K
+  btCancelFlag = false;
+
+  toFetch.forEach(function(sid) {
+    queuePriceFetch(sid, days, function(err, rows) {
+      done++;
+      bar.style.width = Math.round(done / toFetch.length * 100) + '%';
+      txt.textContent = '抓取價格 ' + done + ' / ' + toFetch.length + '（評估技術指標中）';
+
+      if (!err && rows) {
+        // 將 price rows 轉成 stocks 格式計算指標
+        var closes = rows.map(function(r) { return +r.close; });
+        var rsiArr = calcRSI(closes, 14);
+        var ma20   = calcMA(closes, 20);
+        var ma5    = calcMA(closes, 5);
+        var n = closes.length - 1;
+        var mockD = {
+          rsi:       rsiArr[n],
+          closes:    closes,
+          pctFromLow: n >= 252 ? (closes[n] - Math.min.apply(null,closes.slice(n-252))) / Math.min.apply(null,closes.slice(n-252)) * 100 : null,
+          isBullish: (ma5[n]!=null && ma20[n]!=null && ma5[n] > ma20[n]),
+          pct5d:     n >= 5 ? (closes[n]-closes[n-5])/closes[n-5]*100 : null,
+          monthRev:  stocks[sid] ? stocks[sid].monthRev : null
+        };
+        var pass = Object.keys(activeFilters).every(function(k) { return matchFilter(mockD, k); });
+        if (pass) passed.push(sid);
+      }
+
+      if (done >= toFetch.length) {
+        btDataSource = savedSrc;
+        prog.style.display = 'none';
+        window.lastScreenerResults = passed.map(function(t) { return { sid:t, f: fundamentalsCache.stocks[t] }; });
+        renderScreenResults(window.lastScreenerResults);
+        document.getElementById('screenerSub').textContent =
+          '全市場（財報→技術）　財報符合 ' + fundMatches.length + ' 檔，技術指標篩出 ' + passed.length + ' 檔';
+      }
+    });
+  });
 }
 
 function openScreener() {
   document.getElementById('screenerOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
-  // 預設顯示指標篩選，同步目前 filter 按鈕狀態
-  setScreenerTab(_screenerTab);
+  renderScreenConds();
+  setScope(_scope); // 同步範圍按鈕狀態
   updateFilterStatus(filterTickers(watchlist).length);
   var sub = document.getElementById('screenerSub');
   var res = document.getElementById('screenerResults');
@@ -2714,16 +2824,8 @@ function runScreener() {
 
   resEl.innerHTML = '<p style="color:#64748b;font-size:13px;">篩選中...</p>';
 
-  // 自選股模式：只看目前自選股清單
+  // 舊版 runScreener 已由 runUnifiedScreener 取代，此處保留相容
   var watchSet = null;
-  if (_fundScope === 'watchlist') {
-    watchSet = {};
-    activeGroup().tickers.forEach(function(t) { watchSet[t] = true; });
-    if (activeGroup().tickers.length === 0) {
-      resEl.innerHTML = '<p style="color:#f87171;">自選股清單是空的，請先加入股票</p>';
-      return;
-    }
-  }
 
   var matches = [];
   var fstocks = fundamentalsCache.stocks;
@@ -2743,9 +2845,7 @@ function runScreener() {
   window.lastScreenerResults = matches; // 供批次回測使用
 
   var sub = document.getElementById('screenerSub');
-  var scopeLabel = _fundScope === 'watchlist' ? '自選股' : '全市場';
   sub.textContent = '財報：' + fundamentalsCache.updated
-    + '　範圍：' + scopeLabel
     + '　符合：' + matches.length + ' 檔'
     + (matches.length > 200 ? '（顯示前 200）' : '');
 
