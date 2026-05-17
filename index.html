@@ -307,6 +307,18 @@ select.bt-input{cursor:pointer;}
           <div class="bt-panel-title">⚙ 策略設定</div>
 
           <div class="bt-section">
+            <div class="bt-label">資料來源</div>
+            <div class="bt-strategy-tabs">
+              <button class="bt-stab active" id="src-finmind" onclick="setDataSource('finmind')">FinMind 日K</button>
+              <button class="bt-stab" id="src-fugle60" onclick="setDataSource('fugle60')">Fugle 60分K</button>
+              <button class="bt-stab" id="src-fugle15" onclick="setDataSource('fugle15')">Fugle 15分K</button>
+            </div>
+            <div id="src-fugle-hint" style="display:none;margin-top:8px;background:#1e3a5f;border-radius:6px;padding:8px 10px;font-size:11px;color:#93c5fd;line-height:1.6;">
+              需在「⚙ 設定」填入 Fugle API Key<br>最多 364 天，免費版 60 次/分鐘
+            </div>
+          </div>
+
+          <div class="bt-section">
             <div class="bt-label">策略類型</div>
             <div class="bt-strategy-tabs">
               <button class="bt-stab active" id="stab-ma" onclick="setStrategy('ma')">MA 均線</button>
@@ -357,7 +369,7 @@ select.bt-input{cursor:pointer;}
             <select class="bt-input" id="bt-period">
               <option value="90">3 個月</option>
               <option value="180">6 個月</option>
-              <option value="365" selected>1 年</option>
+              <option value="364" selected>約 1 年（364 天）</option>
             </select>
           </div>
         </div>
@@ -550,6 +562,17 @@ select.bt-input{cursor:pointer;}
       <input id="finmindInput" class="form-input" type="text" placeholder="留空也可以（匿名使用）">
     </div>
 
+    <!-- Fugle API Key（分K 回測用） -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
+      <label class="form-label">富果 Fugle API Key <span style="color:#64748b;font-size:11px;">（回測分K 專用）</span></label>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;color:#64748b;line-height:1.6;">
+        ✅ 支援 15分K / 60分K 歷史回測（最多 364 天）<br>
+        ① 前往 <a href="https://developer.fugle.tw" target="_blank" style="color:#60a5fa;">developer.fugle.tw</a> 登入<br>
+        ② 個人設定 → 複製 API Token
+      </div>
+      <input id="fugleInput" class="form-input" type="text" placeholder="貼上 Fugle API Key">
+    </div>
+
     <div id="keyStatus" class="status-msg"></div>
     <div class="btn-row">
       <button type="button" class="btn-save" onclick="saveKey()">儲存全部</button>
@@ -643,6 +666,8 @@ var PROXIES = [
   if (k2) document.getElementById('apiKeyInput2').value = k2;
   var fm = localStorage.getItem('tw_finmind');
   if (fm) document.getElementById('finmindInput').value = fm;
+  var fg = localStorage.getItem('tw_fugle');
+  if (fg) document.getElementById('fugleInput').value = fg;
   // 之前停在瀏覽全市場模式的話，自動回到群組1
   if (GROUPS.active === -1) { GROUPS.active = 0; saveGroups(); }
   renderTabs();
@@ -732,10 +757,13 @@ function saveKey() {
   } else {
     localStorage.removeItem('tw_finmind');
   }
+  var fg = document.getElementById('fugleInput').value.trim();
+  if (fg) localStorage.setItem('tw_fugle', fg);
+  else localStorage.removeItem('tw_fugle');
 
   s.style.background = '#14532d';
   s.style.color = '#86efac';
-  s.textContent = '✅ 儲存成功！' + (fm ? '（含 FinMind Token）' : '') + ' 按取消關閉此視窗。';
+  s.textContent = '✅ 儲存成功！' + (fm ? '（含 FinMind Token）' : '') + (fg ? '（含 Fugle Key）' : '') + ' 按取消關閉此視窗。';
 }
 
 // FinMind URL helper（已停用 token：FinMind 對帶 token 的請求不發 CORS header）
@@ -2775,16 +2803,27 @@ function processQueue() {
   if (btCancelFlag || btQueue.length === 0) { btQueueRunning = false; return; }
   btQueueRunning = true;
   var item = btQueue.shift();
-  fetchPriceData(item.stockId, item.days, function(err, data) {
+  var isFugle = item.src && item.src !== 'finmind';
+  var interval = isFugle ? 1500 : 13000; // Fugle: 1.5s（60次/分），FinMind: 13s（276次/小時）
+  var timeframe = item.src === 'fugle15' ? '15' : '60';
+
+  function onDone(err, data) {
     if (err && err.status === 429) {
-      btQueue.unshift(item); // 放回最前面
-      setTimeout(processQueue, 60000); // 等 60 秒
+      btQueue.unshift(item);
+      var retryMs = isFugle ? 10000 : 60000;
+      setTimeout(processQueue, retryMs);
       return;
     }
-    if (!err && data) setPriceCache(item.stockId + '_' + item.days, data);
+    if (!err && data) setPriceCache(item.cacheKey, data);
     item.cb(err, data);
-    setTimeout(processQueue, 13000); // 每 13 秒一次（276次/小時，低於 300 上限）
-  });
+    setTimeout(processQueue, interval);
+  }
+
+  if (isFugle) {
+    fetchFugleData(item.stockId, item.days, timeframe, onDone);
+  } else {
+    fetchPriceData(item.stockId, item.days, onDone);
+  }
 }
 
 function cancelBatch() {
@@ -2812,6 +2851,69 @@ function fetchPriceData(stockId, days, cb) {
       cb(null, json.data);
     })
     .catch(function(e) { cb({msg: e.message}); });
+}
+
+// ── 資料來源切換 ──────────────────────────────────
+var btDataSource = 'finmind'; // 'finmind' | 'fugle60' | 'fugle15'
+
+function setDataSource(src) {
+  btDataSource = src;
+  ['finmind','fugle60','fugle15'].forEach(function(x) {
+    document.getElementById('src-' + x).classList.toggle('active', x === src);
+  });
+  var isFugle = src !== 'finmind';
+  document.getElementById('src-fugle-hint').style.display = isFugle ? '' : 'none';
+  // Fugle 最多 364 天，日K 可以更長但我們統一 364
+  var sel = document.getElementById('bt-period');
+  if (isFugle && +sel.value > 364) sel.value = '364';
+}
+
+// ── Fugle fetch ────────────────────────────────────
+function fetchFugleData(stockId, days, timeframe, cb) {
+  var fugleKey = localStorage.getItem('tw_fugle');
+  if (!fugleKey) { cb({msg: '請先在「⚙ 設定」填入 Fugle API Key'}); return; }
+
+  var end   = new Date();
+  var start = new Date(+end - days * 86400000);
+  function fmt(d) { return d.toISOString().slice(0,10); }
+
+  var url = 'https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/'
+    + stockId + '?from=' + fmt(start) + '&to=' + fmt(end)
+    + '&timeframe=' + timeframe + '&sort=asc';
+
+  fetch(url, { headers: { 'X-API-KEY': fugleKey } })
+    .then(function(r) {
+      if (r.status === 429) { cb({status: 429}); return null; }
+      if (r.status === 401) { cb({msg: 'Fugle API Key 無效，請重新設定'}); return null; }
+      if (r.status === 400) { cb({msg: '查詢範圍超出 Fugle 限制'}); return null; }
+      return r.json();
+    })
+    .then(function(json) {
+      if (!json) return;
+      if (!json.data || json.data.length === 0) { cb({msg: '無資料（可能非交易日或代號錯誤）'}); return; }
+      // 轉成與 FinMind 相同格式：{date, close, open, max, min}
+      var rows = json.data.map(function(d) {
+        return {
+          date:  d.date,   // ISO 字串，含時間
+          close: d.close,
+          open:  d.open,
+          max:   d.high,
+          min:   d.low,
+          volume: d.volume
+        };
+      });
+      cb(null, rows);
+    })
+    .catch(function(e) { cb({msg: e.message}); });
+}
+
+// ── 佇列：Fugle 用 1.5s 間隔，FinMind 用 13s ─────
+function queuePriceFetch(stockId, days, cb) {
+  var cacheKey = btDataSource + '_' + stockId + '_' + days;
+  var cached = getPriceCache(cacheKey);
+  if (cached) { cb(null, cached); return; }
+  btQueue.push({stockId: stockId, days: days, cb: cb, cacheKey: cacheKey, src: btDataSource});
+  if (!btQueueRunning) processQueue();
 }
 
 // ── 策略切換 ──────────────────────────────────────
@@ -2956,17 +3058,25 @@ function runBacktest(rows, params) {
 function runSingleBacktest() {
   var ticker = (document.getElementById('bt-ticker').value || '').trim().toUpperCase();
   if (!ticker) { toast('請輸入股票代號', 'err'); return; }
-  var days = +document.getElementById('bt-period').value;
+  var days   = +document.getElementById('bt-period').value;
   var params = getBtParams();
-  var cached = getPriceCache(ticker + '_' + days);
+  var cacheKey = btDataSource + '_' + ticker + '_' + days;
+  var cached = getPriceCache(cacheKey);
   if (cached) { renderSingleResult(ticker, cached, params); return; }
 
-  toast('抓取 ' + ticker + ' 資料中⋯');
-  fetchPriceData(ticker, days, function(err, data) {
+  var srcLabel = btDataSource === 'finmind' ? '日K' : (btDataSource === 'fugle60' ? '60分K' : '15分K');
+  toast('抓取 ' + ticker + '（' + srcLabel + '）資料中⋯');
+
+  function onData(err, data) {
     if (err) { toast('資料取得失敗' + (err.msg ? '：' + err.msg : ''), 'err'); return; }
-    setPriceCache(ticker + '_' + days, data);
+    setPriceCache(cacheKey, data);
     renderSingleResult(ticker, data, params);
-  });
+  }
+
+  var isFugle = btDataSource !== 'finmind';
+  var timeframe = btDataSource === 'fugle15' ? '15' : '60';
+  if (isFugle) fetchFugleData(ticker, days, timeframe, onData);
+  else          fetchPriceData(ticker, days, onData);
 }
 
 function renderSingleResult(ticker, rows, params) {
@@ -3026,6 +3136,19 @@ function renderSingleResult(ticker, rows, params) {
   renderBtChart(result);
 }
 
+function fmtDateLabel(d) {
+  // ISO 含時間（分K）→ MM/DD HH:mm；純日期 → MM/DD
+  if (!d) return '';
+  var s = d.replace('＊','');
+  if (s.indexOf('T') !== -1) {
+    var parts = s.split('T');
+    var md = parts[0].slice(5);           // MM-DD
+    var hm = parts[1].slice(0,5);         // HH:mm
+    return md.replace('-','/') + ' ' + hm;
+  }
+  return s.slice(5).replace('-','/');     // MM/DD
+}
+
 function renderBtChart(result) {
   var ctx = document.getElementById('btChart');
   if (!ctx) return;
@@ -3033,14 +3156,16 @@ function renderBtChart(result) {
 
   var buyPts = {}, sellPts = {};
   result.trades.forEach(function(t) {
-    buyPts[t.buyDate] = result.closes[t.buyIdx];
+    buyPts[t.buyDate]                    = result.closes[t.buyIdx];
     sellPts[t.sellDate.replace('＊','')] = result.closes[t.sellIdx];
   });
+
+  var labels = result.dates.map(fmtDateLabel);
 
   window._btChartInst = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: {
-      labels: result.dates,
+      labels: labels,
       datasets: [
         { label: '收盤價', data: result.closes, borderColor: '#3b82f6',
           borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0, order: 3 },
@@ -3059,7 +3184,8 @@ function renderBtChart(result) {
       interaction: { mode: 'index', intersect: false },
       plugins: { legend: { labels: { color: '#94a3b8', font: {size: 11}, boxWidth: 12 } } },
       scales: {
-        x: { ticks: { color: '#64748b', maxTicksLimit: 8, font: {size: 10} }, grid: { color: '#1e293b' } },
+        x: { ticks: { color: '#64748b', maxTicksLimit: 10, font: {size: 10},
+                      maxRotation: 0, autoSkip: true }, grid: { color: '#1e293b' } },
         y: { ticks: { color: '#64748b', font: {size: 10} }, grid: { color: '#1e293b' } }
       }
     }
@@ -3157,18 +3283,23 @@ function renderBatchResults() {
 
 function loadFromBatch(ticker) {
   document.getElementById('bt-ticker').value = ticker;
-  var days   = +document.getElementById('bt-period').value;
-  var params = getBtParams();
-  var cached = getPriceCache(ticker + '_' + days);
+  var days     = +document.getElementById('bt-period').value;
+  var params   = getBtParams();
+  var cacheKey = btDataSource + '_' + ticker + '_' + days;
+  var cached   = getPriceCache(cacheKey);
   if (cached) {
     renderSingleResult(ticker, cached, params);
   } else {
     toast('載入 ' + ticker + ' 詳細資料⋯');
-    fetchPriceData(ticker, days, function(err, data) {
+    var isFugle = btDataSource !== 'finmind';
+    var timeframe = btDataSource === 'fugle15' ? '15' : '60';
+    function onData(err, data) {
       if (err) { toast('資料取得失敗', 'err'); return; }
-      setPriceCache(ticker + '_' + days, data);
+      setPriceCache(cacheKey, data);
       renderSingleResult(ticker, data, params);
-    });
+    }
+    if (isFugle) fetchFugleData(ticker, days, timeframe, onData);
+    else          fetchPriceData(ticker, days, onData);
   }
   document.getElementById('bt-single-result').scrollIntoView({behavior: 'smooth'});
 }
