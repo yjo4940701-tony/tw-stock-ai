@@ -594,7 +594,16 @@ select.bt-input{cursor:pointer;}
 
       <!-- 指標篩選（原 filterBar） -->
       <div id="scrn-indicator-panel">
-        <div style="color:#64748b;font-size:12px;margin-bottom:10px;">套用於自選股 · 多選 AND · 點數值可調整</div>
+        <!-- 範圍切換 -->
+        <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;">
+          <span style="color:#64748b;font-size:12px;margin-right:4px;">套用範圍：</span>
+          <button class="bt-stab active" id="ind-scope-watch" onclick="setIndScope('watchlist')" style="flex:none;padding:5px 14px;font-size:12px;">自選股</button>
+          <button class="bt-stab" id="ind-scope-all" onclick="setIndScope('all')" style="flex:none;padding:5px 14px;font-size:12px;">全市場</button>
+        </div>
+        <div id="ind-scope-note" style="display:none;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:8px 10px;font-size:11px;color:#86efac;margin-bottom:10px;line-height:1.6;">
+          ⚠ 技術指標需即時股價資料，全市場模式會從 FinMind 批次抓取所有自選股計算，結果仍限自選股範圍
+        </div>
+        <div style="color:#64748b;font-size:12px;margin-bottom:10px;">多選 AND · 點數值可調整</div>
 
         <!-- 指標類 -->
         <div style="margin-bottom:14px;">
@@ -635,9 +644,15 @@ select.bt-input{cursor:pointer;}
 
       <!-- 財報篩選（原 screener） -->
       <div id="scrn-fundamental-panel" style="display:none;">
+        <!-- 範圍切換 -->
+        <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;">
+          <span style="color:#64748b;font-size:12px;margin-right:4px;">套用範圍：</span>
+          <button class="bt-stab" id="fund-scope-watch" onclick="setFundScope('watchlist')" style="flex:none;padding:5px 14px;font-size:12px;">自選股</button>
+          <button class="bt-stab active" id="fund-scope-all" onclick="setFundScope('all')" style="flex:none;padding:5px 14px;font-size:12px;">全市場</button>
+        </div>
         <div id="screenerConditions"></div>
         <div style="display:flex;gap:8px;margin-top:14px;">
-          <button onclick="runScreener()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;">篩選全市場</button>
+          <button id="screenerRunBtn" onclick="runScreener()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;">篩選全市場</button>
           <button onclick="resetScreener()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">重置</button>
         </div>
         <div id="screenerResults" style="margin-top:14px;max-height:380px;overflow-y:auto;"></div>
@@ -2555,13 +2570,31 @@ var screenConds = [
 ];
 
 var _screenerTab = 'indicator';
+var _indScope  = 'watchlist';
+var _fundScope = 'all';
+
 function setScreenerTab(tab) {
   _screenerTab = tab;
   document.getElementById('stab-indicator').classList.toggle('active', tab === 'indicator');
   document.getElementById('stab-fundamental').classList.toggle('active', tab === 'fundamental');
-  document.getElementById('scrn-indicator-panel').style.display  = tab === 'indicator'  ? '' : 'none';
+  document.getElementById('scrn-indicator-panel').style.display   = tab === 'indicator'  ? '' : 'none';
   document.getElementById('scrn-fundamental-panel').style.display = tab === 'fundamental' ? '' : 'none';
   if (tab === 'fundamental') renderScreenConds();
+}
+
+function setIndScope(s) {
+  _indScope = s;
+  document.getElementById('ind-scope-watch').classList.toggle('active', s === 'watchlist');
+  document.getElementById('ind-scope-all').classList.toggle('active', s === 'all');
+  document.getElementById('ind-scope-note').style.display = s === 'all' ? '' : 'none';
+}
+
+function setFundScope(s) {
+  _fundScope = s;
+  document.getElementById('fund-scope-watch').classList.toggle('active', s === 'watchlist');
+  document.getElementById('fund-scope-all').classList.toggle('active', s === 'all');
+  var btn = document.getElementById('screenerRunBtn');
+  if (btn) btn.textContent = s === 'watchlist' ? '篩選自選股' : '篩選全市場';
 }
 
 function applyIndicatorAndClose() {
@@ -2681,9 +2714,21 @@ function runScreener() {
 
   resEl.innerHTML = '<p style="color:#64748b;font-size:13px;">篩選中...</p>';
 
+  // 自選股模式：只看目前自選股清單
+  var watchSet = null;
+  if (_fundScope === 'watchlist') {
+    watchSet = {};
+    activeGroup().tickers.forEach(function(t) { watchSet[t] = true; });
+    if (activeGroup().tickers.length === 0) {
+      resEl.innerHTML = '<p style="color:#f87171;">自選股清單是空的，請先加入股票</p>';
+      return;
+    }
+  }
+
   var matches = [];
   var fstocks = fundamentalsCache.stocks;
   Object.keys(fstocks).forEach(function(sid) {
+    if (watchSet && !watchSet[sid]) return; // 自選股模式過濾
     var f = fstocks[sid];
     if (!f || f.eps == null) return;
     var pass = enabled.every(function(c) {
@@ -2698,7 +2743,9 @@ function runScreener() {
   window.lastScreenerResults = matches; // 供批次回測使用
 
   var sub = document.getElementById('screenerSub');
+  var scopeLabel = _fundScope === 'watchlist' ? '自選股' : '全市場';
   sub.textContent = '財報：' + fundamentalsCache.updated
+    + '　範圍：' + scopeLabel
     + '　符合：' + matches.length + ' 檔'
     + (matches.length > 200 ? '（顯示前 200）' : '');
 
