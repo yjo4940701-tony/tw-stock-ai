@@ -62,6 +62,15 @@ jobs:
           import json, os, glob
           from datetime import datetime
 
+          # 保留舊的月營收欄位
+          REV_KEYS = {"rev_yoy","rev_cum_yoy","rev_mom","rev_ym","rev_d"}
+          existing = {}
+          if os.path.exists("data/fundamentals.json"):
+              try:
+                  existing = json.load(open("data/fundamentals.json")).get("stocks", {})
+              except Exception:
+                  pass
+
           merged = {}
           for f in glob.glob("data/parts/*/*.json"):
               try:
@@ -70,6 +79,15 @@ jobs:
                   print(f"Merged {f}: {len(data.get('stocks', {}))} stocks")
               except Exception as e:
                   print(f"Skip {f}: {e}")
+
+          # 把舊的月營收資料補回新資料
+          for sid, old in existing.items():
+              rev = {k: v for k, v in old.items() if k in REV_KEYS}
+              if rev:
+                  if sid in merged:
+                      merged[sid].update(rev)
+                  else:
+                      merged[sid] = rev
 
           print(f"Total merged: {len(merged)} stocks")
           os.makedirs("data", exist_ok=True)
