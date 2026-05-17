@@ -2631,89 +2631,136 @@ function _runWatchlistScreener(hasInd, hasFund) {
   _applyWatchlistResult(matches, parts.join(' + '));
 }
 
-// 全市場篩選：財報先篩 → 再取前 50 抓價格 → 套技術指標
+// 全市場篩選：財報立刻顯示 → 有技術指標則漸進驗證
 function _runAllMarketScreener(hasInd, hasFund) {
   var resEl = document.getElementById('screenerResults');
+  var sub   = document.getElementById('screenerSub');
   if (!fundamentalsCache || !fundamentalsCache.stocks) {
     resEl.innerHTML = '<p style="color:#f87171;">財報資料尚未載入</p>'; return;
   }
   var enabled = screenConds.filter(function(c) { return c.on; });
 
-  // Step 1：財報篩選
+  if (!hasFund) { toast('全市場 + 技術指標需要至少一個財報條件縮小範圍', 'err'); return; }
+
+  // ── Step 1：財報篩選（即時） ──────────────────────
   var fundMatches = [];
-  if (hasFund) {
-    Object.keys(fundamentalsCache.stocks).forEach(function(sid) {
-      var f = fundamentalsCache.stocks[sid];
-      if (!f || f.eps == null) return;
-      if (enabled.every(function(c) {
-        var v = f[c.key]; if (v == null) return false;
-        return c.op === '>' ? v > c.val : v < c.val;
-      })) fundMatches.push(sid);
-    });
-    fundMatches.sort(function(a, b) {
-      return (fundamentalsCache.stocks[b].eps||0) - (fundamentalsCache.stocks[a].eps||0);
-    });
-  } else {
-    // 只有技術指標，沒有財報條件 → 無法掃全市場
-    toast('全市場 + 技術指標需要至少一個財報條件縮小範圍', 'err'); return;
-  }
+  Object.keys(fundamentalsCache.stocks).forEach(function(sid) {
+    var f = fundamentalsCache.stocks[sid];
+    if (!f || f.eps == null) return;
+    if (enabled.every(function(c) {
+      var v = f[c.key]; if (v == null) return false;
+      return c.op === '>' ? v > c.val : v < c.val;
+    })) fundMatches.push(sid);
+  });
+  fundMatches.sort(function(a, b) {
+    return (fundamentalsCache.stocks[b].eps||0) - (fundamentalsCache.stocks[a].eps||0);
+  });
 
   if (!hasInd) {
-    // 只有財報篩選
-    window.lastScreenerResults = fundMatches.slice(0,200).map(function(t) { return { sid:t, f: fundamentalsCache.stocks[t] }; });
+    // 只有財報篩選 → 直接顯示
+    window.lastScreenerResults = fundMatches.slice(0,200).map(function(t) { return {sid:t, f:fundamentalsCache.stocks[t]}; });
     renderScreenResults(window.lastScreenerResults);
-    document.getElementById('screenerSub').textContent = '全市場財報篩選　符合：' + fundMatches.length + ' 檔' + (fundMatches.length>200?' (顯示前200)':'');
+    sub.textContent = '全市場財報篩選　符合：' + fundMatches.length + ' 檔' + (fundMatches.length>200?' (顯示前200)':'');
     return;
   }
 
-  // 有技術指標：取前 50 → 抓價格 → 套指標
-  var toFetch = fundMatches.slice(0, 50);
-  var days    = 180; // 抓半年夠算技術指標
-  var done = 0, passed = [];
-  var prog = document.getElementById('scrn-fetch-progress');
-  var bar  = document.getElementById('scrn-fetch-bar');
-  var txt  = document.getElementById('scrn-fetch-text');
-  prog.style.display = '';
-  resEl.innerHTML = '';
+  // ── Step 2：有技術指標 → 先顯示財報結果，再漸進驗證 ──
+  var toVerify = fundMatches.slice(0, 50);
+  var passed = 0, done = 0;
 
-  var savedSrc = btDataSource; btDataSource = 'finmind'; // 技術指標用日K
+  // 馬上顯示財報結果（含驗證狀態欄）
+  _renderProgressiveTable(toVerify, fundMatches.length);
+  sub.textContent = '財報符合 ' + fundMatches.length + ' 檔（取前' + toVerify.length + '）・技術指標驗證中 0/' + toVerify.length + '...';
+
+  var savedSrc = btDataSource; btDataSource = 'finmind';
   btCancelFlag = false;
 
-  toFetch.forEach(function(sid) {
-    queuePriceFetch(sid, days, function(err, rows) {
+  toVerify.forEach(function(sid) {
+    queuePriceFetch(sid, 180, function(err, rows) {
       done++;
-      bar.style.width = Math.round(done / toFetch.length * 100) + '%';
-      txt.textContent = '抓取價格 ' + done + ' / ' + toFetch.length + '（評估技術指標中）';
+      var statusEl = document.getElementById('scrn-st-' + sid);
+      var rowEl    = document.getElementById('scrn-row-' + sid);
 
       if (!err && rows) {
-        // 將 price rows 轉成 stocks 格式計算指標
         var closes = rows.map(function(r) { return +r.close; });
-        var rsiArr = calcRSI(closes, 14);
-        var ma20   = calcMA(closes, 20);
-        var ma5    = calcMA(closes, 5);
         var n = closes.length - 1;
+        var rsiArr = calcRSI(closes, 14);
+        var ma5  = calcMA(closes, 5);
+        var ma20 = calcMA(closes, 20);
         var mockD = {
-          rsi:       rsiArr[n],
-          closes:    closes,
-          pctFromLow: n >= 252 ? (closes[n] - Math.min.apply(null,closes.slice(n-252))) / Math.min.apply(null,closes.slice(n-252)) * 100 : null,
-          isBullish: (ma5[n]!=null && ma20[n]!=null && ma5[n] > ma20[n]),
-          pct5d:     n >= 5 ? (closes[n]-closes[n-5])/closes[n-5]*100 : null,
-          monthRev:  stocks[sid] ? stocks[sid].monthRev : null
+          rsi:      rsiArr[n],
+          closes:   closes,
+          pctFromLow: n>=252 ? (closes[n]-Math.min.apply(null,closes.slice(n-252)))/Math.min.apply(null,closes.slice(n-252))*100 : null,
+          isBullish: ma5[n]!=null && ma20[n]!=null && ma5[n]>ma20[n],
+          pct5d:    n>=5 ? (closes[n]-closes[n-5])/closes[n-5]*100 : null,
+          monthRev: stocks[sid]?stocks[sid].monthRev:null
         };
         var pass = Object.keys(activeFilters).every(function(k) { return matchFilter(mockD, k); });
-        if (pass) passed.push(sid);
+        if (pass) {
+          passed++;
+          if (statusEl) statusEl.innerHTML = '<span style="color:#22c55e;font-weight:600;">✅</span>';
+        } else {
+          // 技術指標不符：灰掉該列
+          if (rowEl) rowEl.style.opacity = '0.25';
+          if (statusEl) statusEl.innerHTML = '<span style="color:#475569;">✗</span>';
+        }
+      } else {
+        if (statusEl) statusEl.innerHTML = '<span style="color:#475569;">—</span>';
       }
 
-      if (done >= toFetch.length) {
+      sub.textContent = '財報符合 ' + fundMatches.length + ' 檔・技術驗證 ' + done + '/' + toVerify.length + '，通過 ' + passed + ' 檔';
+
+      if (done >= toVerify.length) {
         btDataSource = savedSrc;
-        prog.style.display = 'none';
-        window.lastScreenerResults = passed.map(function(t) { return { sid:t, f: fundamentalsCache.stocks[t] }; });
-        renderScreenResults(window.lastScreenerResults);
-        document.getElementById('screenerSub').textContent =
-          '全市場（財報→技術）　財報符合 ' + fundMatches.length + ' 檔，技術指標篩出 ' + passed.length + ' 檔';
+        // 更新 lastScreenerResults 為通過的股票
+        var passedRows = toVerify.filter(function(t) {
+          var el = document.getElementById('scrn-row-' + t);
+          return el && el.style.opacity !== '0.25';
+        });
+        window.lastScreenerResults = passedRows.map(function(t) { return {sid:t, f:fundamentalsCache.stocks[t]}; });
+        sub.textContent = '✅ 完成　財報符合 ' + fundMatches.length + ' 檔・技術指標通過 ' + passed + ' / ' + toVerify.length + ' 檔';
       }
     });
   });
+}
+
+// 漸進式結果表格（財報資料 + 待驗證技術指標欄）
+function _renderProgressiveTable(tickers, totalFund) {
+  var resEl = document.getElementById('screenerResults');
+  if (!tickers.length) {
+    resEl.innerHTML = '<p style="color:#64748b;padding:20px 0;text-align:center;">沒有符合財報條件的股票</p>';
+    return;
+  }
+  var html = '<table style="width:100%;border-collapse:collapse;">'
+    + '<tr style="color:#64748b;font-size:11px;border-bottom:1px solid #334155;">'
+    + '<th style="text-align:left;padding:5px 6px;">代號</th>'
+    + '<th style="text-align:left;padding:5px 6px;">名稱</th>'
+    + '<th style="text-align:right;padding:5px 6px;">EPS</th>'
+    + '<th style="text-align:right;padding:5px 6px;">毛利率</th>'
+    + '<th style="text-align:right;padding:5px 6px;">月營收YoY</th>'
+    + '<th style="text-align:center;padding:5px 6px;">技術指標</th>'
+    + '<th style="text-align:right;padding:5px 6px;"></th>'
+    + '</tr>';
+
+  tickers.forEach(function(sid) {
+    var f = fundamentalsCache.stocks[sid] || {};
+    var name = STOCK_NAMES[sid] || '';
+    var eps  = f.eps  != null ? f.eps.toFixed(2)  : '—';
+    var gm   = f.gm   != null ? f.gm.toFixed(1)+'%' : '—';
+    var ryoy = f.rev_yoy != null ? (f.rev_yoy>0?'+':'')+f.rev_yoy.toFixed(1)+'%' : '—';
+    var ryoyClr = f.rev_yoy != null ? (f.rev_yoy>=0?'#22c55e':'#ef4444') : '#64748b';
+    html += '<tr id="scrn-row-' + sid + '" style="border-bottom:1px solid #1e293b;transition:opacity .3s;">'
+      + '<td style="padding:6px 6px;font-weight:700;">' + sid + '</td>'
+      + '<td style="padding:6px 6px;color:#94a3b8;font-size:12px;">' + name + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;">' + eps + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;">' + gm + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:' + ryoyClr + ';">' + ryoy + '</td>'
+      + '<td style="padding:6px 6px;text-align:center;" id="scrn-st-' + sid + '"><span style="color:#f59e0b;font-size:11px;">⏳</span></td>'
+      + '<td style="padding:6px 6px;text-align:right;"><button onclick="screenerAddStock(\'' + sid + '\')" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;">+加入</button></td>'
+      + '</tr>';
+  });
+  html += '</table>';
+  resEl.innerHTML = html;
 }
 
 function openScreener() {
