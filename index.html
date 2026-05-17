@@ -191,6 +191,12 @@ select.bt-input{cursor:pointer;}
 .nav-btn{background:none;border:1px solid #334155;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;transition:all .15s;}
 .nav-btn:hover{background:#1e293b;color:#fff;}
 .nav-btn.active{border-color:#2563eb;color:#60a5fa;background:rgba(37,99,235,.1);}
+/* SCREENER TABS */
+.scrn-tab{background:none;border:none;border-bottom:2px solid transparent;color:#64748b;padding:10px 18px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:-1px;}
+.scrn-tab:hover{color:#94a3b8;}
+.scrn-tab.active{color:#fff;border-bottom-color:#2563eb;}
+.scrn-tabs{display:flex;border-bottom:1px solid #1e293b;padding:0 4px;margin:-4px -4px 16px;}
+.indicator-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
 @media(max-width:768px){
   #bt-layout{grid-template-columns:1fr!important;}
   .bt-metrics{grid-template-columns:1fr 1fr 1fr;}
@@ -270,25 +276,12 @@ select.bt-input{cursor:pointer;}
     <div class="empty-sub">輸入台股代號開始追蹤，AI 幫你找出最佳進場時機</div>
   </div>
 
-  <!-- 篩選列 -->
-  <div id="filterBar" style="display:none;margin-bottom:14px;">
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;">
-      <span style="color:#64748b;font-size:12px;margin-right:4px;">📋 多選 AND：</span>
-      <button class="fbtn" id="fbtn-all" onclick="clearFilters()">全部（清除）</button>
-      <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">🟢 RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
-      <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">📈 突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
-      <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">🎯 距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
-      <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">🔥 多頭排列</button>
-      <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">💎 回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
-      <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">📊 YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
-      <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')" title="需等財報資料載入">💰 EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span id="filterCount" style="color:#94a3b8;font-size:13px;"></span>
-      <button id="batchBtn" onclick="runBatchAnalysis()" disabled
-        style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;opacity:.4;">
-        🎯 批次比較分析
-      </button>
+  <!-- 篩選已套用提示列 -->
+  <div id="filterActiveBar" style="display:none;margin-bottom:14px;background:#1e3a5f;border:1px solid #1d4ed8;border-radius:10px;padding:10px 14px;align-items:center;justify-content:space-between;gap:10px;">
+    <span id="filterActiveCount" style="color:#93c5fd;font-size:13px;"></span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button onclick="openScreener()" style="background:none;border:1px solid #1d4ed8;color:#60a5fa;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">修改篩選</button>
+      <button onclick="clearFilters()" style="background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;">✕ 清除</button>
     </div>
   </div>
 
@@ -583,21 +576,73 @@ select.bt-input{cursor:pointer;}
 
 <!-- SCREENER MODAL -->
 <div id="screenerOverlay" class="overlay" onclick="screenerOverlayClick(event)">
-  <div class="modal" style="max-width:680px;">
+  <div class="modal" style="max-width:720px;">
     <div class="modal-hdr">
       <div>
-        <div class="modal-title">📊 財報靈活選股</div>
-        <div id="screenerSub" class="modal-sub">點條件數值可調整，運算子可切換</div>
+        <div class="modal-title">🔍 選股工具</div>
+        <div id="screenerSub" class="modal-sub">指標篩選套用於自選股，財報篩選搜尋全市場</div>
       </div>
       <button class="btn-close" onclick="closeScreener()">✕</button>
     </div>
-    <div class="modal-body">
-      <div id="screenerConditions"></div>
-      <div style="display:flex;gap:8px;margin-top:14px;">
-        <button onclick="runScreener()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;">篩選</button>
-        <button onclick="resetScreener()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">重置</button>
+    <div class="modal-body" style="padding-top:0;">
+
+      <!-- 分類 Tabs -->
+      <div class="scrn-tabs">
+        <button class="scrn-tab active" id="stab-indicator" onclick="setScreenerTab('indicator')">📈 指標篩選</button>
+        <button class="scrn-tab" id="stab-fundamental" onclick="setScreenerTab('fundamental')">📊 財報篩選</button>
       </div>
-      <div id="screenerResults" style="margin-top:14px;max-height:420px;overflow-y:auto;"></div>
+
+      <!-- 指標篩選（原 filterBar） -->
+      <div id="scrn-indicator-panel">
+        <div style="color:#64748b;font-size:12px;margin-bottom:10px;">套用於自選股 · 多選 AND · 點數值可調整</div>
+
+        <!-- 指標類 -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📈 技術指標</div>
+          <div id="filterBar" class="indicator-filters">
+            <button class="fbtn" id="fbtn-all" onclick="clearFilters()">全部（清除）</button>
+            <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">🟢 RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
+            <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">📈 突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
+            <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">🎯 距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
+            <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">🔥 多頭排列</button>
+            <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">💎 回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
+          </div>
+        </div>
+
+        <!-- 基本面快篩 -->
+        <div style="margin-bottom:16px;">
+          <div style="font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">💰 基本面快篩</div>
+          <div class="indicator-filters">
+            <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">📊 YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
+            <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">💰 EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
+          </div>
+        </div>
+
+        <!-- 套用結果列 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #1e293b;padding-top:14px;">
+          <span id="filterCount" style="color:#94a3b8;font-size:13px;"></span>
+          <div style="display:flex;gap:8px;">
+            <button id="batchBtn" onclick="runBatchAnalysis()" disabled
+              style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;opacity:.4;">
+              🎯 批次 AI 分析
+            </button>
+            <button onclick="applyIndicatorAndClose()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;">
+              套用篩選 ✓
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 財報篩選（原 screener） -->
+      <div id="scrn-fundamental-panel" style="display:none;">
+        <div id="screenerConditions"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button onclick="runScreener()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:500;cursor:pointer;">篩選全市場</button>
+          <button onclick="resetScreener()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">重置</button>
+        </div>
+        <div id="screenerResults" style="margin-top:14px;max-height:380px;overflow-y:auto;"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1509,17 +1554,18 @@ function escapeHtml(s) {
 function renderGrid() {
   var grid  = document.getElementById('watchGrid');
   var empty = document.getElementById('emptyState');
-  var fbar  = document.getElementById('filterBar');
+  var fbar  = document.getElementById('filterActiveBar');
 
   if (watchlist.length === 0) {
     empty.style.display = 'block';
     grid.style.display  = 'none';
-    fbar.style.display  = 'none';
+    if (fbar) fbar.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
   grid.style.display  = 'grid';
-  fbar.style.display  = 'block';
+  var hasFilter = Object.keys(activeFilters).length > 0;
+  if (fbar) fbar.style.display = hasFilter ? 'flex' : 'none';
 
   // 套用篩選
   var filtered = filterTickers(watchlist);
@@ -1697,11 +1743,20 @@ function activeFilterLabel() {
 }
 
 function updateFilterStatus(count) {
-  var el = document.getElementById('filterCount');
+  var el  = document.getElementById('filterCount');
+  var el2 = document.getElementById('filterActiveCount');
   var btn = document.getElementById('batchBtn');
   var label = activeFilterLabel();
+  var hasFilter = Object.keys(activeFilters).length > 0;
+  var txt = '已顯示 <strong style="color:#fff;">' + count + '</strong> / ' + watchlist.length + ' 檔（' + label + '）';
 
-  el.innerHTML = '已顯示 <strong style="color:#fff;">' + count + '</strong> / ' + watchlist.length + ' 檔（' + label + '）';
+  if (el)  el.innerHTML  = txt;
+  // 主頁提示列
+  if (el2) el2.innerHTML = hasFilter
+    ? '篩選中：' + label + '　符合 <strong>' + count + '</strong> / ' + watchlist.length + ' 檔'
+    : '';
+  var fbar = document.getElementById('filterActiveBar');
+  if (fbar) fbar.style.display = hasFilter ? 'flex' : 'none';
 
   // 批次按鈕：篩選後 ≥ 2 檔且都載入完成才能用
   var loadedCount = 0;
@@ -2499,10 +2554,31 @@ var screenConds = [
   { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false }
 ];
 
+var _screenerTab = 'indicator';
+function setScreenerTab(tab) {
+  _screenerTab = tab;
+  document.getElementById('stab-indicator').classList.toggle('active', tab === 'indicator');
+  document.getElementById('stab-fundamental').classList.toggle('active', tab === 'fundamental');
+  document.getElementById('scrn-indicator-panel').style.display  = tab === 'indicator'  ? '' : 'none';
+  document.getElementById('scrn-fundamental-panel').style.display = tab === 'fundamental' ? '' : 'none';
+  if (tab === 'fundamental') renderScreenConds();
+}
+
+function applyIndicatorAndClose() {
+  closeScreener();
+  renderGrid();
+  var count = filterTickers(watchlist).length;
+  if (Object.keys(activeFilters).length > 0) {
+    toast('篩選完成：' + count + ' / ' + watchlist.length + ' 檔符合', 'ok');
+  }
+}
+
 function openScreener() {
   document.getElementById('screenerOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
-  renderScreenConds();
+  // 預設顯示指標篩選，同步目前 filter 按鈕狀態
+  setScreenerTab(_screenerTab);
+  updateFilterStatus(filterTickers(watchlist).length);
   var sub = document.getElementById('screenerSub');
   var res = document.getElementById('screenerResults');
   if (fundamentalsCache && fundamentalsCache.stocks) {
