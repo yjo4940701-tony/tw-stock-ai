@@ -192,6 +192,14 @@ select.bt-input{cursor:pointer;}
 .nav-btn:hover{background:#1e293b;color:#fff;}
 .nav-btn.active{border-color:#2563eb;color:#60a5fa;background:rgba(37,99,235,.1);}
 .indicator-filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+/* POSITION */
+.pos-badge{font-size:11px;padding:5px 8px;border-radius:6px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;}
+.pos-profit{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:#22c55e;}
+.pos-loss{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#ef4444;}
+.pos-input{background:#0a0f1e;border:1px solid #334155;border-radius:6px;padding:6px 10px;color:#fff;font-size:13px;width:100%;}
+.pos-input:focus{outline:none;border-color:#3b82f6;}
+.pos-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;}
+.pos-label{color:#64748b;font-size:11px;margin-bottom:4px;}
 .scrn-section{margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid #1e293b;}
 .scrn-section:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0;}
 .scrn-section-title{font-weight:700;font-size:13px;color:#e2e8f0;margin-bottom:10px;}
@@ -467,6 +475,36 @@ select.bt-input{cursor:pointer;}
           <span id="revLatest" style="color:#64748b;font-size:11px;"></span>
         </div>
         <div id="revContent" style="min-height:120px;"></div>
+      </div>
+
+      <!-- 持倉記錄 -->
+      <div class="chart-box" id="posBox">
+        <div class="chart-title">
+          <span>📍 我的持倉</span>
+          <button id="posEditBtn" onclick="togglePosEdit()" style="background:none;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">✏️ 編輯</button>
+        </div>
+        <div id="posDisplay"></div>
+        <div id="posEditForm" style="display:none;">
+          <div class="pos-row">
+            <div>
+              <div class="pos-label">進場日期</div>
+              <input class="pos-input" id="posDate" type="date" placeholder="YYYY-MM-DD">
+            </div>
+            <div>
+              <div class="pos-label">均價（元）</div>
+              <input class="pos-input" id="posCost" type="number" placeholder="0.00" step="0.01">
+            </div>
+            <div>
+              <div class="pos-label">股數（選填）</div>
+              <input class="pos-input" id="posShares" type="number" placeholder="0">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="savePositionForm()" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:6px;padding:7px;font-size:13px;font-weight:500;cursor:pointer;">儲存</button>
+            <button onclick="clearPosition()" style="background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;">清除</button>
+            <button onclick="togglePosEdit()" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;">取消</button>
+          </div>
+        </div>
       </div>
 
       <div class="ai-box">
@@ -1836,8 +1874,21 @@ function buildCard(ticker, d) {
       '<div><div class="label">月低</div><div class="down">'+fp(d.low20)+'</div></div>' +
     '</div>' +
     pBar +
+    buildPosBadge(ticker, d.price) +
     '<button class="card-ai-btn" onclick="openModal(\''+ticker+'\')"><div style="width:14px;height:14px;background:#2563eb;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;flex-shrink:0;">AI</div> 查看 AI 分析</button>' +
   '</div>';
+}
+
+function buildPosBadge(ticker, price) {
+  var pos = getPosition(ticker);
+  if (!pos || !pos.cost) return '';
+  var pnl = price ? (price - pos.cost) / pos.cost * 100 : null;
+  var cls = pnl == null ? '' : pnl >= 0 ? 'pos-profit' : 'pos-loss';
+  var days = pos.date ? Math.floor((Date.now() - new Date(pos.date)) / 86400000) : null;
+  return '<div class="pos-badge ' + cls + '">'
+    + '<span>📍 均價 ' + fp(pos.cost) + (days != null ? '・' + days + '天' : '') + '</span>'
+    + (pnl != null ? '<span style="font-weight:700;">' + (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%</span>' : '')
+    + '</div>';
 }
 
 function updateCard(ticker) {
@@ -1892,9 +1943,102 @@ function openModal(ticker) {
   document.body.style.overflow = 'hidden';
   setTimeout(function() { drawChart(d); }, 150);
 
+  // 持倉
+  renderPosBox(ticker);
   // 載入月營收 + 估值
   loadMonthlyRevenue(ticker);
   loadPER(ticker);
+}
+
+// ─────────────────────────────────
+// 持倉記錄系統
+// ─────────────────────────────────
+function loadPositions() {
+  try { return JSON.parse(localStorage.getItem('tw_positions') || '{}'); } catch(e) { return {}; }
+}
+function savePositions(pos) {
+  localStorage.setItem('tw_positions', JSON.stringify(pos));
+}
+function getPosition(ticker) {
+  return loadPositions()[ticker] || null;
+}
+
+function renderPosBox(ticker) {
+  var pos  = getPosition(ticker);
+  var d    = stocks[ticker];
+  var disp = document.getElementById('posDisplay');
+  var form = document.getElementById('posEditForm');
+  var eBtn = document.getElementById('posEditBtn');
+  if (!disp) return;
+
+  form.style.display = 'none';
+  eBtn.textContent = '✏️ 編輯';
+
+  if (!pos) {
+    disp.innerHTML = '<p style="color:#475569;font-size:12px;">尚未記錄進場資訊，點「編輯」填入</p>';
+    return;
+  }
+
+  var price   = d ? d.price : null;
+  var pnlPct  = (price && pos.cost) ? (price - pos.cost) / pos.cost * 100 : null;
+  var pnlAmt  = (price && pos.cost && pos.shares) ? (price - pos.cost) * pos.shares : null;
+  var days    = pos.date ? Math.floor((Date.now() - new Date(pos.date)) / 86400000) : null;
+  var cls     = pnlPct == null ? '' : pnlPct >= 0 ? 'pos-profit' : 'pos-loss';
+  var sign    = pnlPct >= 0 ? '+' : '';
+
+  var html = '<div class="pos-badge ' + cls + '">';
+  html += '<span>📅 ' + pos.date + (days != null ? '　持有 ' + days + ' 天' : '') + '</span>';
+  if (pnlPct != null) html += '<span style="font-weight:700;">' + sign + pnlPct.toFixed(2) + '%</span>';
+  html += '</div>';
+
+  html += '<div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">';
+  html += '<div><div class="pos-label">進場均價</div><div style="font-weight:700;font-size:15px;">'+fp(pos.cost)+'</div></div>';
+  if (price) html += '<div><div class="pos-label">現價</div><div style="font-weight:700;font-size:15px;">'+fp(price)+'</div></div>';
+  if (pnlAmt != null) html += '<div><div class="pos-label">損益金額</div><div style="font-weight:700;font-size:15px;color:'+(pnlAmt>=0?'#22c55e':'#ef4444')+'">'+(pnlAmt>=0?'+':'')+Math.round(pnlAmt).toLocaleString()+'</div></div>';
+  if (pos.shares) html += '<div><div class="pos-label">持股</div><div style="font-size:13px;color:#94a3b8;">'+Number(pos.shares).toLocaleString()+' 股</div></div>';
+  html += '</div>';
+
+  disp.innerHTML = html;
+}
+
+function togglePosEdit() {
+  var form = document.getElementById('posEditForm');
+  var eBtn = document.getElementById('posEditBtn');
+  var isOpen = form.style.display !== 'none';
+  if (isOpen) {
+    form.style.display = 'none';
+    eBtn.textContent = '✏️ 編輯';
+    return;
+  }
+  // 填入現有資料
+  var pos = getPosition(current);
+  document.getElementById('posDate').value   = pos ? pos.date   : '';
+  document.getElementById('posCost').value   = pos ? pos.cost   : '';
+  document.getElementById('posShares').value = pos ? (pos.shares || '') : '';
+  form.style.display = '';
+  eBtn.textContent = '✕ 關閉';
+}
+
+function savePositionForm() {
+  var date   = document.getElementById('posDate').value.trim();
+  var cost   = parseFloat(document.getElementById('posCost').value);
+  var shares = parseInt(document.getElementById('posShares').value) || null;
+  if (!date || isNaN(cost) || cost <= 0) { toast('請填入進場日期和均價', 'err'); return; }
+  var pos = loadPositions();
+  pos[current] = { date: date, cost: cost, shares: shares };
+  savePositions(pos);
+  renderPosBox(current);
+  updateCard(current); // 更新卡片上的徽章
+  toast('持倉已儲存', 'ok');
+}
+
+function clearPosition() {
+  var pos = loadPositions();
+  delete pos[current];
+  savePositions(pos);
+  renderPosBox(current);
+  updateCard(current);
+  toast('持倉記錄已清除');
 }
 
 // ─────────────────────────────────
@@ -2466,10 +2610,27 @@ function runAnalysis() {
 
     res.innerHTML = '<p style="color:#60a5fa;">🤖 AI 正在分析（2/2），請稍候...</p>';
 
-  var prompt = '你是專業的台灣股市分析師，專門服務「短線操作（1個月內進出）」的投資人。\n\n'
+  // 持倉資訊
+  var pos = getPosition(d.ticker);
+  var posSection = '';
+  var hasPos = pos && pos.cost;
+  if (hasPos) {
+    var pnlPct = ((d.price - pos.cost) / pos.cost * 100).toFixed(2);
+    var pnlSign = pnlPct >= 0 ? '+' : '';
+    var holdDays = pos.date ? Math.floor((Date.now() - new Date(pos.date)) / 86400000) : '?';
+    var pnlAmt = pos.shares ? Math.round((d.price - pos.cost) * pos.shares).toLocaleString() : null;
+    posSection = '【我的持倉】\n'
+      + '進場日期：' + pos.date + '（持有 ' + holdDays + ' 天）\n'
+      + '進場均價：' + fp(pos.cost) + ' 元\n'
+      + '目前損益：' + pnlSign + pnlPct + '%'
+      + (pnlAmt ? '（約 ' + (pnlPct >= 0 ? '+' : '') + pnlAmt + ' 元）' : '') + '\n\n';
+  }
+
+  var prompt = '你是專業的台灣股市分析師，專門服務短線操作（1個月內進出）的投資人。\n\n'
     + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　'
     + '漲跌：' + (d.change>=0?'+':'') + d.change.toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)\n'
     + '月振幅：' + (d.range20||0).toFixed(1) + '%　月高：' + fp(d.high20) + '　月低：' + fp(d.low20) + '\n\n'
+    + posSection
     + diag + '\n\n'
     + '【補充參考數據】\n'
     + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
@@ -2477,13 +2638,16 @@ function runAnalysis() {
     + revSupp
     + '\n【近期新聞】\n' + newsStr + '\n'
     + '\n請依序用以下格式撰寫（繁體中文，精簡有力，每點不超過2行）：\n\n'
-    + '## 🟢 優勢分析\n（根據診斷訊號，列3個最強的做多理由）\n\n'
-    + '## 🔴 劣勢與風險\n（根據診斷訊號，列2個最大短線風險）\n\n'
-    + '## 🏭 產業需求評估\n（此公司屬於哪個產業？現在需求 or 未來需求？景氣循環位置？1-2句）\n\n'
-    + '## 📰 近期重要事件\n（根據以上新聞，點評1-2則對短線最有影響的消息）\n\n'
-    + '## 📊 技術面解讀\n（月高低支撐壓力、MA位置、RSI研判，針對1個月進出）\n\n'
-    + '## 🎯 短線進場建議\n（進場價區間、停損價、1個月目標價）\n\n'
-    + '## 💡 操作策略\n（一句話：現在買進/等待/觀望，原因）';
+    + '## 🟢 優勢分析\n（根據診斷訊號，列3個最強做多理由）\n\n'
+    + '## 🔴 劣勢與風險\n（列2個最大短線風險）\n\n'
+    + '## 🏭 產業需求評估\n（產業位置與景氣循環，1-2句）\n\n'
+    + '## 📰 近期重要事件\n（點評1-2則對短線影響最大的消息）\n\n'
+    + '## 📊 技術面解讀\n（MA位置、RSI、支撐壓力）\n\n'
+    + (hasPos
+      ? '## 🎯 持倉操作建議\n（根據進場均價 ' + fp(pos.cost) + ' 元，給出具體停損價、目標價、是否加減碼建議）\n\n'
+        + '## 💡 操作策略\n（針對已持倉者：現在是否應停損/續抱/加碼，給明確理由）'
+      : '## 🎯 進場建議\n（進場價區間、停損價、1個月目標價）\n\n'
+        + '## 💡 操作策略\n（現在買進/等待/觀望，原因）');
 
   // 自動判斷 API：AIza... → Gemini，gsk_... → Groq
   var isGemini = apiKey.indexOf('AIza') === 0;
