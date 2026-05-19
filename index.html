@@ -586,26 +586,36 @@ select.bt-input{cursor:pointer;}
 
       <!-- 技術指標區塊 -->
       <div class="scrn-section">
-        <div class="scrn-section-title">📈 技術指標 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・點數值可調整</span></div>
-        <div id="filterBar" class="indicator-filters" style="margin-bottom:0;">
-          <button class="fbtn" id="fbtn-all" onclick="clearFilters()">清除全部</button>
-          <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
-          <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
-          <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
-          <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">多頭排列</button>
-          <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
-          <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
-          <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
+        <div class="scrn-section-title" onclick="toggleScrSection('ind')" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;">
+          <span>📈 技術指標 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・點數值可調整</span></span>
+          <span id="scrn-chevron-ind" style="color:#475569;font-size:13px;">▾</span>
         </div>
-        <div id="ind-global-note" style="display:none;margin-top:8px;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:7px 10px;font-size:11px;color:#86efac;">
-          ⚠ 全市場模式：技術指標會套用在財報篩選結果的前 50 檔（需抓取價格，約需 1 分鐘）
+        <div id="scrn-body-ind">
+          <div id="filterBar" class="indicator-filters" style="margin-bottom:0;">
+            <button class="fbtn" id="fbtn-all" onclick="clearFilters()">清除全部</button>
+            <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
+            <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
+            <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
+            <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">多頭排列</button>
+            <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
+            <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
+            <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
+          </div>
+          <div id="ind-global-note" style="display:none;margin-top:8px;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:7px 10px;font-size:11px;color:#86efac;">
+            ⚠ 全市場模式：技術指標會套用在財報篩選結果的前 50 檔（需抓取價格，約需 1 分鐘）
+          </div>
         </div>
       </div>
 
       <!-- 財報條件區塊 -->
       <div class="scrn-section">
-        <div class="scrn-section-title">📊 財報條件 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・勾選啟用</span></div>
-        <div id="screenerConditions"></div>
+        <div class="scrn-section-title" onclick="toggleScrSection('fund')" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;">
+          <span>📊 財報條件 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・勾選啟用</span></span>
+          <span id="scrn-chevron-fund" style="color:#475569;font-size:13px;">▾</span>
+        </div>
+        <div id="scrn-body-fund">
+          <div id="screenerConditions"></div>
+        </div>
       </div>
 
       <!-- 底部：範圍 + 執行 -->
@@ -633,7 +643,7 @@ select.bt-input{cursor:pointer;}
       </div>
 
       <!-- 結果 -->
-      <div id="screenerResults" style="margin-top:14px;max-height:360px;overflow-y:auto;"></div>
+      <div id="screenerResults" style="margin-top:14px;overflow-x:auto;"></div>
 
     </div>
   </div>
@@ -2763,6 +2773,31 @@ function _renderProgressiveTable(tickers, totalFund) {
   resEl.innerHTML = html;
 }
 
+// ── 篩選區塊收合 ──────────────────────────────────
+var _scrCollapsed = { ind: false, fund: false };
+function toggleScrSection(id) {
+  _scrCollapsed[id] = !_scrCollapsed[id];
+  var body    = document.getElementById('scrn-body-' + id);
+  var chevron = document.getElementById('scrn-chevron-' + id);
+  if (body)    body.style.display    = _scrCollapsed[id] ? 'none' : '';
+  if (chevron) chevron.textContent   = _scrCollapsed[id] ? '▸' : '▾';
+}
+
+// ── 結果排序 ──────────────────────────────────────
+var _scrSort = { col: 'eps', dir: -1 }; // 預設 EPS 降序
+
+function sortScreenerResults(col) {
+  if (_scrSort.col === col) {
+    _scrSort.dir *= -1;
+  } else {
+    _scrSort.col = col;
+    _scrSort.dir = col === 'sid' ? 1 : -1; // 代號預設升序，數值預設降序
+  }
+  if (window.lastScreenerResults && window.lastScreenerResults.length) {
+    renderScreenResults(window.lastScreenerResults);
+  }
+}
+
 function openScreener() {
   document.getElementById('screenerOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
@@ -2892,62 +2927,82 @@ function runScreener() {
   window.lastScreenerResults = matches; // 供批次回測使用
 
   var sub = document.getElementById('screenerSub');
-  sub.textContent = '財報：' + fundamentalsCache.updated
-    + '　符合：' + matches.length + ' 檔'
-    + (matches.length > 200 ? '（顯示前 200）' : '');
-
-  renderScreenResults(matches.slice(0, 200));
+  sub.textContent = '財報：' + fundamentalsCache.updated + '　符合：' + matches.length + ' 檔';
+  renderScreenResults(matches);
 }
 
 function renderScreenResults(matches) {
   var resEl = document.getElementById('screenerResults');
-  if (matches.length === 0) {
+  if (!matches || matches.length === 0) {
     resEl.innerHTML = '<p style="color:#64748b;padding:20px 0;text-align:center;">沒有符合條件的股票，試著放寬條件</p>';
     return;
   }
-  var html = '<table style="width:100%;border-collapse:collapse;">'
-    + '<tr style="color:#64748b;font-size:11px;border-bottom:1px solid #334155;">'
-    + '<th style="text-align:left;padding:5px 6px;">代號</th>'
-    + '<th style="text-align:left;padding:5px 6px;">名稱</th>'
-    + '<th style="text-align:right;padding:5px 6px;">EPS</th>'
-    + '<th style="text-align:right;padding:5px 6px;">毛利率</th>'
-    + '<th style="text-align:right;padding:5px 6px;">毛利率增</th>'
-    + '<th style="text-align:right;padding:5px 6px;">營業利益率</th>'
-    + '<th style="text-align:right;padding:5px 6px;">營益率增</th>'
-    + '<th style="text-align:right;padding:5px 6px;">淨利率</th>'
-    + '<th style="text-align:right;padding:5px 6px;">淨利率增</th>'
-    + '<th style="text-align:right;padding:5px 6px;">月收YoY</th>'
-    + '<th style="text-align:right;padding:5px 6px;">累計YoY</th>'
-    + '<th style="padding:5px 6px;"></th>'
-    + '</tr>';
 
-  matches.forEach(function(m) {
+  // 排序
+  var col = _scrSort.col, dir = _scrSort.dir;
+  var sorted = matches.slice().sort(function(a, b) {
+    var av = col === 'sid' ? a.sid : (a.f && a.f[col] != null ? a.f[col] : -Infinity);
+    var bv = col === 'sid' ? b.sid : (b.f && b.f[col] != null ? b.f[col] : -Infinity);
+    if (av < bv) return dir;
+    if (av > bv) return -dir;
+    return 0;
+  });
+
+  // 欄位定義
+  var cols = [
+    { key:'sid',         label:'代號',    align:'left'  },
+    { key:'name',        label:'名稱',    align:'left'  },
+    { key:'eps',         label:'EPS',     align:'right' },
+    { key:'gm',          label:'毛利率',  align:'right' },
+    { key:'gm_yoy',      label:'毛利率增',align:'right' },
+    { key:'om',          label:'營益率',  align:'right' },
+    { key:'om_yoy',      label:'營益率增',align:'right' },
+    { key:'nm',          label:'淨利率',  align:'right' },
+    { key:'nm_yoy',      label:'淨利率增',align:'right' },
+    { key:'rev_yoy',     label:'月收YoY', align:'right' },
+    { key:'rev_cum_yoy', label:'累計YoY', align:'right' }
+  ];
+
+  // 表頭（可點擊排序）
+  var thStyle = 'padding:6px 6px;white-space:nowrap;cursor:pointer;user-select:none;';
+  thStyle += 'color:#64748b;font-size:11px;border-bottom:1px solid #334155;';
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr>';
+  cols.forEach(function(c) {
+    var isActive = _scrSort.col === c.key;
+    var arrow = isActive ? (_scrSort.dir === -1 ? ' ▼' : ' ▲') : ' ⇅';
+    var activeStyle = isActive ? 'color:#60a5fa;' : '';
+    html += '<th style="' + thStyle + 'text-align:' + c.align + ';' + activeStyle + '" onclick="sortScreenerResults(\'' + c.key + '\')">'
+      + c.label + '<span style="font-size:9px;opacity:.7;">' + arrow + '</span></th>';
+  });
+  html += '<th style="' + thStyle + '"></th></tr></thead><tbody>';
+
+  sorted.forEach(function(m) {
     var name = STOCK_NAMES[m.sid] || m.sid;
     if (name.length > 8) name = name.slice(0,8) + '…';
-    var inWl = false;
-    for (var g = 0; g < GROUPS.list.length; g++) {
-      if (GROUPS.list[g].tickers.indexOf(m.sid) !== -1) { inWl = true; break; }
-    }
+    var inWl = GROUPS.list.some(function(g) { return g.tickers.indexOf(m.sid) !== -1; });
     var btn = inWl
-      ? '<span style="color:#22c55e;font-size:11px;">已加入</span>'
-      : '<button onclick="addFromScreener(\'' + m.sid + '\')" style="background:#2563eb;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;">+加入</button>';
-    var f = m.f;
+      ? '<span style="color:#22c55e;font-size:11px;">✓</span>'
+      : '<button onclick="addFromScreener(\'' + m.sid + '\')" style="background:#2563eb;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;">+</button>';
+    var f = m.f || {};
+    var pp  = function(v) { return v!=null ? (v>=0?'+':'')+v.toFixed(1)+'pp' : '-'; };
+    var pct = function(v) { return v!=null ? (v>=0?'+':'')+v.toFixed(1)+'%'  : '-'; };
+    var clr = function(v) { return v==null ? '#64748b' : v>=0 ? '#22c55e' : '#ef4444'; };
     html += '<tr style="border-bottom:1px solid #0f172a;" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\'\'">'
-      + '<td style="padding:7px 6px;font-weight:700;color:#60a5fa;">' + escapeHtml(m.sid) + '</td>'
-      + '<td style="padding:7px 6px;color:#e2e8f0;font-size:12px;">' + escapeHtml(name) + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:' + (f.gm_yoy==null?'#64748b':f.gm_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.gm_yoy!=null?(f.gm_yoy>=0?'+':'')+f.gm_yoy.toFixed(1)+'pp':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.om!=null?f.om.toFixed(1)+'%':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:' + (f.om_yoy==null?'#64748b':f.om_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.om_yoy!=null?(f.om_yoy>=0?'+':'')+f.om_yoy.toFixed(1)+'pp':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:#94a3b8;">' + (f.nm!=null?f.nm.toFixed(1)+'%':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:' + (f.nm_yoy==null?'#64748b':f.nm_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.nm_yoy!=null?(f.nm_yoy>=0?'+':'')+f.nm_yoy.toFixed(1)+'pp':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:' + (f.rev_yoy==null?'#64748b':f.rev_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.rev_yoy!=null?(f.rev_yoy>=0?'+':'')+f.rev_yoy.toFixed(1)+'%':'-') + '</td>'
-      + '<td style="padding:7px 6px;text-align:right;color:' + (f.rev_cum_yoy==null?'#64748b':f.rev_cum_yoy>=0?'#22c55e':'#ef4444') + ';">' + (f.rev_cum_yoy!=null?(f.rev_cum_yoy>=0?'+':'')+f.rev_cum_yoy.toFixed(1)+'%':'-') + '</td>'
-      + '<td style="padding:7px 6px;">' + btn + '</td>'
+      + '<td style="padding:6px 6px;font-weight:700;color:#60a5fa;white-space:nowrap;">' + escapeHtml(m.sid) + '</td>'
+      + '<td style="padding:6px 6px;color:#e2e8f0;white-space:nowrap;">' + escapeHtml(name) + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.gm_yoy) + ';">' + pp(f.gm_yoy) + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.om!=null?f.om.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.om_yoy) + ';">' + pp(f.om_yoy) + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.nm!=null?f.nm.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.nm_yoy) + ';">' + pp(f.nm_yoy) + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.rev_yoy) + ';">' + pct(f.rev_yoy) + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.rev_cum_yoy) + ';">' + pct(f.rev_cum_yoy) + '</td>'
+      + '<td style="padding:6px 6px;">' + btn + '</td>'
       + '</tr>';
   });
-  html += '</table>';
+  html += '</tbody></table>';
   resEl.innerHTML = html;
 }
 
