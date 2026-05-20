@@ -2443,7 +2443,7 @@ function runBatchAnalysis() {
     });
 }
 
-function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI) {
+function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI, kdData, macdData) {
   var lines = ['【技術訊號診斷（請以此為分析基礎）】'];
 
   // 均線排列
@@ -2549,6 +2549,41 @@ function buildDiagnostics(d, lastMA5, lastMA20, lastMA60, lastRSI) {
     lines.push(peIcon + ' 估值：' + peLabel);
   }
 
+  // KD
+  if (kdData && kdData.K != null && kdData.D != null) {
+    var K = kdData.K, D = kdData.D, pK = kdData.prevK, pD = kdData.prevD;
+    var kdIcon, kdLabel;
+    var crossUp   = pK != null && pD != null && pK <= pD && K > D;  // 黃金交叉
+    var crossDown = pK != null && pD != null && pK >= pD && K < D;  // 死亡交叉
+    var kStr = 'K=' + K.toFixed(1) + ' D=' + D.toFixed(1);
+    if (crossUp && K < 30)       { kdIcon = '✅'; kdLabel = kStr + '，低檔黃金交叉，強力買訊'; }
+    else if (crossUp && K < 50)  { kdIcon = '✅'; kdLabel = kStr + '，中段黃金交叉，偏多'; }
+    else if (crossUp && K >= 50) { kdIcon = '⚠️'; kdLabel = kStr + '，高檔黃金交叉，注意鈍化'; }
+    else if (crossDown && K > 70){ kdIcon = '❌'; kdLabel = kStr + '，高檔死亡交叉，賣出訊號'; }
+    else if (crossDown)          { kdIcon = '⚠️'; kdLabel = kStr + '，死亡交叉，轉弱'; }
+    else if (K < 20)             { kdIcon = '✅'; kdLabel = kStr + '，深度超賣區，留意反彈'; }
+    else if (K > 80)             { kdIcon = '⚠️'; kdLabel = kStr + '，超買區，短線高風險'; }
+    else if (K > D)              { kdIcon = '✅'; kdLabel = kStr + '，K在D上方，多方佔優'; }
+    else                         { kdIcon = '⚠️'; kdLabel = kStr + '，K在D下方，空方佔優'; }
+    lines.push(kdIcon + ' KD(9)：' + kdLabel);
+  }
+
+  // MACD
+  if (macdData && macdData.macd != null) {
+    var mac = macdData.macd, sig = macdData.signal, hist = macdData.hist, ph = macdData.prevHist;
+    var macdIcon, macdLabel;
+    var histGrowing = ph != null && hist > ph;
+    var aboveZero   = mac > 0;
+    var aboveSig    = mac > sig;
+    if (aboveZero && aboveSig && histGrowing)        { macdIcon = '✅'; macdLabel = 'MACD 零軸上方且柱狀增強，多頭動能強'; }
+    else if (aboveZero && aboveSig && !histGrowing)  { macdIcon = '⚠️'; macdLabel = 'MACD 零軸上方但柱狀收斂，動能減弱'; }
+    else if (!aboveZero && aboveSig && histGrowing)  { macdIcon = '✅'; macdLabel = 'MACD 零軸下方但向上交叉，底部反轉訊號'; }
+    else if (aboveZero && !aboveSig)                 { macdIcon = '⚠️'; macdLabel = 'MACD 高位死叉，注意短線回調'; }
+    else if (!aboveZero && !aboveSig && !histGrowing){ macdIcon = '❌'; macdLabel = 'MACD 零軸下方且空方柱狀擴大，趨勢偏空'; }
+    else                                             { macdIcon = '⚠️'; macdLabel = 'MACD 零軸下方，趨勢偏空'; }
+    lines.push(macdIcon + ' MACD(12,26,9)：' + macdLabel);
+  }
+
   return lines.join('\n');
 }
 
@@ -2572,7 +2607,10 @@ function runAnalysis() {
   var ma20   = calcMA(prices, 20);
   var ma60   = calcMA(prices, 60);
   var rsi    = calcRSI(prices, 14);
+  var kd     = calcKD(prices, 9);
+  var macdData = calcMACD(prices);
   var last   = function(a){ return a[a.length-1]; };
+  var prev   = function(a){ return a[a.length-2]; };
 
   var trend = '';
   var p=last(prices), m5=last(ma5), m20=last(ma20), m60=last(ma60);
@@ -2591,7 +2629,10 @@ function runAnalysis() {
   }
 
   // 建立結構化診斷
-  var diag = buildDiagnostics(d, last(ma5), last(ma20), last(ma60), last(rsi));
+  var diag = buildDiagnostics(d, last(ma5), last(ma20), last(ma60), last(rsi),
+    { K: last(kd.K), D: last(kd.D), prevK: prev(kd.K), prevD: prev(kd.D) },
+    { macd: last(macdData.macd), signal: last(macdData.signal),
+      hist: last(macdData.hist), prevHist: prev(macdData.hist) });
 
   // 抓取近期新聞
   var newsDate = new Date(); newsDate.setMonth(newsDate.getMonth() - 3);
@@ -2626,7 +2667,7 @@ function runAnalysis() {
       + (pnlAmt ? '（約 ' + (pnlPct >= 0 ? '+' : '') + pnlAmt + ' 元）' : '') + '\n\n';
   }
 
-  var prompt = '你是專業的台灣股市分析師，專門服務短線操作（1個月內進出）的投資人。\n\n'
+  var prompt = '你是專業的台灣股市分析師，專門服務短中線操作（1-2個月進出）的投資人。操作邏輯：技術指標為主要進出依據，基本面用於確認方向。\n\n'
     + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　'
     + '漲跌：' + (d.change>=0?'+':'') + d.change.toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)\n'
     + '月振幅：' + (d.range20||0).toFixed(1) + '%　月高：' + fp(d.high20) + '　月低：' + fp(d.low20) + '\n\n'
@@ -2638,16 +2679,16 @@ function runAnalysis() {
     + revSupp
     + '\n【近期新聞】\n' + newsStr + '\n'
     + '\n請依序用以下格式撰寫（繁體中文，精簡有力，每點不超過2行）：\n\n'
-    + '## 🟢 優勢分析\n（根據診斷訊號，列3個最強做多理由）\n\n'
-    + '## 🔴 劣勢與風險\n（列2個最大短線風險）\n\n'
+    + '## 🟢 優勢分析\n（根據 KD/MACD/均線/RSI 診斷，列3個最強做多理由）\n\n'
+    + '## 🔴 劣勢與風險\n（列2個最大風險，須包含技術指標轉弱的可能）\n\n'
     + '## 🏭 產業需求評估\n（產業位置與景氣循環，1-2句）\n\n'
-    + '## 📰 近期重要事件\n（點評1-2則對短線影響最大的消息）\n\n'
-    + '## 📊 技術面解讀\n（MA位置、RSI、支撐壓力）\n\n'
+    + '## 📰 近期重要事件\n（點評1-2則對中線1-2個月影響最大的消息）\n\n'
+    + '## 📊 技術面解讀\n（重點解讀 KD 交叉位置、MACD 動能、均線排列、RSI 位置，針對 1-2 個月進出）\n\n'
     + (hasPos
-      ? '## 🎯 持倉操作建議\n（根據進場均價 ' + fp(pos.cost) + ' 元，給出具體停損價、目標價、是否加減碼建議）\n\n'
-        + '## 💡 操作策略\n（針對已持倉者：現在是否應停損/續抱/加碼，給明確理由）'
-      : '## 🎯 進場建議\n（進場價區間、停損價、1個月目標價）\n\n'
-        + '## 💡 操作策略\n（現在買進/等待/觀望，原因）');
+      ? '## 🎯 持倉操作建議\n（根據進場均價 ' + fp(pos.cost) + ' 元，結合目前 KD/MACD 狀態，給出具體停損價、1-2個月目標價、是否加減碼）\n\n'
+        + '## 💡 操作策略\n（針對已持倉者：現在續抱/加碼/減碼/停損，給一句明確結論）'
+      : '## 🎯 進場建議\n（進場價區間、停損價、1-2個月目標價，基於 KD/MACD 位置給建議）\n\n'
+        + '## 💡 操作策略\n（現在買進/等待回測/觀望，一句話結論）');
 
   // 自動判斷 API：AIza... → Gemini，gsk_... → Groq
   var isGemini = apiKey.indexOf('AIza') === 0;
@@ -3214,6 +3255,23 @@ function calcRSI(prices, n) {
     result.push(al===0?100:100-100/(1+ag/al));
   }
   return result;
+}
+
+function calcEMA(prices, n) {
+  var k = 2 / (n + 1), result = [];
+  for (var i = 0; i < prices.length; i++) {
+    result.push(i === 0 ? prices[0] : prices[i] * k + result[i-1] * (1-k));
+  }
+  return result;
+}
+
+function calcMACD(prices) {
+  var ema12  = calcEMA(prices, 12);
+  var ema26  = calcEMA(prices, 26);
+  var macd   = ema12.map(function(v, i) { return v - ema26[i]; });
+  var signal = calcEMA(macd, 9);
+  var hist   = macd.map(function(v, i) { return v - signal[i]; });
+  return { macd: macd, signal: signal, hist: hist };
 }
 
 // ─────────────────────────────────
