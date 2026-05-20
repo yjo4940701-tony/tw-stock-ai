@@ -602,6 +602,17 @@ select.bt-input{cursor:pointer;}
       <input id="fugleInput" class="form-input" type="text" placeholder="貼上 Fugle API Key">
     </div>
 
+    <!-- Finnhub API Key（國際財經新聞） -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
+      <label class="form-label">Finnhub API Key <span style="color:#64748b;font-size:11px;">（國際財經新聞，AI 分析用）</span></label>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;color:#64748b;line-height:1.6;">
+        ✅ 免費 60次/分鐘，抓取國際財經新聞整合進 AI 分析<br>
+        ① 前往 <a href="https://finnhub.io" target="_blank" style="color:#60a5fa;">finnhub.io</a> 免費註冊<br>
+        ② Dashboard → API Keys → 複製 Token（d 開頭）
+      </div>
+      <input id="finnhubInput" class="form-input" type="text" placeholder="d...（Finnhub API Key）">
+    </div>
+
     <div id="keyStatus" class="status-msg"></div>
     <div class="btn-row">
       <button type="button" class="btn-save" onclick="saveKey()">儲存全部</button>
@@ -753,6 +764,8 @@ var PROXIES = [
   if (fm) document.getElementById('finmindInput').value = fm;
   var fg = localStorage.getItem('tw_fugle');
   if (fg) document.getElementById('fugleInput').value = fg;
+  var fh = localStorage.getItem('tw_finnhub');
+  if (fh) document.getElementById('finnhubInput').value = fh;
   // 之前停在瀏覽全市場模式的話，自動回到群組1
   if (GROUPS.active === -1) { GROUPS.active = 0; saveGroups(); }
   renderTabs();
@@ -845,10 +858,13 @@ function saveKey() {
   var fg = document.getElementById('fugleInput').value.trim();
   if (fg) localStorage.setItem('tw_fugle', fg);
   else localStorage.removeItem('tw_fugle');
+  var fh = document.getElementById('finnhubInput').value.trim();
+  if (fh) localStorage.setItem('tw_finnhub', fh);
+  else localStorage.removeItem('tw_finnhub');
 
   s.style.background = '#14532d';
   s.style.color = '#86efac';
-  s.textContent = '✅ 儲存成功！' + (fm ? '（含 FinMind Token）' : '') + (fg ? '（含 Fugle Key）' : '') + ' 按取消關閉此視窗。';
+  s.textContent = '✅ 儲存成功！' + (fm ? ' FinMind' : '') + (fg ? ' Fugle' : '') + (fh ? ' Finnhub' : '') + ' 按取消關閉此視窗。';
 }
 
 // FinMind URL helper（已停用 token：FinMind 對帶 token 的請求不發 CORS header）
@@ -2600,6 +2616,7 @@ function runAnalysis() {
   btn.innerHTML = '<div class="spin" style="width:12px;height:12px;"></div> 分析中...';
 
   var res = document.getElementById('aiResult');
+  var finnhubKey = localStorage.getItem('tw_finnhub');
   res.innerHTML = '<p style="color:#60a5fa;">📰 抓取最新新聞（1/2）...</p>';
 
   var prices = d.chartData.map(function(x){return x.close;});
@@ -2649,7 +2666,9 @@ function runAnalysis() {
       ? newsRows.map(function(n){ return '・' + n.date.slice(0,10) + ' ' + n.title; }).join('\n')
       : '（近期無新聞資料）';
 
-    res.innerHTML = '<p style="color:#60a5fa;">🤖 AI 正在分析（2/2），請稍候...</p>';
+    // 抓取 Finnhub 國際財經新聞
+    function fetchFinnhubAndAnalyze(intlNewsStr) {
+      res.innerHTML = '<p style="color:#60a5fa;">🤖 AI 正在分析（2/2），請稍候...</p>';
 
   // 持倉資訊
   var pos = getPosition(d.ticker);
@@ -2677,7 +2696,8 @@ function runAnalysis() {
     + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
     + '近5日收盤：' + r5 + '\n'
     + revSupp
-    + '\n【近期新聞】\n' + newsStr + '\n'
+    + '\n【台股近期新聞】\n' + newsStr + '\n'
+    + (intlNewsStr ? '\n【國際財經新聞（Finnhub）】\n' + intlNewsStr + '\n' : '')
     + '\n請依序用以下格式撰寫（繁體中文，精簡有力，每點不超過2行）：\n\n'
     + '## 🟢 優勢分析\n（根據 KD/MACD/均線/RSI 診斷，列3個最強做多理由）\n\n'
     + '## 🔴 劣勢與風險\n（列2個最大風險，須包含技術指標轉弱的可能）\n\n'
@@ -2764,6 +2784,36 @@ function runAnalysis() {
     btn.textContent = '重新分析';
     btn.disabled = false;
   });
+  } // end fetchFinnhubAndAnalyze
+
+  // 抓 Finnhub 國際財經新聞（如有 Key）
+  if (finnhubKey) {
+    res.innerHTML = '<p style="color:#60a5fa;">🌍 抓取國際財經新聞...</p>';
+    var today = new Date();
+    var from3d = new Date(today - 3 * 86400000);
+    function fmtD(dt) { return dt.toISOString().slice(0,10); }
+    // 同時抓總體新聞 + 個股國際新聞（主要台股在Finnhub沒資料，用總體補充）
+    Promise.all([
+      fetch('https://finnhub.io/api/v1/news?category=general&token=' + finnhubKey)
+        .then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }),
+      fetch('https://finnhub.io/api/v1/news?category=merger&token=' + finnhubKey)
+        .then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; })
+    ]).then(function(results) {
+      var all = [].concat(results[0], results[1])
+        .sort(function(a,b){ return b.datetime - a.datetime; })
+        .slice(0, 6);
+      var intlStr = all.length > 0
+        ? all.map(function(n){
+            var dt = new Date(n.datetime * 1000).toISOString().slice(0,10);
+            return '・' + dt + ' [' + (n.source||'') + '] ' + n.headline;
+          }).join('\n')
+        : '（無國際新聞）';
+      fetchFinnhubAndAnalyze(intlStr);
+    });
+  } else {
+    fetchFinnhubAndAnalyze('');
+  }
+
   }); // end news .then()
 }
 
