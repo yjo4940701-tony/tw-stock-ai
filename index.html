@@ -3869,7 +3869,8 @@ function renderSingleResult(ticker, rows, params) {
       + '<th>賣價</th><th>報酬</th><th>獲利金額</th><th>持倉</th><th>原因</th></tr></thead><tbody>';
     result.trades.forEach(function(t, i) {
       var cls = t.pnl >= 0 ? 'up' : 'down';
-      tradesHtml += '<tr><td>' + (i+1) + '</td><td>' + t.buyDate + '</td><td>' + t.sellDate + '</td>';
+      tradesHtml += '<tr id="bt-trade-row-' + i + '" style="cursor:pointer;" onclick="zoomTrade(' + i + ')">'
+        + '<td>' + (i+1) + '</td><td>' + t.buyDate + '</td><td>' + t.sellDate + '</td>';
       if (isBatch) {
         tradesHtml += '<td style="color:#f59e0b;font-weight:600;">' + (t.buyCount||1) + '次</td>'
           + '<td>' + t.buyPrice.toFixed(2) + '</td>';
@@ -3889,16 +3890,20 @@ function renderSingleResult(ticker, rows, params) {
     + '<div class="bt-panel-title">' + ticker + (name?' '+name:'') + ' 回測結果</div>'
     + '<div class="bt-metrics">' + metricsHtml + '</div>'
     + '<div class="chart-box" style="margin-top:14px;">'
-    +   '<div class="chart-title"><span>股價走勢 + 進出場標記</span>'
-    +   '<span style="color:#64748b;font-size:11px;">▲ 買進&nbsp;&nbsp;▼ 賣出</span></div>'
+    +   '<div class="chart-title">'
+    +     '<span>股價走勢 + 進出場標記</span>'
+    +     '<span id="bt-chart-zoom-hint" style="display:none;color:#f59e0b;font-size:11px;"></span>'
+    +     '<span style="color:#64748b;font-size:11px;">▲ 買進&nbsp;&nbsp;▼ 賣出</span>'
+    +   '</div>'
     +   '<div style="height:240px;"><canvas id="btChart"></canvas></div>'
     + '</div>'
     + '<div style="margin-top:14px;">'
-    +   '<div style="font-weight:600;font-size:13px;color:#94a3b8;margin-bottom:8px;">交易明細</div>'
+    +   '<div style="font-weight:600;font-size:13px;color:#94a3b8;margin-bottom:8px;">交易明細 <span style="color:#475569;font-size:11px;font-weight:400;">點任一列縮放圖表</span></div>'
     +   '<div style="overflow-x:auto;">' + tradesHtml + '</div>'
     + '</div>'
     + '</div>';
 
+  window._btResult = result;
   renderBtChart(result);
 }
 
@@ -3915,31 +3920,68 @@ function fmtDateLabel(d) {
   return s.slice(5).replace('-','/');     // MM/DD
 }
 
-function renderBtChart(result) {
+function zoomTrade(idx) {
+  var result = window._btResult;
+  if (!result) return;
+  var rows = document.querySelectorAll('#bt-single-result tbody tr');
+  rows.forEach(function(r, i) { r.style.background = i === idx ? '#1e3a5f' : ''; });
+  var hint = document.getElementById('bt-chart-zoom-hint');
+  if (hint) {
+    hint.style.display = '';
+    hint.innerHTML = '第 ' + (idx+1) + ' 筆&nbsp;<a onclick="resetBtChart()" style="cursor:pointer;color:#60a5fa;text-decoration:underline;">← 全覽</a>&nbsp;';
+  }
+  renderBtChart(result, idx);
+}
+
+function resetBtChart() {
+  var result = window._btResult;
+  if (!result) return;
+  var rows = document.querySelectorAll('#bt-single-result tbody tr');
+  rows.forEach(function(r) { r.style.background = ''; });
+  var hint = document.getElementById('bt-chart-zoom-hint');
+  if (hint) hint.style.display = 'none';
+  renderBtChart(result);
+}
+
+function renderBtChart(result, tradeIdx) {
   var ctx = document.getElementById('btChart');
   if (!ctx) return;
   if (window._btChartInst) { window._btChartInst.destroy(); }
 
-  var buyPts = {}, sellPts = {};
-  result.trades.forEach(function(t) {
+  var dates, closes, buyPts = {}, sellPts = {};
+
+  if (tradeIdx !== undefined) {
+    var t   = result.trades[tradeIdx];
+    var pad = 5;
+    var s   = Math.max(0, t.buyIdx - pad);
+    var e   = Math.min(result.dates.length - 1, t.sellIdx + pad);
+    dates   = result.dates.slice(s, e + 1);
+    closes  = result.closes.slice(s, e + 1);
     buyPts[t.buyDate]                    = result.closes[t.buyIdx];
     sellPts[t.sellDate.replace('＊','')] = result.closes[t.sellIdx];
-  });
+  } else {
+    dates  = result.dates;
+    closes = result.closes;
+    result.trades.forEach(function(t) {
+      buyPts[t.buyDate]                    = result.closes[t.buyIdx];
+      sellPts[t.sellDate.replace('＊','')] = result.closes[t.sellIdx];
+    });
+  }
 
-  var labels = result.dates.map(fmtDateLabel);
+  var labels = dates.map(fmtDateLabel);
 
   window._btChartInst = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: {
       labels: labels,
       datasets: [
-        { label: '收盤價', data: result.closes, borderColor: '#3b82f6',
+        { label: '收盤價', data: closes, borderColor: '#3b82f6',
           borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0, order: 3 },
-        { label: '買進', data: result.dates.map(function(d) { return buyPts[d] !== undefined ? buyPts[d] : null; }),
+        { label: '買進', data: dates.map(function(d) { return buyPts[d] !== undefined ? buyPts[d] : null; }),
           type: 'scatter', pointRadius: 8, pointStyle: 'triangle',
           backgroundColor: '#22c55e', borderColor: '#fff', borderWidth: 1.5,
           showLine: false, order: 1 },
-        { label: '賣出', data: result.dates.map(function(d) { return sellPts[d] !== undefined ? sellPts[d] : null; }),
+        { label: '賣出', data: dates.map(function(d) { return sellPts[d] !== undefined ? sellPts[d] : null; }),
           type: 'scatter', pointRadius: 8, pointStyle: 'triangle', rotation: 180,
           backgroundColor: '#ef4444', borderColor: '#fff', borderWidth: 1.5,
           showLine: false, order: 2 }
