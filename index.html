@@ -3812,8 +3812,7 @@ function renderSingleResult(ticker, rows, params) {
   var isBatch = (params.maxBuys || 1) > 1;
   var totalPnlAmt = capital * m.totalReturn / 100;
   var metricsHtml = [
-    ['總報酬',     pct(m.totalReturn),             clr(m.totalReturn),  m.tradeCount + ' 筆交易'],
-    ['獲利金額',   fmtAmt(totalPnlAmt),            clr(m.totalReturn),  '初始 ' + capital.toLocaleString() + ' 元'],
+    ['總報酬',     pct(m.totalReturn),             clr(m.totalReturn),  m.tradeCount + ' 筆交易｜' + fmtAmt(totalPnlAmt)],
     ['年化報酬',   pct(m.annualized),               clr(m.annualized),   ''],
     ['最大回撤',   '-' + m.maxDrawdown.toFixed(2) + '%', '#ef4444',     ''],
     ['勝率',       m.winRate.toFixed(1) + '%',      m.winRate>=50?'#22c55e':'#ef4444', ''],
