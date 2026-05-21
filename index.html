@@ -420,8 +420,8 @@ select.bt-input{cursor:pointer;}
           </div>
 
           <div class="bt-section">
-            <div class="bt-label">初始資金（元）<span style="color:#475569;font-size:11px;font-weight:400;">　獲利金額計算基礎</span></div>
-            <input class="bt-input" id="bt-capital" type="number" value="100000" min="10000" step="10000">
+            <div class="bt-label">買進張數<span style="color:#475569;font-size:11px;font-weight:400;">　1 張 = 1000 股</span></div>
+            <input class="bt-input" id="bt-lots" type="number" value="1" min="1" max="1000" step="1">
           </div>
         </div>
 
@@ -3652,7 +3652,7 @@ function getBtParams() {
     sellMode:    _sellMode,
     addMode:     _addMode,
     dipPct:      +document.getElementById('bt-dippct').value || 5,
-    capital:     +document.getElementById('bt-capital').value || 100000
+    lots:        +document.getElementById('bt-lots').value || 1
   };
 }
 
@@ -3790,12 +3790,13 @@ function runBacktest(rows, params) {
   }
 
   var totalBuyCount = allBuys;
+  var netPnlPerShare = trades.reduce(function(acc, t) { return acc + (t.sellPrice - t.buyPrice); }, 0);
 
   return {
     trades: trades, dates: dates, closes: closes,
     metrics: {totalReturn: totalRet, annualized: annual, maxDrawdown: maxDD,
               winRate: winRate, tradeCount: trades.length, avgHoldDays: avgHold,
-              totalBuys: totalBuyCount}
+              totalBuys: totalBuyCount, netPnlPerShare: netPnlPerShare}
   };
 }
 
@@ -3832,11 +3833,11 @@ function renderSingleResult(ticker, rows, params) {
   var sign  = function(v) { return v >= 0 ? '+' : ''; };
   var clr   = function(v) { return v >= 0 ? '#22c55e' : '#ef4444'; };
   var pct   = function(v, fix) { return sign(v) + v.toFixed(fix||2) + '%'; };
-  var capital = params.capital || 100000;
+  var lots    = params.lots || 1;
   var fmtAmt  = function(v) { return (v>=0?'+':'') + Math.round(v).toLocaleString() + ' 元'; };
 
   var isBatch = (params.maxBuys || 1) > 1;
-  var totalPnlAmt = capital * m.totalReturn / 100;
+  var totalPnlAmt = lots * 1000 * (m.netPnlPerShare || 0);
   var metricsHtml = [
     ['總報酬',     pct(m.totalReturn),             clr(m.totalReturn),  m.tradeCount + ' 筆交易｜' + fmtAmt(totalPnlAmt)],
     ['年化報酬',   pct(m.annualized),               clr(m.annualized),   ''],
@@ -3859,11 +3860,9 @@ function renderSingleResult(ticker, rows, params) {
     tradesHtml = '<p style="color:#64748b;font-size:13px;padding:12px 0;">此期間內無交易訊號</p>';
   } else {
     var isBatch = (params.maxBuys || 1) > 1;
-    // 計算每筆交易的獲利金額（複利方式：每筆用當時資產計算）
-    var tradeEquity = capital;
+    // 每筆獲利 = 張數 × 1000 × (賣價 - 買價)
     result.trades.forEach(function(t) {
-      t.pnlAmount = tradeEquity * t.pnl / 100;
-      tradeEquity *= (1 + t.pnl / 100);
+      t.pnlAmount = lots * 1000 * (t.sellPrice - t.buyPrice);
     });
     tradesHtml = '<table class="bt-table"><thead><tr><th>#</th><th>首買日</th><th>賣出日</th>'
       + (isBatch ? '<th>加碼</th><th>均價</th>' : '<th>買價</th>')
@@ -4023,7 +4022,7 @@ function runBatchBacktest(source) {
 
 function renderBatchResults() {
   _batchResults.sort(function(a,b) { return b.metrics.totalReturn - a.metrics.totalReturn; });
-  var capital = +document.getElementById('bt-capital').value || 100000;
+  var lots = +document.getElementById('bt-lots').value || 1;
   var html = '<table class="bt-table"><thead><tr>'
     + '<th>排名</th><th>代號</th><th>名稱</th>'
     + '<th>總報酬</th><th>獲利金額</th><th>年化報酬</th><th>最大回撤</th><th>勝率</th><th>交易次數</th>'
@@ -4032,7 +4031,7 @@ function renderBatchResults() {
     var m = r.metrics;
     var retCls = m.totalReturn >= 0 ? 'up' : 'down';
     var annCls = m.annualized  >= 0 ? 'up' : 'down';
-    var pnlAmt = capital * m.totalReturn / 100;
+    var pnlAmt = lots * 1000 * (m.netPnlPerShare || 0);
     html += '<tr onclick="loadFromBatch(\'' + r.ticker + '\')">'
       + '<td>' + (i+1) + '</td>'
       + '<td><strong>' + r.ticker + '</strong></td>'
