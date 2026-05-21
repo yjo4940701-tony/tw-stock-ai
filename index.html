@@ -3605,10 +3605,11 @@ function runBacktest(rows, params) {
   }
 
   // 模擬進出場（支援分批買進）
-  var trades    = [];
-  var pos       = null;  // { units:[{date,price,idx}], avgCost, firstIdx }
-  var maxBuys   = p.maxBuys || 1;
-  var totalBuys = 0;     // 全程累計買進次數
+  var trades      = [];
+  var pos         = null;  // { units:[{date,price,idx}], avgCost, firstIdx }
+  var maxBuys     = p.maxBuys || 1;
+  var posBuyCount = 0;     // 目前持倉的買進次數（賣出後歸零）
+  var allBuys     = 0;     // 全程總買進次數（供 metrics 顯示）
 
   function calcAvg(units) {
     return units.reduce(function(s, u) { return s + u.price; }, 0) / units.length;
@@ -3624,26 +3625,30 @@ function runBacktest(rows, params) {
 
       if (exitReason) {
         trades.push({
-          buyDate:   pos.units[0].date, sellDate: dates[i],
-          buyPrice:  pos.avgCost,       sellPrice: closes[i],
-          pnl:       pnl,               holdDays: i - pos.firstIdx,
-          reason:    exitReason,        buyCount: pos.units.length,
-          buyIdx:    pos.firstIdx,      sellIdx: i
+          buyDate:  pos.units[0].date, sellDate: dates[i],
+          buyPrice: pos.avgCost,       sellPrice: closes[i],
+          pnl:      pnl,               holdDays: i - pos.firstIdx,
+          reason:   exitReason,        buyCount: pos.units.length,
+          buyIdx:   pos.firstIdx,      sellIdx: i
         });
         pos = null;
-      } else if (signals[i] === 'buy' && totalBuys < maxBuys) {
-        // 加碼：加入新單位，重算均價
+        posBuyCount = 0;  // ← 賣出後歸零，下次交易重新計算
+      } else if (signals[i] === 'buy' && posBuyCount < maxBuys) {
+        // 持倉中出現買進訊號 → 加碼
         pos.units.push({date: dates[i], price: closes[i], idx: i});
         pos.avgCost = calcAvg(pos.units);
-        totalBuys++;
+        posBuyCount++;
+        allBuys++;
       }
-    } else if (signals[i] === 'buy' && totalBuys < maxBuys) {
+    } else if (signals[i] === 'buy') {
+      // 沒有持倉 → 開新倉（不受 maxBuys 限制，第一次一定買）
       pos = {
         units: [{date: dates[i], price: closes[i], idx: i}],
         avgCost: closes[i],
         firstIdx: i
       };
-      totalBuys++;
+      posBuyCount = 1;
+      allBuys++;
     }
   }
   // 持有中未平倉
@@ -3676,7 +3681,7 @@ function runBacktest(rows, params) {
     if (dd > maxDD) maxDD = dd;
   }
 
-  var totalBuyCount = trades.reduce(function(s, t) { return s + (t.buyCount || 1); }, 0);
+  var totalBuyCount = allBuys;
 
   return {
     trades: trades, dates: dates, closes: closes,
