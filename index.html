@@ -364,6 +364,16 @@ select.bt-input{cursor:pointer;}
           </div>
 
           <div class="bt-section">
+            <div class="bt-label">分批買進最大次數
+              <span style="color:#475569;font-size:11px;font-weight:400;">（每次訊號加碼，賣出時全部出清）</span>
+            </div>
+            <input class="bt-input" id="bt-maxbuys" type="number" value="1" min="1" max="500" step="1">
+            <div id="bt-maxbuys-hint" style="display:none;margin-top:6px;background:#1e3a5f;border-radius:6px;padding:6px 10px;font-size:11px;color:#93c5fd;line-height:1.5;">
+              每次出現買進訊號加碼 1 次，賣出時依<strong>加權平均成本</strong>計算損益
+            </div>
+          </div>
+
+          <div class="bt-section">
             <div class="bt-label">回測期間</div>
             <select class="bt-input" id="bt-period">
               <option value="90">3 個月</option>
@@ -3541,6 +3551,9 @@ function calcKD(closes, n) {
 
 // ── 取策略參數 ────────────────────────────────────
 function getBtParams() {
+  var maxBuys = +document.getElementById('bt-maxbuys').value || 1;
+  var hint = document.getElementById('bt-maxbuys-hint');
+  if (hint) hint.style.display = maxBuys > 1 ? '' : 'none';
   return {
     strategy:    btStrategy,
     maShort:     +document.getElementById('bt-ma-short').value,
@@ -3552,7 +3565,8 @@ function getBtParams() {
     kdBuy:       +document.getElementById('bt-kd-buy').value,
     kdSell:      +document.getElementById('bt-kd-sell').value,
     stopLoss:    +document.getElementById('bt-stoploss').value,
-    takeProfit:  +document.getElementById('bt-takeprofit').value
+    takeProfit:  +document.getElementById('bt-takeprofit').value,
+    maxBuys:     maxBuys
   };
 }
 
@@ -3590,40 +3604,58 @@ function runBacktest(rows, params) {
     }
   }
 
-  // 模擬進出場
-  var trades = [];
-  var pos = null;
+  // 模擬進出場（支援分批買進）
+  var trades    = [];
+  var pos       = null;  // { units:[{date,price,idx}], avgCost, firstIdx }
+  var maxBuys   = p.maxBuys || 1;
+  var totalBuys = 0;     // 全程累計買進次數
+
+  function calcAvg(units) {
+    return units.reduce(function(s, u) { return s + u.price; }, 0) / units.length;
+  }
 
   for (var i = 0; i < n; i++) {
     if (pos) {
-      var pnl = (closes[i] - pos.buyPrice) / pos.buyPrice * 100;
+      var pnl = (closes[i] - pos.avgCost) / pos.avgCost * 100;
       var exitReason = null;
-      if (p.stopLoss   > 0 && pnl <= -p.stopLoss)   exitReason = '停損';
-      else if (p.takeProfit > 0 && pnl >=  p.takeProfit)  exitReason = '停利';
-      else if (signals[i] === 'sell')                      exitReason = '訊號';
+      if (p.stopLoss   > 0 && pnl <= -p.stopLoss)  exitReason = '停損';
+      else if (p.takeProfit > 0 && pnl >= p.takeProfit) exitReason = '停利';
+      else if (signals[i] === 'sell')                    exitReason = '訊號';
 
       if (exitReason) {
         trades.push({
-          buyDate:   pos.buyDate,  sellDate: dates[i],
-          buyPrice:  pos.buyPrice, sellPrice: closes[i],
-          pnl:       pnl, holdDays: i - pos.idx,
-          reason:    exitReason,   buyIdx: pos.idx, sellIdx: i
+          buyDate:   pos.units[0].date, sellDate: dates[i],
+          buyPrice:  pos.avgCost,       sellPrice: closes[i],
+          pnl:       pnl,               holdDays: i - pos.firstIdx,
+          reason:    exitReason,        buyCount: pos.units.length,
+          buyIdx:    pos.firstIdx,      sellIdx: i
         });
         pos = null;
+      } else if (signals[i] === 'buy' && totalBuys < maxBuys) {
+        // 加碼：加入新單位，重算均價
+        pos.units.push({date: dates[i], price: closes[i], idx: i});
+        pos.avgCost = calcAvg(pos.units);
+        totalBuys++;
       }
-    } else if (signals[i] === 'buy') {
-      pos = {buyDate: dates[i], buyPrice: closes[i], idx: i};
+    } else if (signals[i] === 'buy' && totalBuys < maxBuys) {
+      pos = {
+        units: [{date: dates[i], price: closes[i], idx: i}],
+        avgCost: closes[i],
+        firstIdx: i
+      };
+      totalBuys++;
     }
   }
   // 持有中未平倉
   if (pos) {
-    var i = n - 1;
-    var pnl = (closes[i] - pos.buyPrice) / pos.buyPrice * 100;
+    var last = n - 1;
+    var pnl = (closes[last] - pos.avgCost) / pos.avgCost * 100;
     trades.push({
-      buyDate: pos.buyDate, sellDate: dates[i] + '＊',
-      buyPrice: pos.buyPrice, sellPrice: closes[i],
-      pnl: pnl, holdDays: i - pos.idx,
-      reason: '持有中', buyIdx: pos.idx, sellIdx: i
+      buyDate: pos.units[0].date, sellDate: dates[last] + '＊',
+      buyPrice: pos.avgCost,      sellPrice: closes[last],
+      pnl: pnl,                   holdDays: last - pos.firstIdx,
+      reason: '持有中',           buyCount: pos.units.length,
+      buyIdx: pos.firstIdx,       sellIdx: last
     });
   }
 
@@ -3644,10 +3676,13 @@ function runBacktest(rows, params) {
     if (dd > maxDD) maxDD = dd;
   }
 
+  var totalBuyCount = trades.reduce(function(s, t) { return s + (t.buyCount || 1); }, 0);
+
   return {
     trades: trades, dates: dates, closes: closes,
     metrics: {totalReturn: totalRet, annualized: annual, maxDrawdown: maxDD,
-              winRate: winRate, tradeCount: trades.length, avgHoldDays: avgHold}
+              winRate: winRate, tradeCount: trades.length, avgHoldDays: avgHold,
+              totalBuys: totalBuyCount}
   };
 }
 
@@ -3685,13 +3720,16 @@ function renderSingleResult(ticker, rows, params) {
   var clr   = function(v) { return v >= 0 ? '#22c55e' : '#ef4444'; };
   var pct   = function(v, fix) { return sign(v) + v.toFixed(fix||2) + '%'; };
 
+  var isBatch = (params.maxBuys || 1) > 1;
   var metricsHtml = [
-    ['總報酬',   pct(m.totalReturn),           clr(m.totalReturn),  m.tradeCount + ' 筆交易'],
-    ['年化報酬', pct(m.annualized),             clr(m.annualized),   ''],
-    ['最大回撤', '-' + m.maxDrawdown.toFixed(2) + '%', '#ef4444',   ''],
-    ['勝率',     m.winRate.toFixed(1) + '%',    m.winRate>=50?'#22c55e':'#ef4444', ''],
-    ['平均持倉', m.avgHoldDays.toFixed(0) + ' 天', '#94a3b8',       ''],
-    ['交易次數', m.tradeCount + ' 次',           '#94a3b8',          '']
+    ['總報酬',     pct(m.totalReturn),             clr(m.totalReturn),  m.tradeCount + ' 筆交易'],
+    ['年化報酬',   pct(m.annualized),               clr(m.annualized),   ''],
+    ['最大回撤',   '-' + m.maxDrawdown.toFixed(2) + '%', '#ef4444',     ''],
+    ['勝率',       m.winRate.toFixed(1) + '%',      m.winRate>=50?'#22c55e':'#ef4444', ''],
+    ['平均持倉',   m.avgHoldDays.toFixed(0) + ' 天', '#94a3b8',         ''],
+    [isBatch ? '總買進次數' : '交易次數',
+                  isBatch ? m.totalBuys + ' 次（上限 ' + params.maxBuys + '）' : m.tradeCount + ' 次',
+                  '#94a3b8', isBatch ? m.tradeCount + ' 筆完整交易' : '']
   ].map(function(r) {
     return '<div class="bt-metric">'
       + '<div class="bt-metric-label">' + r[0] + '</div>'
@@ -3704,12 +3742,21 @@ function renderSingleResult(ticker, rows, params) {
   if (result.trades.length === 0) {
     tradesHtml = '<p style="color:#64748b;font-size:13px;padding:12px 0;">此期間內無交易訊號</p>';
   } else {
-    tradesHtml = '<table class="bt-table"><thead><tr><th>#</th><th>買進日</th><th>賣出日</th><th>買價</th><th>賣價</th><th>報酬</th><th>持倉</th><th>原因</th></tr></thead><tbody>';
+    var isBatch = (params.maxBuys || 1) > 1;
+    tradesHtml = '<table class="bt-table"><thead><tr><th>#</th><th>首買日</th><th>賣出日</th>'
+      + (isBatch ? '<th>加碼</th><th>均價</th>' : '<th>買價</th>')
+      + '<th>賣價</th><th>報酬</th><th>持倉</th><th>原因</th></tr></thead><tbody>';
     result.trades.forEach(function(t, i) {
       var cls = t.pnl >= 0 ? 'up' : 'down';
-      tradesHtml += '<tr><td>' + (i+1) + '</td><td>' + t.buyDate + '</td><td>' + t.sellDate
-        + '</td><td>' + t.buyPrice.toFixed(2) + '</td><td>' + t.sellPrice.toFixed(2)
-        + '</td><td class="' + cls + '">' + (t.pnl>=0?'+':'') + t.pnl.toFixed(2) + '%</td>'
+      tradesHtml += '<tr><td>' + (i+1) + '</td><td>' + t.buyDate + '</td><td>' + t.sellDate + '</td>';
+      if (isBatch) {
+        tradesHtml += '<td style="color:#f59e0b;font-weight:600;">' + (t.buyCount||1) + '次</td>'
+          + '<td>' + t.buyPrice.toFixed(2) + '</td>';
+      } else {
+        tradesHtml += '<td>' + t.buyPrice.toFixed(2) + '</td>';
+      }
+      tradesHtml += '<td>' + t.sellPrice.toFixed(2) + '</td>'
+        + '<td class="' + cls + '">' + (t.pnl>=0?'+':'') + t.pnl.toFixed(2) + '%</td>'
         + '<td>' + t.holdDays + ' 天</td><td>' + t.reason + '</td></tr>';
     });
     tradesHtml += '</tbody></table>';
