@@ -357,6 +357,15 @@ select.bt-input{cursor:pointer;}
           <div style="border-top:1px solid #334155;margin:14px 0;"></div>
 
           <div class="bt-section">
+            <div class="bt-label">賣出條件</div>
+            <div class="bt-strategy-tabs">
+              <button class="bt-stab active" id="sell-both"   onclick="setSellMode('both')"   style="font-size:11px;">策略+停損停利</button>
+              <button class="bt-stab"        id="sell-sltp"   onclick="setSellMode('sltp')"   style="font-size:11px;">僅停損停利</button>
+              <button class="bt-stab"        id="sell-signal" onclick="setSellMode('signal')" style="font-size:11px;">僅策略訊號</button>
+            </div>
+          </div>
+
+          <div class="bt-section">
             <div class="bt-label">停損 %（0 = 不設）</div>
             <input class="bt-input" id="bt-stoploss" type="number" value="8" min="0" max="30" step="0.5">
             <div class="bt-label" style="margin-top:10px;">停利 %（0 = 不設）</div>
@@ -365,11 +374,21 @@ select.bt-input{cursor:pointer;}
 
           <div class="bt-section">
             <div class="bt-label">分批買進最大次數
-              <span style="color:#475569;font-size:11px;font-weight:400;">（每次訊號加碼，賣出時全部出清）</span>
+              <span style="color:#475569;font-size:11px;font-weight:400;">（含第一次，賣出後重置）</span>
             </div>
-            <input class="bt-input" id="bt-maxbuys" type="number" value="1" min="1" max="500" step="1">
-            <div id="bt-maxbuys-hint" style="display:none;margin-top:6px;background:#1e3a5f;border-radius:6px;padding:6px 10px;font-size:11px;color:#93c5fd;line-height:1.5;">
-              每次出現買進訊號加碼 1 次，賣出時依<strong>加權平均成本</strong>計算損益
+            <input class="bt-input" id="bt-maxbuys" type="number" value="1" min="1" max="500" step="1"
+              oninput="onMaxBuysChange()">
+            <div id="bt-addmode-section" style="display:none;margin-top:10px;">
+              <div class="bt-label">加碼觸發條件</div>
+              <div class="bt-strategy-tabs" style="margin-bottom:8px;">
+                <button class="bt-stab active" id="add-signal" onclick="setAddMode('signal')" style="font-size:11px;">買進訊號</button>
+                <button class="bt-stab"        id="add-dip"    onclick="setAddMode('dip')"    style="font-size:11px;">每跌 X%</button>
+              </div>
+              <div id="bt-dip-input" style="display:none;">
+                <div class="bt-label">從上次買入跌幅達 % 時加碼</div>
+                <input class="bt-input" id="bt-dippct" type="number" value="5" min="1" max="50" step="0.5">
+              </div>
+              <div style="margin-top:6px;background:#1e3a5f;border-radius:6px;padding:6px 10px;font-size:11px;color:#93c5fd;line-height:1.5;" id="bt-addmode-hint"></div>
             </div>
           </div>
 
@@ -3460,6 +3479,44 @@ function fetchPriceData(stockId, days, cb) {
     .catch(function(e) { cb({msg: e.message}); });
 }
 
+// ── 賣出條件 / 加碼條件 ───────────────────────────
+var _sellMode = 'both';   // 'both' | 'sltp' | 'signal'
+var _addMode  = 'signal'; // 'signal' | 'dip'
+
+function setSellMode(m) {
+  _sellMode = m;
+  ['both','sltp','signal'].forEach(function(x) {
+    document.getElementById('sell-' + x).classList.toggle('active', x === m);
+  });
+}
+
+function setAddMode(m) {
+  _addMode = m;
+  ['signal','dip'].forEach(function(x) {
+    document.getElementById('add-' + x).classList.toggle('active', x === m);
+  });
+  document.getElementById('bt-dip-input').style.display = m === 'dip' ? '' : 'none';
+  updateAddModeHint();
+}
+
+function onMaxBuysChange() {
+  var v = +document.getElementById('bt-maxbuys').value || 1;
+  document.getElementById('bt-addmode-section').style.display = v > 1 ? '' : 'none';
+  updateAddModeHint();
+}
+
+function updateAddModeHint() {
+  var el = document.getElementById('bt-addmode-hint');
+  if (!el) return;
+  var v = +document.getElementById('bt-maxbuys').value || 1;
+  if (_addMode === 'signal') {
+    el.textContent = '每次出現買進訊號就加碼，賣出後重置（最多 ' + v + ' 次/輪）';
+  } else {
+    var d = document.getElementById('bt-dippct').value || 5;
+    el.textContent = '從上次買入價跌 ' + d + '% 就加碼，最多 ' + v + ' 次/輪，賣出後重置';
+  }
+}
+
 // ── 資料來源切換 ──────────────────────────────────
 var btDataSource = 'finmind'; // 'finmind' | 'fugle60' | 'fugle15'
 
@@ -3566,7 +3623,10 @@ function getBtParams() {
     kdSell:      +document.getElementById('bt-kd-sell').value,
     stopLoss:    +document.getElementById('bt-stoploss').value,
     takeProfit:  +document.getElementById('bt-takeprofit').value,
-    maxBuys:     maxBuys
+    maxBuys:     maxBuys,
+    sellMode:    _sellMode,
+    addMode:     _addMode,
+    dipPct:      +document.getElementById('bt-dippct').value || 5
   };
 }
 
@@ -3619,9 +3679,14 @@ function runBacktest(rows, params) {
     if (pos) {
       var pnl = (closes[i] - pos.avgCost) / pos.avgCost * 100;
       var exitReason = null;
-      if (p.stopLoss   > 0 && pnl <= -p.stopLoss)  exitReason = '停損';
-      else if (p.takeProfit > 0 && pnl >= p.takeProfit) exitReason = '停利';
-      else if (signals[i] === 'sell')                    exitReason = '訊號';
+      var sm = p.sellMode || 'both';
+      // 停損/停利（sellMode != 'signal' 時啟用）
+      if (sm !== 'signal') {
+        if (p.stopLoss > 0 && pnl <= -p.stopLoss)     exitReason = '停損';
+        else if (p.takeProfit > 0 && pnl >= p.takeProfit) exitReason = '停利';
+      }
+      // 策略訊號（sellMode != 'sltp' 時啟用）
+      if (!exitReason && sm !== 'sltp' && signals[i] === 'sell') exitReason = '訊號';
 
       if (exitReason) {
         trades.push({
@@ -3632,13 +3697,24 @@ function runBacktest(rows, params) {
           buyIdx:   pos.firstIdx,      sellIdx: i
         });
         pos = null;
-        posBuyCount = 0;  // ← 賣出後歸零，下次交易重新計算
-      } else if (signals[i] === 'buy' && posBuyCount < maxBuys) {
-        // 持倉中出現買進訊號 → 加碼
-        pos.units.push({date: dates[i], price: closes[i], idx: i});
-        pos.avgCost = calcAvg(pos.units);
-        posBuyCount++;
-        allBuys++;
+        posBuyCount = 0;
+      } else if (posBuyCount < maxBuys) {
+        // 判斷加碼條件
+        var shouldAdd = false;
+        if (p.addMode === 'dip') {
+          var lastPrice = pos.units[pos.units.length - 1].price;
+          var dipPct = (lastPrice - closes[i]) / lastPrice * 100;
+          if (dipPct >= p.dipPct) shouldAdd = true;
+        } else {
+          // 預設：策略買進訊號
+          if (signals[i] === 'buy') shouldAdd = true;
+        }
+        if (shouldAdd) {
+          pos.units.push({date: dates[i], price: closes[i], idx: i});
+          pos.avgCost = calcAvg(pos.units);
+          posBuyCount++;
+          allBuys++;
+        }
       }
     } else if (signals[i] === 'buy') {
       // 沒有持倉 → 開新倉（不受 maxBuys 限制，第一次一定買）
