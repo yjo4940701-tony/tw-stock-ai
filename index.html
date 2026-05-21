@@ -400,6 +400,11 @@ select.bt-input{cursor:pointer;}
               <option value="364" selected>約 1 年（364 天）</option>
             </select>
           </div>
+
+          <div class="bt-section">
+            <div class="bt-label">初始資金（元）<span style="color:#475569;font-size:11px;font-weight:400;">　獲利金額計算基礎</span></div>
+            <input class="bt-input" id="bt-capital" type="number" value="100000" min="10000" step="10000">
+          </div>
         </div>
 
         <!-- 單股回測 -->
@@ -3626,7 +3631,8 @@ function getBtParams() {
     maxBuys:     maxBuys,
     sellMode:    _sellMode,
     addMode:     _addMode,
-    dipPct:      +document.getElementById('bt-dippct').value || 5
+    dipPct:      +document.getElementById('bt-dippct').value || 5,
+    capital:     +document.getElementById('bt-capital').value || 100000
   };
 }
 
@@ -3800,10 +3806,14 @@ function renderSingleResult(ticker, rows, params) {
   var sign  = function(v) { return v >= 0 ? '+' : ''; };
   var clr   = function(v) { return v >= 0 ? '#22c55e' : '#ef4444'; };
   var pct   = function(v, fix) { return sign(v) + v.toFixed(fix||2) + '%'; };
+  var capital = params.capital || 100000;
+  var fmtAmt  = function(v) { return (v>=0?'+':'') + Math.round(v).toLocaleString() + ' 元'; };
 
   var isBatch = (params.maxBuys || 1) > 1;
+  var totalPnlAmt = capital * m.totalReturn / 100;
   var metricsHtml = [
     ['總報酬',     pct(m.totalReturn),             clr(m.totalReturn),  m.tradeCount + ' 筆交易'],
+    ['獲利金額',   fmtAmt(totalPnlAmt),            clr(m.totalReturn),  '初始 ' + capital.toLocaleString() + ' 元'],
     ['年化報酬',   pct(m.annualized),               clr(m.annualized),   ''],
     ['最大回撤',   '-' + m.maxDrawdown.toFixed(2) + '%', '#ef4444',     ''],
     ['勝率',       m.winRate.toFixed(1) + '%',      m.winRate>=50?'#22c55e':'#ef4444', ''],
@@ -3824,9 +3834,15 @@ function renderSingleResult(ticker, rows, params) {
     tradesHtml = '<p style="color:#64748b;font-size:13px;padding:12px 0;">此期間內無交易訊號</p>';
   } else {
     var isBatch = (params.maxBuys || 1) > 1;
+    // 計算每筆交易的獲利金額（複利方式：每筆用當時資產計算）
+    var tradeEquity = capital;
+    result.trades.forEach(function(t) {
+      t.pnlAmount = tradeEquity * t.pnl / 100;
+      tradeEquity *= (1 + t.pnl / 100);
+    });
     tradesHtml = '<table class="bt-table"><thead><tr><th>#</th><th>首買日</th><th>賣出日</th>'
       + (isBatch ? '<th>加碼</th><th>均價</th>' : '<th>買價</th>')
-      + '<th>賣價</th><th>報酬</th><th>持倉</th><th>原因</th></tr></thead><tbody>';
+      + '<th>賣價</th><th>報酬</th><th>獲利金額</th><th>持倉</th><th>原因</th></tr></thead><tbody>';
     result.trades.forEach(function(t, i) {
       var cls = t.pnl >= 0 ? 'up' : 'down';
       tradesHtml += '<tr><td>' + (i+1) + '</td><td>' + t.buyDate + '</td><td>' + t.sellDate + '</td>';
@@ -3838,6 +3854,7 @@ function renderSingleResult(ticker, rows, params) {
       }
       tradesHtml += '<td>' + t.sellPrice.toFixed(2) + '</td>'
         + '<td class="' + cls + '">' + (t.pnl>=0?'+':'') + t.pnl.toFixed(2) + '%</td>'
+        + '<td class="' + cls + '">' + (t.pnlAmount>=0?'+':'') + Math.round(t.pnlAmount).toLocaleString() + '</td>'
         + '<td>' + t.holdDays + ' 天</td><td>' + t.reason + '</td></tr>';
     });
     tradesHtml += '</tbody></table>';
@@ -3981,19 +3998,22 @@ function runBatchBacktest(source) {
 
 function renderBatchResults() {
   _batchResults.sort(function(a,b) { return b.metrics.totalReturn - a.metrics.totalReturn; });
+  var capital = +document.getElementById('bt-capital').value || 100000;
   var html = '<table class="bt-table"><thead><tr>'
     + '<th>排名</th><th>代號</th><th>名稱</th>'
-    + '<th>總報酬</th><th>年化報酬</th><th>最大回撤</th><th>勝率</th><th>交易次數</th>'
+    + '<th>總報酬</th><th>獲利金額</th><th>年化報酬</th><th>最大回撤</th><th>勝率</th><th>交易次數</th>'
     + '</tr></thead><tbody>';
   _batchResults.forEach(function(r, i) {
     var m = r.metrics;
     var retCls = m.totalReturn >= 0 ? 'up' : 'down';
     var annCls = m.annualized  >= 0 ? 'up' : 'down';
+    var pnlAmt = capital * m.totalReturn / 100;
     html += '<tr onclick="loadFromBatch(\'' + r.ticker + '\')">'
       + '<td>' + (i+1) + '</td>'
       + '<td><strong>' + r.ticker + '</strong></td>'
       + '<td>' + r.name + '</td>'
       + '<td class="' + retCls + '">' + (m.totalReturn>=0?'+':'') + m.totalReturn.toFixed(2) + '%</td>'
+      + '<td class="' + retCls + '">' + (pnlAmt>=0?'+':'') + Math.round(pnlAmt).toLocaleString() + '</td>'
       + '<td class="' + annCls + '">' + (m.annualized>=0?'+':'') + m.annualized.toFixed(2)  + '%</td>'
       + '<td style="color:#ef4444;">-' + m.maxDrawdown.toFixed(2) + '%</td>'
       + '<td>' + m.winRate.toFixed(1) + '%</td>'
