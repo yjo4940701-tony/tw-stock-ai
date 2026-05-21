@@ -3790,7 +3790,7 @@ function runBacktest(rows, params) {
   }
 
   var totalBuyCount = allBuys;
-  var netPnlPerShare = trades.reduce(function(acc, t) { return acc + (t.sellPrice - t.buyPrice); }, 0);
+  var netPnlPerShare = trades.reduce(function(acc, t) { return acc + (t.buyCount || 1) * (t.sellPrice - t.buyPrice); }, 0);
 
   return {
     trades: trades, dates: dates, closes: closes,
@@ -3860,9 +3860,9 @@ function renderSingleResult(ticker, rows, params) {
     tradesHtml = '<p style="color:#64748b;font-size:13px;padding:12px 0;">此期間內無交易訊號</p>';
   } else {
     var isBatch = (params.maxBuys || 1) > 1;
-    // 每筆獲利 = 張數 × 1000 × (賣價 - 買價)
+    // 每筆獲利 = 張數 × 累計買進次數 × 1000 × (賣價 - 均價)
     result.trades.forEach(function(t) {
-      t.pnlAmount = lots * 1000 * (t.sellPrice - t.buyPrice);
+      t.pnlAmount = lots * (t.buyCount || 1) * 1000 * (t.sellPrice - t.buyPrice);
     });
     tradesHtml = '<table class="bt-table"><thead><tr><th>#</th><th>首買日</th><th>賣出日</th>'
       + (isBatch ? '<th>加碼</th><th>均價</th>' : '<th>買價</th>')
