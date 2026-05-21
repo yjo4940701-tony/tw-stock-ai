@@ -328,10 +328,28 @@ select.bt-input{cursor:pointer;}
 
           <!-- MA 參數 -->
           <div id="params-ma" class="bt-section">
-            <div class="bt-label">短均線週期（買進訊號快線）</div>
-            <input class="bt-input" id="bt-ma-short" type="number" value="5" min="2" max="60">
-            <div class="bt-label" style="margin-top:10px;">長均線週期（趨勢基準線）</div>
-            <input class="bt-input" id="bt-ma-long" type="number" value="20" min="5" max="200">
+            <div style="font-size:11px;color:#22c55e;font-weight:600;margin-bottom:8px;">▲ 進場條件（黃金交叉）</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <div class="bt-label">快線</div>
+                <input class="bt-input" id="bt-ma-short" type="number" value="5" min="2" max="60">
+              </div>
+              <div>
+                <div class="bt-label">慢線</div>
+                <input class="bt-input" id="bt-ma-long" type="number" value="20" min="5" max="200">
+              </div>
+            </div>
+            <div style="font-size:11px;color:#ef4444;font-weight:600;margin:12px 0 8px;">▼ 出場條件（死亡交叉）</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <div class="bt-label">快線</div>
+                <input class="bt-input" id="bt-ma-exit-short" type="number" value="20" min="2" max="60">
+              </div>
+              <div>
+                <div class="bt-label">慢線</div>
+                <input class="bt-input" id="bt-ma-exit-long" type="number" value="60" min="5" max="200">
+              </div>
+            </div>
           </div>
 
           <!-- RSI 參數 -->
@@ -3620,6 +3638,8 @@ function getBtParams() {
     strategy:    btStrategy,
     maShort:     +document.getElementById('bt-ma-short').value,
     maLong:      +document.getElementById('bt-ma-long').value,
+    maExitShort: +document.getElementById('bt-ma-exit-short').value || 20,
+    maExitLong:  +document.getElementById('bt-ma-exit-long').value  || 60,
     rsiN:        +document.getElementById('bt-rsi-n').value,
     rsiBuy:      +document.getElementById('bt-rsi-buy').value,
     rsiSell:     +document.getElementById('bt-rsi-sell').value,
@@ -3645,12 +3665,18 @@ function runBacktest(rows, params) {
   var signals = new Array(n).fill(null);
 
   if (p.strategy === 'ma') {
-    var sma = calcMA(closes, p.maShort);
-    var lma = calcMA(closes, p.maLong);
+    var sma  = calcMA(closes, p.maShort);
+    var lma  = calcMA(closes, p.maLong);
+    var xsma = calcMA(closes, p.maExitShort || p.maShort);
+    var xlma = calcMA(closes, p.maExitLong  || p.maLong);
     for (var i = 1; i < n; i++) {
+      // 進場：快線穿越慢線向上（黃金交叉）
       if (sma[i] != null && lma[i] != null && sma[i-1] != null && lma[i-1] != null) {
         if (sma[i-1] <= lma[i-1] && sma[i] > lma[i]) signals[i] = 'buy';
-        else if (sma[i-1] >= lma[i-1] && sma[i] < lma[i]) signals[i] = 'sell';
+      }
+      // 出場：快線跌破慢線（死亡交叉）—— 覆蓋同日買進訊號
+      if (xsma[i] != null && xlma[i] != null && xsma[i-1] != null && xlma[i-1] != null) {
+        if (xsma[i-1] >= xlma[i-1] && xsma[i] < xlma[i]) signals[i] = 'sell';
       }
     }
   } else if (p.strategy === 'rsi') {
