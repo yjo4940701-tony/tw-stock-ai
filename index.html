@@ -6,6 +6,7 @@
 <title>台股 AI 分析儀表板</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4/dist/lightweight-charts.production.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;}
@@ -1939,7 +1940,7 @@ function aggregatePeriod(rawRecords, period) {
       key = mon.getFullYear() + '-' + pad(mon.getMonth() + 1) + '-' + pad(mon.getDate());
     }
     if (!grouped[key]) {
-      grouped[key] = { label: period === 'month' ? key : key.slice(5), close: r.close, high: r.max, low: r.min };
+      grouped[key] = { label: period === 'month' ? key : key.slice(5), open: r.open, close: r.close, high: r.max, low: r.min };
       order.push(key);
     } else {
       var g = grouped[key];
@@ -1964,59 +1965,104 @@ function switchPeriod(p) {
 }
 
 function drawChart(d) {
-  var canvas = document.getElementById('priceChart');
-  if (myChart) { myChart.destroy(); myChart = null; }
+  var chartContainer = document.getElementById('priceChart');
+  if (!chartContainer) return;
+  if (myChart) {
+    try { myChart.remove(); } catch(e) {}
+    myChart = null;
+  }
 
-  var prices, labels, maN;
+  // 取得進場成本
+  var pos = getPosition(current);
+  if (pos) { d.positionCost = pos.cost; }
+
+  // 準備 OHLC 數據
+  var ohlcData = [];
+  var prices = [];
   if (chartPeriod !== 'day' && d.rawRecords && d.rawRecords.length > 0) {
     var agg = aggregatePeriod(d.rawRecords, chartPeriod);
-    prices = agg.map(function(x) { return x.close; });
-    labels = agg.map(function(x) { return x.label; });
-    maN = chartPeriod === 'week' ? 10 : 6;
+    ohlcData = agg.map(function(x) {
+      var ts = new Date(x.label).getTime() / 1000;
+      prices.push(x.close);
+      return { time: ts, open: x.open, high: x.high, low: x.low, close: x.close };
+    });
   } else {
     if (!d.chartData || !d.chartData.length) return;
     var cd = d.chartData.slice(-60);
-    prices = cd.map(function(x) { return x.close; });
-    labels = cd.map(function(x) { return x.date; });
-    maN = 20;
+    ohlcData = cd.map(function(x) {
+      var ts = new Date(x.date).getTime() / 1000;
+      prices.push(x.close);
+      return { time: ts, open: x.open, high: x.max, low: x.min, close: x.close };
+    });
   }
 
-  if (!prices.length) return;
-  var maArr  = calcMA(prices, maN);
-  var up     = prices[prices.length - 1] >= prices[0];
-  var lc     = up ? '#22c55e' : '#ef4444';
-  var fc     = up ? 'rgba(34,197,94,.07)' : 'rgba(239,68,68,.07)';
-  var maLabel = 'MA' + maN;
+  if (!ohlcData.length || !prices.length) return;
 
+  // 計算多條均線
+  var ma5  = calcMA(prices, 5);
+  var ma10 = calcMA(prices, 10);
+  var ma20 = calcMA(prices, 20);
+
+  // 轉換均線為時間序列數據
+  var ma5Data = ohlcData.map(function(x, i) { return { time: x.time, value: ma5[i] }; }).filter(function(x) { return x.value != null; });
+  var ma10Data = ohlcData.map(function(x, i) { return { time: x.time, value: ma10[i] }; }).filter(function(x) { return x.value != null; });
+  var ma20Data = ohlcData.map(function(x, i) { return { time: x.time, value: ma20[i] }; }).filter(function(x) { return x.value != null; });
+
+  // 扣抵值線（進場均價）
+  var costLineData = [];
+  if (d.positionCost && d.positionCost > 0) {
+    costLineData = ohlcData.map(function(x) { return { time: x.time, value: d.positionCost }; });
+  }
+
+  // 建立 TradingView Lightweight Charts
+  myChart = LightweightCharts.createChart(chartContainer, {
+    width: chartContainer.offsetWidth,
+    height: 350,
+    layout: { background: { color: '#1e293b' }, textColor: '#94a3b8', fontSize: 12, fontFamily: 'system-ui, -apple-system, Segoe UI' },
+    grid: { horzLines: { color: 'rgba(51,65,85,.3)' }, vertLines: { color: 'rgba(51,65,85,.3)' } },
+    timeScale: { timeVisible: true, secondsVisible: false, tickMarkFormatter: function(t) { return new Date(t*1000).toLocaleDateString('zh-TW'); } },
+    rightPriceScale: { textColor: '#94a3b8' }
+  });
+
+  // 蠟燭圖
+  var candlestickSeries = myChart.addCandlestickSeries({
+    upColor: '#22c55e', downColor: '#ef4444',
+    wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+    borderUpColor: '#22c55e', borderDownColor: '#ef4444'
+  });
+  candlestickSeries.setData(ohlcData);
+
+  // 均線
+  var ma5Series = myChart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
+  ma5Series.setData(ma5Data);
+
+  var ma10Series = myChart.addLineSeries({ color: '#3b82f6', lineWidth: 1 });
+  ma10Series.setData(ma10Data);
+
+  var ma20Series = myChart.addLineSeries({ color: '#8b5cf6', lineWidth: 1 });
+  ma20Series.setData(ma20Data);
+
+  // 扣抵值線
+  if (costLineData.length) {
+    var costSeries = myChart.addLineSeries({ color: '#ec4899', lineWidth: 1, lineStyle: 1 });
+    costSeries.setData(costLineData);
+  }
+
+  // 自動縮放
+  myChart.timeScale().fitContent();
+
+  // 圖例
   document.getElementById('chartLeg').innerHTML =
-    '<span style="color:' + lc + ';">● 收盤</span>  <span style="color:#f59e0b;">● ' + maLabel + '</span>';
+    '<span style="color:#f59e0b;">● MA5</span>  <span style="color:#3b82f6;">● MA10</span>  <span style="color:#8b5cf6;">● MA20</span>' +
+    (costLineData.length ? '  <span style="color:#ec4899;">● 扣抵值</span>' : '');
 
-  myChart = new Chart(canvas, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: '收盤', data: prices, borderColor: lc, backgroundColor: fc, borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, fill: true, tension: .1 },
-        { label: maLabel, data: maArr, borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, fill: false, tension: .1, spanGaps: true }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
-          titleColor: '#94a3b8', bodyColor: '#e2e8f0',
-          callbacks: { label: function(c) { return ' ' + c.dataset.label + ': ' + (c.raw != null ? fp(c.raw) : '-'); } }
-        }
-      },
-      scales: {
-        x: { grid: { color: 'rgba(51,65,85,.4)' }, ticks: { color: '#475569', maxTicksLimit: 7, font: { size: 10 } } },
-        y: { position: 'right', grid: { color: 'rgba(51,65,85,.4)' }, ticks: { color: '#475569', font: { size: 10 }, callback: function(v) { return fp(v); } } }
-      }
+  // 視窗大小改變時重繪
+  var resizeObserver = new ResizeObserver(function() {
+    if (myChart && chartContainer) {
+      myChart.applyOptions({ width: chartContainer.offsetWidth });
     }
   });
+  resizeObserver.observe(chartContainer);
 }
 
 // ─────────────────────────────────
