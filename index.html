@@ -3684,7 +3684,8 @@ function runBacktest(rows, params) {
           buyPrice: pos.avgCost,       sellPrice: closes[i],
           pnl:      pnl,               holdDays: i - pos.firstIdx,
           reason:   '出場條件',         buyCount: pos.units.length,
-          buyIdx:   pos.firstIdx,      sellIdx: i
+          buyIdx:   pos.firstIdx,      sellIdx: i,
+          units:    pos.units.slice()   // 所有買進點（含加碼）
         });
         pos = null;
         posBuyCount = 0;
@@ -3729,7 +3730,8 @@ function runBacktest(rows, params) {
       buyPrice: pos.avgCost,      sellPrice: closes[last],
       pnl: pnl,                   holdDays: last - pos.firstIdx,
       reason: '持有中',           buyCount: pos.units.length,
-      buyIdx: pos.firstIdx,       sellIdx: last
+      buyIdx: pos.firstIdx,       sellIdx: last,
+      units:  pos.units.slice()
     });
   }
 
@@ -3918,13 +3920,19 @@ function renderBtChart(result, tradeIdx) {
     var e   = Math.min(result.dates.length - 1, t.sellIdx + pad);
     dates   = result.dates.slice(s, e + 1);
     closes  = result.closes.slice(s, e + 1);
-    buyPts[t.buyDate]                    = result.closes[t.buyIdx];
+    // 標記所有買進點（含加碼）
+    (t.units || [{date: t.buyDate, idx: t.buyIdx}]).forEach(function(u) {
+      buyPts[u.date] = result.closes[u.idx];
+    });
     sellPts[t.sellDate.replace('＊','')] = result.closes[t.sellIdx];
   } else {
     dates  = result.dates;
     closes = result.closes;
     result.trades.forEach(function(t) {
-      buyPts[t.buyDate]                    = result.closes[t.buyIdx];
+      // 標記所有買進點（含加碼）
+      (t.units || [{date: t.buyDate, idx: t.buyIdx}]).forEach(function(u) {
+        buyPts[u.date] = result.closes[u.idx];
+      });
       sellPts[t.sellDate.replace('＊','')] = result.closes[t.sellIdx];
     });
   }
