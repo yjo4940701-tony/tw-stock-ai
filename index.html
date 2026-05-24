@@ -413,11 +413,16 @@ select.bt-input{cursor:pointer;}
         <div class="bt-panel">
           <div class="bt-panel-title">🔍 單股回測</div>
           <div class="bt-section">
-            <div class="bt-label">股票代號</div>
-            <div style="display:flex;gap:8px;">
-              <input class="bt-input" id="bt-ticker" type="text" placeholder="如：2330" style="flex:1;"
-                onkeydown="if(event.key==='Enter')runSingleBacktest()">
+            <div class="bt-label">股票代號（可輸入中文名稱）</div>
+            <div style="display:flex;gap:8px;position:relative;">
+              <input class="bt-input" id="bt-ticker" type="text" autocomplete="off"
+                placeholder="代號 2330 或公司名 台積電" style="flex:1;"
+                oninput="onBtSearchInput()"
+                onkeydown="if(event.key==='Enter')runSingleBacktest();if(event.key==='Escape')hideBtSuggestions();"
+                onblur="setTimeout(hideBtSuggestions,150)">
               <button class="btn-add" onclick="runSingleBacktest()" style="padding:10px 14px;font-size:13px;white-space:nowrap;">執行</button>
+              <div id="btSearchSuggestions" class="suggest-list"
+                style="display:none;position:absolute;top:100%;left:0;right:72px;margin-top:4px;"></div>
             </div>
           </div>
         </div>
@@ -3937,6 +3942,41 @@ function applyTemplate(name) {
 
 // 初始化條件 UI
 setTimeout(renderConditions, 100);
+
+// ── 單股回測：股票自動完成 ────────────────────────
+var _btSearchTimer = null;
+function onBtSearchInput() {
+  var raw = (document.getElementById('bt-ticker').value || '').trim();
+  if (!raw || /^[\dA-Za-z]+$/.test(raw)) { hideBtSuggestions(); return; }
+  clearTimeout(_btSearchTimer);
+  _btSearchTimer = setTimeout(function() {
+    var matches = searchByName(raw, 8);
+    if (matches.length > 0) { showBtSuggestions(matches); return; }
+    ensureStockInfo(function() {
+      var m2 = searchByName(raw, 8);
+      if (m2.length > 0) showBtSuggestions(m2); else hideBtSuggestions();
+    });
+  }, 180);
+}
+function showBtSuggestions(matches) {
+  var el = document.getElementById('btSearchSuggestions');
+  if (!el) return;
+  el.innerHTML = matches.map(function(m) {
+    return '<div class="suggest-item" onmousedown="pickBtSuggestion(\'' + m.code + '\')">'
+         +   '<span style="font-weight:600;color:#e2e8f0;">' + escapeHtml(m.name) + '</span>'
+         +   '<span style="color:#64748b;font-size:12px;">' + escapeHtml(m.code) + '</span>'
+         + '</div>';
+  }).join('');
+  el.style.display = 'block';
+}
+function hideBtSuggestions() {
+  var el = document.getElementById('btSearchSuggestions');
+  if (el) el.style.display = 'none';
+}
+function pickBtSuggestion(code) {
+  document.getElementById('bt-ticker').value = code;
+  hideBtSuggestions();
+}
 
 // ── 策略切換 ──────────────────────────────────────
 var btStrategy = 'ma';
