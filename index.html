@@ -173,6 +173,25 @@ select.bt-input{cursor:pointer;}
 .bt-stab{flex:1;background:#0a0f1e;border:1px solid #334155;color:#64748b;border-radius:8px;padding:8px;font-size:13px;cursor:pointer;transition:all .15s;}
 .bt-stab.active{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600;}
 .bt-stab:hover:not(.active){background:#1e293b;color:#fff;}
+/* CONDITION LIST (Multi-strategy) */
+.cond-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.cond-header-title{font-weight:700;font-size:13px;color:#e2e8f0;}
+.cond-logic-sel{background:#0a0f1e;border:1px solid #334155;border-radius:6px;color:#94a3b8;padding:3px 8px;font-size:11px;cursor:pointer;}
+.cond-row{background:#0a0f1e;border:1px solid #334155;border-radius:8px;padding:8px;margin-bottom:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+.cond-row.entry{border-left:3px solid #22c55e;}
+.cond-row.exit{border-left:3px solid #ef4444;}
+.cond-sel{background:#1e293b;border:1px solid #334155;border-radius:5px;color:#fff;padding:4px 6px;font-size:11px;cursor:pointer;}
+.cond-sel:focus{outline:none;border-color:#3b82f6;}
+.cond-num{background:#1e293b;border:1px solid #334155;border-radius:5px;color:#fff;padding:4px 6px;font-size:11px;width:50px;text-align:center;}
+.cond-num:focus{outline:none;border-color:#3b82f6;}
+.cond-text{color:#64748b;font-size:11px;}
+.cond-del{margin-left:auto;background:none;border:none;color:#475569;font-size:14px;cursor:pointer;padding:0 4px;}
+.cond-del:hover{color:#ef4444;}
+.cond-add-btn{width:100%;background:rgba(59,130,246,.08);border:1px dashed #334155;color:#60a5fa;border-radius:8px;padding:6px;font-size:12px;cursor:pointer;transition:all .15s;}
+.cond-add-btn:hover{background:rgba(59,130,246,.15);border-color:#60a5fa;}
+.cond-empty{color:#475569;font-size:11px;text-align:center;padding:8px 0;font-style:italic;}
+.cond-tpl-btn{background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;transition:all .15s;}
+.cond-tpl-btn:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
 .bt-batch-btn{flex:1;background:#0a0f1e;border:1px solid #334155;color:#94a3b8;border-radius:8px;padding:8px 6px;font-size:12px;cursor:pointer;text-align:center;transition:all .15s;line-height:1.4;}
 .bt-batch-btn:hover{background:#1e293b;border-color:#2563eb;color:#60a5fa;}
 .bt-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;}
@@ -317,77 +336,42 @@ select.bt-input{cursor:pointer;}
             </div>
           </div>
 
+          <!-- 進場條件 -->
           <div class="bt-section">
-            <div class="bt-label">策略類型</div>
-            <div class="bt-strategy-tabs">
-              <button class="bt-stab active" id="stab-ma" onclick="setStrategy('ma')">MA 均線</button>
-              <button class="bt-stab" id="stab-rsi" onclick="setStrategy('rsi')">RSI</button>
-              <button class="bt-stab" id="stab-kd" onclick="setStrategy('kd')">KD</button>
+            <div class="cond-header">
+              <span class="cond-header-title" style="color:#22c55e;">▲ 進場條件</span>
+              <select id="bt-entry-logic" class="cond-logic-sel" onchange="onLogicChange('entry')">
+                <option value="AND">全部成立 (AND)</option>
+                <option value="OR">任一成立 (OR)</option>
+              </select>
             </div>
+            <div id="bt-entry-conds"></div>
+            <button class="cond-add-btn" onclick="addCondition('entry')">+ 新增進場條件</button>
           </div>
 
-          <!-- MA 參數 -->
-          <div id="params-ma" class="bt-section">
-            <div style="font-size:11px;color:#22c55e;font-weight:600;margin-bottom:8px;">▲ 進場條件（黃金交叉）</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <div class="bt-label">快線</div>
-                <input class="bt-input" id="bt-ma-short" type="number" value="5" min="2" max="60">
-              </div>
-              <div>
-                <div class="bt-label">慢線</div>
-                <input class="bt-input" id="bt-ma-long" type="number" value="20" min="5" max="200">
-              </div>
-            </div>
-            <div style="font-size:11px;color:#ef4444;font-weight:600;margin:12px 0 8px;">▼ 出場條件（死亡交叉）</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <div class="bt-label">快線</div>
-                <input class="bt-input" id="bt-ma-exit-short" type="number" value="20" min="2" max="60">
-              </div>
-              <div>
-                <div class="bt-label">慢線</div>
-                <input class="bt-input" id="bt-ma-exit-long" type="number" value="60" min="5" max="200">
-              </div>
-            </div>
-          </div>
-
-          <!-- RSI 參數 -->
-          <div id="params-rsi" class="bt-section" style="display:none;">
-            <div class="bt-label">RSI 週期</div>
-            <input class="bt-input" id="bt-rsi-n" type="number" value="14" min="5" max="30">
-            <div class="bt-label" style="margin-top:10px;">超賣買進（RSI &lt; 此值）</div>
-            <input class="bt-input" id="bt-rsi-buy" type="number" value="30" min="5" max="50">
-            <div class="bt-label" style="margin-top:10px;">超買賣出（RSI &gt; 此值）</div>
-            <input class="bt-input" id="bt-rsi-sell" type="number" value="70" min="50" max="95">
-          </div>
-
-          <!-- KD 參數 -->
-          <div id="params-kd" class="bt-section" style="display:none;">
-            <div class="bt-label">KD 週期（RSV 計算天數）</div>
-            <input class="bt-input" id="bt-kd-n" type="number" value="9" min="5" max="30">
-            <div class="bt-label" style="margin-top:10px;">黃金交叉買進（K &lt; 此值）</div>
-            <input class="bt-input" id="bt-kd-buy" type="number" value="20" min="5" max="40">
-            <div class="bt-label" style="margin-top:10px;">死亡交叉賣出（K &gt; 此值）</div>
-            <input class="bt-input" id="bt-kd-sell" type="number" value="80" min="60" max="95">
-          </div>
-
-          <div style="border-top:1px solid #334155;margin:14px 0;"></div>
-
+          <!-- 出場條件 -->
           <div class="bt-section">
-            <div class="bt-label">賣出條件</div>
-            <div class="bt-strategy-tabs">
-              <button class="bt-stab active" id="sell-both"   onclick="setSellMode('both')"   style="font-size:11px;">策略+停損停利</button>
-              <button class="bt-stab"        id="sell-sltp"   onclick="setSellMode('sltp')"   style="font-size:11px;">僅停損停利</button>
-              <button class="bt-stab"        id="sell-signal" onclick="setSellMode('signal')" style="font-size:11px;">僅策略訊號</button>
+            <div class="cond-header">
+              <span class="cond-header-title" style="color:#ef4444;">▼ 出場條件</span>
+              <select id="bt-exit-logic" class="cond-logic-sel" onchange="onLogicChange('exit')">
+                <option value="AND">全部成立 (AND)</option>
+                <option value="OR" selected>任一成立 (OR)</option>
+              </select>
             </div>
+            <div id="bt-exit-conds"></div>
+            <button class="cond-add-btn" onclick="addCondition('exit')">+ 新增出場條件</button>
           </div>
 
+          <!-- 範本 -->
           <div class="bt-section">
-            <div class="bt-label">停損 %（0 = 不設）</div>
-            <input class="bt-input" id="bt-stoploss" type="number" value="8" min="0" max="30" step="0.5">
-            <div class="bt-label" style="margin-top:10px;">停利 %（0 = 不設）</div>
-            <input class="bt-input" id="bt-takeprofit" type="number" value="0" min="0" max="200" step="1">
+            <div class="bt-label">快速範本</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <button class="cond-tpl-btn" onclick="applyTemplate('ma_golden')">MA 黃金交叉</button>
+              <button class="cond-tpl-btn" onclick="applyTemplate('rsi_bounce')">RSI 超賣反彈</button>
+              <button class="cond-tpl-btn" onclick="applyTemplate('kd_low')">KD 低檔黃金叉</button>
+              <button class="cond-tpl-btn" onclick="applyTemplate('breakout')">突破均線</button>
+              <button class="cond-tpl-btn" onclick="applyTemplate('clear')" style="border-color:#7f1d1d;color:#fca5a5;">✕ 清空全部</button>
+            </div>
           </div>
 
           <div class="bt-section">
@@ -3603,6 +3587,357 @@ function queuePriceFetch(stockId, days, cb) {
   if (!btQueueRunning) processQueue();
 }
 
+// ═══════════════════════════════════════════════
+// 多指標條件系統（PUSH4）
+// ═══════════════════════════════════════════════
+
+// 指標型錄
+var INDICATORS = {
+  rsi: {
+    label: 'RSI', category: 'osc',
+    fields: [
+      { name: 'period', label: '週期', type: 'num', default: 14, min: 2, max: 50, width: 40 },
+      { name: 'op',     label: '',    type: 'op',  default: '<' },
+      { name: 'value',  label: '',    type: 'num', default: 30, min: 0, max: 100, width: 50 }
+    ]
+  },
+  kd_k: {
+    label: 'KD K值', category: 'osc',
+    fields: [
+      { name: 'period', label: '週期', type: 'num', default: 9, min: 2, max: 30, width: 40 },
+      { name: 'op',     label: '',    type: 'op',  default: '<' },
+      { name: 'value',  label: '',    type: 'num', default: 20, min: 0, max: 100, width: 50 }
+    ]
+  },
+  kd_cross: {
+    label: 'KD 交叉', category: 'cross',
+    fields: [
+      { name: 'period', label: '週期', type: 'num', default: 9, min: 2, max: 30, width: 40 },
+      { name: 'dir',    label: '',    type: 'enum', default: 'up',
+        options: [['up','黃金交叉'],['down','死亡交叉']] }
+    ]
+  },
+  macd_hist: {
+    label: 'MACD 柱狀', category: 'osc',
+    fields: [
+      { name: 'op',    label: '', type: 'op',  default: '>' },
+      { name: 'value', label: '', type: 'num', default: 0, step: 0.1, width: 60 }
+    ]
+  },
+  macd_cross: {
+    label: 'MACD 交叉', category: 'cross',
+    fields: [
+      { name: 'dir', label: '', type: 'enum', default: 'up',
+        options: [['up','黃金交叉'],['down','死亡交叉']] }
+    ]
+  },
+  ma_cross: {
+    label: '短長均線交叉', category: 'cross',
+    fields: [
+      { name: 'short', label: 'MA', type: 'num', default: 5,  min: 2, max: 60,  width: 40 },
+      { name: 'long',  label: 'vs MA', type: 'num', default: 20, min: 5, max: 200, width: 40 },
+      { name: 'dir',   label: '', type: 'enum', default: 'up',
+        options: [['up','黃金交叉'],['down','死亡交叉']] }
+    ]
+  },
+  price_vs_ma: {
+    label: '收盤價 vs MA', category: 'price',
+    fields: [
+      { name: 'op',     label: '', type: 'enum', default: 'cross_up',
+        options: [['cross_up','由下穿越'],['cross_down','由上跌破'],
+                  ['above','在...之上'],['below','在...之下']] },
+      { name: 'period', label: 'MA', type: 'num', default: 20, min: 2, max: 200, width: 40 }
+    ]
+  },
+  bullish: {
+    label: '多頭排列', category: 'price', noOp: true,
+    fields: [
+      { name: 'note', type: 'text', text: '價>MA5>MA20>MA60' }
+    ]
+  },
+  pct_change: {
+    label: '近 N 日漲跌 %', category: 'price',
+    fields: [
+      { name: 'days',  label: 'N', type: 'num', default: 5, min: 1, max: 60, width: 40 },
+      { name: 'op',    label: '', type: 'op',  default: '>' },
+      { name: 'value', label: '%', type: 'num', default: 3, step: 0.5, width: 50 }
+    ]
+  },
+  pnl_pct: {
+    label: '損益 %', category: 'pos', exitOnly: true,
+    fields: [
+      { name: 'op',    label: '', type: 'op',  default: '<=' },
+      { name: 'value', label: '%', type: 'num', default: -8, step: 0.5, width: 60 }
+    ]
+  },
+  hold_days: {
+    label: '持倉天數', category: 'pos', exitOnly: true,
+    fields: [
+      { name: 'op',    label: '', type: 'op',  default: '>=' },
+      { name: 'value', label: '天', type: 'num', default: 30, min: 1, width: 50 }
+    ]
+  }
+};
+
+// 條件狀態
+var btCond = {
+  entryLogic: 'AND',
+  entryConds: [],
+  exitLogic:  'OR',
+  exitConds:  [{ indicator: 'pnl_pct', op: '<=', value: -8 }]
+};
+
+// ── 條件評估引擎 ──────────────────────────────────
+function makeCtx(rows) {
+  var closes = rows.map(function(r) { return +r.close; });
+  return { closes: closes, dates: rows.map(function(r) { return r.date; }),
+           rsiCache: {}, maCache: {}, kdCache: null, macdCache: null,
+           idx: 0, pnlPct: 0, holdDays: 0 };
+}
+function getMA(ctx, n) {
+  if (!ctx.maCache[n]) ctx.maCache[n] = calcMA(ctx.closes, n);
+  return ctx.maCache[n];
+}
+function getRSI(ctx, n) {
+  if (!ctx.rsiCache[n]) ctx.rsiCache[n] = calcRSI(ctx.closes, n);
+  return ctx.rsiCache[n];
+}
+function getKD(ctx, n) {
+  if (!ctx.kdCache || ctx.kdCache.n !== n) {
+    var kd = calcKD(ctx.closes, n);
+    ctx.kdCache = { n: n, K: kd.K, D: kd.D };
+  }
+  return ctx.kdCache;
+}
+function getMACD(ctx) {
+  if (!ctx.macdCache) ctx.macdCache = calcMACD(ctx.closes);
+  return ctx.macdCache;
+}
+function cmp(a, op, b) {
+  if (a == null || b == null) return false;
+  switch (op) {
+    case '>':  return a > b;
+    case '>=': return a >= b;
+    case '<':  return a < b;
+    case '<=': return a <= b;
+    case '==': return a === b;
+    case '!=': return a !== b;
+  }
+  return false;
+}
+function evalOne(c, ctx) {
+  var i = ctx.idx;
+  switch (c.indicator) {
+    case 'rsi':
+      return cmp(getRSI(ctx, +c.period||14)[i], c.op, +c.value);
+    case 'kd_k':
+      return cmp(getKD(ctx, +c.period||9).K[i], c.op, +c.value);
+    case 'kd_cross': {
+      var kd = getKD(ctx, +c.period||9);
+      if (i < 1 || kd.K[i-1]==null) return false;
+      return c.dir === 'up'
+        ? (kd.K[i-1] <= kd.D[i-1] && kd.K[i] > kd.D[i])
+        : (kd.K[i-1] >= kd.D[i-1] && kd.K[i] < kd.D[i]);
+    }
+    case 'macd_hist':
+      return cmp(getMACD(ctx).hist[i], c.op, +c.value);
+    case 'macd_cross': {
+      var m = getMACD(ctx);
+      if (i < 1) return false;
+      var ph = m.hist[i-1], h = m.hist[i];
+      if (ph == null) return false;
+      return c.dir === 'up' ? (ph <= 0 && h > 0) : (ph >= 0 && h < 0);
+    }
+    case 'ma_cross': {
+      var s = getMA(ctx, +c.short||5), l = getMA(ctx, +c.long||20);
+      if (i < 1 || s[i]==null || l[i]==null || s[i-1]==null || l[i-1]==null) return false;
+      return c.dir === 'up'
+        ? (s[i-1] <= l[i-1] && s[i] > l[i])
+        : (s[i-1] >= l[i-1] && s[i] < l[i]);
+    }
+    case 'price_vs_ma': {
+      var p = +c.period||20;
+      var ma = getMA(ctx, p);
+      if (ma[i] == null) return false;
+      var price = ctx.closes[i], prevPrice = ctx.closes[i-1], prevMa = ma[i-1];
+      switch (c.op) {
+        case 'cross_up':   return i>0 && prevMa!=null && prevPrice<=prevMa && price>ma[i];
+        case 'cross_down': return i>0 && prevMa!=null && prevPrice>=prevMa && price<ma[i];
+        case 'above':      return price > ma[i];
+        case 'below':      return price < ma[i];
+      }
+      return false;
+    }
+    case 'bullish': {
+      var m5 = getMA(ctx, 5)[i], m20 = getMA(ctx, 20)[i], m60 = getMA(ctx, 60)[i];
+      return ctx.closes[i] > m5 && m5 > m20 && m20 > m60;
+    }
+    case 'pct_change': {
+      var d = +c.days||5;
+      if (i < d) return false;
+      var pct = (ctx.closes[i] - ctx.closes[i-d]) / ctx.closes[i-d] * 100;
+      return cmp(pct, c.op, +c.value);
+    }
+    case 'pnl_pct':
+      return cmp(ctx.pnlPct, c.op, +c.value);
+    case 'hold_days':
+      return cmp(ctx.holdDays, c.op, +c.value);
+  }
+  return false;
+}
+function evalConds(conds, logic, ctx) {
+  if (!conds || !conds.length) return false;
+  if (logic === 'OR') return conds.some(function(c) { return evalOne(c, ctx); });
+  return conds.every(function(c) { return evalOne(c, ctx); });
+}
+
+// ── UI 渲染 ───────────────────────────────────────
+function renderConditions() {
+  ['entry','exit'].forEach(function(kind) {
+    var conds = kind === 'entry' ? btCond.entryConds : btCond.exitConds;
+    var el = document.getElementById('bt-' + kind + '-conds');
+    if (!el) return;
+    if (conds.length === 0) {
+      el.innerHTML = '<div class="cond-empty">尚無條件，點下方按鈕新增</div>';
+      return;
+    }
+    el.innerHTML = conds.map(function(c, i) { return renderCondRow(kind, c, i); }).join('');
+  });
+  // sync logic dropdowns
+  var eL = document.getElementById('bt-entry-logic'); if (eL) eL.value = btCond.entryLogic;
+  var xL = document.getElementById('bt-exit-logic');  if (xL) xL.value = btCond.exitLogic;
+}
+
+function renderCondRow(kind, c, idx) {
+  var spec = INDICATORS[c.indicator];
+  if (!spec) return '';
+  // 指標下拉
+  var indOpts = Object.keys(INDICATORS).filter(function(k) {
+    return kind === 'exit' || !INDICATORS[k].exitOnly;
+  }).map(function(k) {
+    var sel = k === c.indicator ? ' selected' : '';
+    return '<option value="' + k + '"' + sel + '>' + INDICATORS[k].label + '</option>';
+  }).join('');
+
+  var html = '<div class="cond-row ' + kind + '">';
+  html += '<select class="cond-sel" onchange="changeCondIndicator(\'' + kind + '\',' + idx + ',this.value)">' + indOpts + '</select>';
+
+  spec.fields.forEach(function(f) {
+    if (f.type === 'num') {
+      var val = c[f.name] != null ? c[f.name] : f.default;
+      var lbl = f.label ? '<span class="cond-text">' + f.label + '</span>' : '';
+      html += lbl + '<input class="cond-num" type="number" value="' + val + '" '
+        + (f.min!=null?'min="'+f.min+'" ':'') + (f.max!=null?'max="'+f.max+'" ':'')
+        + (f.step!=null?'step="'+f.step+'" ':'') + 'style="width:' + (f.width||50) + 'px;" '
+        + 'onchange="updateCondField(\'' + kind + '\',' + idx + ',\'' + f.name + '\',+this.value)">';
+    } else if (f.type === 'op') {
+      var ops = ['>','>=','<','<=','==','!='];
+      html += '<select class="cond-sel" onchange="updateCondField(\'' + kind + '\',' + idx + ',\'' + f.name + '\',this.value)">'
+        + ops.map(function(o) {
+          var sel = (c[f.name] || f.default) === o ? ' selected' : '';
+          return '<option value="' + o + '"' + sel + '>' + o + '</option>';
+        }).join('') + '</select>';
+    } else if (f.type === 'enum') {
+      html += '<select class="cond-sel" onchange="updateCondField(\'' + kind + '\',' + idx + ',\'' + f.name + '\',this.value)">'
+        + f.options.map(function(opt) {
+          var sel = (c[f.name] || f.default) === opt[0] ? ' selected' : '';
+          return '<option value="' + opt[0] + '"' + sel + '>' + opt[1] + '</option>';
+        }).join('') + '</select>';
+    } else if (f.type === 'text') {
+      html += '<span class="cond-text">' + f.text + '</span>';
+    }
+  });
+
+  html += '<button class="cond-del" onclick="delCondition(\'' + kind + '\',' + idx + ')" title="刪除">✕</button>';
+  html += '</div>';
+  return html;
+}
+
+function addCondition(kind) {
+  var conds = kind === 'entry' ? btCond.entryConds : btCond.exitConds;
+  // 預設加 RSI（進場）或 損益%（出場）
+  var defKey = kind === 'entry' ? 'rsi' : 'pnl_pct';
+  var spec = INDICATORS[defKey];
+  var newCond = { indicator: defKey };
+  spec.fields.forEach(function(f) {
+    if (f.default !== undefined) newCond[f.name] = f.default;
+  });
+  conds.push(newCond);
+  renderConditions();
+}
+
+function delCondition(kind, idx) {
+  var conds = kind === 'entry' ? btCond.entryConds : btCond.exitConds;
+  conds.splice(idx, 1);
+  renderConditions();
+}
+
+function changeCondIndicator(kind, idx, newInd) {
+  var conds = kind === 'entry' ? btCond.entryConds : btCond.exitConds;
+  var spec = INDICATORS[newInd];
+  var newCond = { indicator: newInd };
+  spec.fields.forEach(function(f) {
+    if (f.default !== undefined) newCond[f.name] = f.default;
+  });
+  conds[idx] = newCond;
+  renderConditions();
+}
+
+function updateCondField(kind, idx, name, value) {
+  var conds = kind === 'entry' ? btCond.entryConds : btCond.exitConds;
+  if (conds[idx]) conds[idx][name] = value;
+}
+
+function onLogicChange(kind) {
+  var v = document.getElementById('bt-' + kind + '-logic').value;
+  if (kind === 'entry') btCond.entryLogic = v;
+  else btCond.exitLogic = v;
+}
+
+// ── 範本 ──────────────────────────────────────────
+function applyTemplate(name) {
+  var T = {
+    ma_golden: {
+      entryLogic: 'AND',
+      entryConds: [{ indicator:'ma_cross', short:5, long:20, dir:'up' }],
+      exitLogic: 'OR',
+      exitConds: [{ indicator:'ma_cross', short:5, long:20, dir:'down' },
+                  { indicator:'pnl_pct', op:'<=', value:-8 }]
+    },
+    rsi_bounce: {
+      entryLogic: 'AND',
+      entryConds: [{ indicator:'rsi', period:14, op:'<', value:30 }],
+      exitLogic: 'OR',
+      exitConds: [{ indicator:'rsi', period:14, op:'>', value:70 },
+                  { indicator:'pnl_pct', op:'<=', value:-8 }]
+    },
+    kd_low: {
+      entryLogic: 'AND',
+      entryConds: [{ indicator:'kd_cross', period:9, dir:'up' },
+                   { indicator:'kd_k', period:9, op:'<', value:30 }],
+      exitLogic: 'OR',
+      exitConds: [{ indicator:'kd_k', period:9, op:'>', value:80 },
+                  { indicator:'pnl_pct', op:'<=', value:-8 }]
+    },
+    breakout: {
+      entryLogic: 'AND',
+      entryConds: [{ indicator:'price_vs_ma', op:'cross_up', period:60 }],
+      exitLogic: 'OR',
+      exitConds: [{ indicator:'price_vs_ma', op:'cross_down', period:20 },
+                  { indicator:'pnl_pct', op:'<=', value:-8 }]
+    },
+    clear: { entryLogic:'AND', entryConds:[], exitLogic:'OR', exitConds:[] }
+  };
+  var tpl = T[name];
+  if (!tpl) return;
+  btCond = JSON.parse(JSON.stringify(tpl));
+  renderConditions();
+  toast('已套用範本：' + (name==='clear'?'已清空':name), 'ok');
+}
+
+// 初始化條件 UI
+setTimeout(renderConditions, 100);
+
 // ── 策略切換 ──────────────────────────────────────
 var btStrategy = 'ma';
 function setStrategy(s) {
@@ -3636,110 +3971,69 @@ function getBtParams() {
   if (hint) hint.style.display = maxBuys > 1 ? '' : 'none';
   return {
     strategy:    btStrategy,
-    maShort:     +document.getElementById('bt-ma-short').value,
-    maLong:      +document.getElementById('bt-ma-long').value,
-    maExitShort: +document.getElementById('bt-ma-exit-short').value || 20,
-    maExitLong:  +document.getElementById('bt-ma-exit-long').value  || 60,
-    rsiN:        +document.getElementById('bt-rsi-n').value,
-    rsiBuy:      +document.getElementById('bt-rsi-buy').value,
-    rsiSell:     +document.getElementById('bt-rsi-sell').value,
-    kdN:         +document.getElementById('bt-kd-n').value,
-    kdBuy:       +document.getElementById('bt-kd-buy').value,
-    kdSell:      +document.getElementById('bt-kd-sell').value,
-    stopLoss:    +document.getElementById('bt-stoploss').value,
-    takeProfit:  +document.getElementById('bt-takeprofit').value,
+    entryLogic:  btCond.entryLogic,
+    entryConds:  btCond.entryConds.slice(),
+    exitLogic:   btCond.exitLogic,
+    exitConds:   btCond.exitConds.slice(),
     maxBuys:     maxBuys,
-    sellMode:    _sellMode,
     addMode:     _addMode,
     dipPct:      +document.getElementById('bt-dippct').value || 5,
     lots:        +document.getElementById('bt-lots').value || 1
   };
 }
 
-// ── 回測引擎 ──────────────────────────────────────
+// ── 回測引擎（多條件版本）────────────────────────
 function runBacktest(rows, params) {
   var closes = rows.map(function(r) { return +r.close; });
   var dates  = rows.map(function(r) { return r.date; });
   var p = params;
   var n = closes.length;
-  var signals = new Array(n).fill(null);
 
-  if (p.strategy === 'ma') {
-    var sma  = calcMA(closes, p.maShort);
-    var lma  = calcMA(closes, p.maLong);
-    var xsma = calcMA(closes, p.maExitShort || p.maShort);
-    var xlma = calcMA(closes, p.maExitLong  || p.maLong);
-    for (var i = 1; i < n; i++) {
-      // 進場：快線穿越慢線向上（黃金交叉）
-      if (sma[i] != null && lma[i] != null && sma[i-1] != null && lma[i-1] != null) {
-        if (sma[i-1] <= lma[i-1] && sma[i] > lma[i]) signals[i] = 'buy';
-      }
-      // 出場：快線跌破慢線（死亡交叉）—— 覆蓋同日買進訊號
-      if (xsma[i] != null && xlma[i] != null && xsma[i-1] != null && xlma[i-1] != null) {
-        if (xsma[i-1] >= xlma[i-1] && xsma[i] < xlma[i]) signals[i] = 'sell';
-      }
-    }
-  } else if (p.strategy === 'rsi') {
-    var rsi = calcRSI(closes, p.rsiN);
-    for (var i = 1; i < n; i++) {
-      if (rsi[i] != null && rsi[i-1] != null) {
-        if (rsi[i-1] >= p.rsiBuy && rsi[i] < p.rsiBuy)   signals[i] = 'buy';
-        else if (rsi[i-1] <= p.rsiSell && rsi[i] > p.rsiSell) signals[i] = 'sell';
-      }
-    }
-  } else if (p.strategy === 'kd') {
-    var kd = calcKD(closes, p.kdN);
-    var K = kd.K, D = kd.D;
-    for (var i = 1; i < n; i++) {
-      if (K[i-1] <= D[i-1] && K[i] > D[i] && K[i] < p.kdBuy)   signals[i] = 'buy';
-      else if (K[i-1] >= D[i-1] && K[i] < D[i] && K[i] > p.kdSell) signals[i] = 'sell';
-    }
-  }
+  // 建立評估上下文（共用快取，所有指標只算一次）
+  var ctx = makeCtx(rows);
 
   // 模擬進出場（支援分批買進）
   var trades      = [];
-  var pos         = null;  // { units:[{date,price,idx}], avgCost, firstIdx }
+  var pos         = null;
   var maxBuys     = p.maxBuys || 1;
-  var posBuyCount = 0;     // 目前持倉的買進次數（賣出後歸零）
-  var allBuys     = 0;     // 全程總買進次數（供 metrics 顯示）
+  var posBuyCount = 0;
+  var allBuys     = 0;
 
   function calcAvg(units) {
     return units.reduce(function(s, u) { return s + u.price; }, 0) / units.length;
   }
 
   for (var i = 0; i < n; i++) {
+    ctx.idx = i;
+
     if (pos) {
       var pnl = (closes[i] - pos.avgCost) / pos.avgCost * 100;
-      var exitReason = null;
-      var sm = p.sellMode || 'both';
-      // 停損/停利（sellMode != 'signal' 時啟用）
-      if (sm !== 'signal') {
-        if (p.stopLoss > 0 && pnl <= -p.stopLoss)     exitReason = '停損';
-        else if (p.takeProfit > 0 && pnl >= p.takeProfit) exitReason = '停利';
-      }
-      // 策略訊號（sellMode != 'sltp' 時啟用）
-      if (!exitReason && sm !== 'sltp' && signals[i] === 'sell') exitReason = '訊號';
+      ctx.pnlPct   = pnl;
+      ctx.holdDays = i - pos.firstIdx;
 
-      if (exitReason) {
+      // 出場：評估出場條件
+      var shouldExit = evalConds(p.exitConds, p.exitLogic, ctx);
+
+      if (shouldExit) {
         trades.push({
           buyDate:  pos.units[0].date, sellDate: dates[i],
           buyPrice: pos.avgCost,       sellPrice: closes[i],
           pnl:      pnl,               holdDays: i - pos.firstIdx,
-          reason:   exitReason,        buyCount: pos.units.length,
+          reason:   '出場條件',         buyCount: pos.units.length,
           buyIdx:   pos.firstIdx,      sellIdx: i
         });
         pos = null;
         posBuyCount = 0;
       } else if (posBuyCount < maxBuys) {
-        // 判斷加碼條件
+        // 加碼判斷
         var shouldAdd = false;
         if (p.addMode === 'dip') {
           var lastPrice = pos.units[pos.units.length - 1].price;
           var dipPct = (lastPrice - closes[i]) / lastPrice * 100;
           if (dipPct >= p.dipPct) shouldAdd = true;
         } else {
-          // 預設：策略買進訊號
-          if (signals[i] === 'buy') shouldAdd = true;
+          // 預設：進場條件再次成立
+          if (evalConds(p.entryConds, p.entryLogic, ctx)) shouldAdd = true;
         }
         if (shouldAdd) {
           pos.units.push({date: dates[i], price: closes[i], idx: i});
@@ -3748,15 +4042,18 @@ function runBacktest(rows, params) {
           allBuys++;
         }
       }
-    } else if (signals[i] === 'buy') {
-      // 沒有持倉 → 開新倉（不受 maxBuys 限制，第一次一定買）
-      pos = {
-        units: [{date: dates[i], price: closes[i], idx: i}],
-        avgCost: closes[i],
-        firstIdx: i
-      };
-      posBuyCount = 1;
-      allBuys++;
+    } else {
+      // 無持倉 → 評估進場條件
+      ctx.pnlPct = 0; ctx.holdDays = 0;
+      if (evalConds(p.entryConds, p.entryLogic, ctx)) {
+        pos = {
+          units: [{date: dates[i], price: closes[i], idx: i}],
+          avgCost: closes[i],
+          firstIdx: i
+        };
+        posBuyCount = 1;
+        allBuys++;
+      }
     }
   }
   // 持有中未平倉
