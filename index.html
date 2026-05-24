@@ -3392,11 +3392,15 @@ function fcap(v)  { if(v==null) return 'N/A'; if(v>=1e12) return (v/1e12).toFixe
 // ── 頁面切換 ──────────────────────────────────────
 function showPage(page) {
   var isDash = page === 'dashboard';
-  // 儀表板相關元素
-  ['searchWrap','gtabs','browseFilters'].forEach(function(id) {
+  // 儀表板顯示的元素（browseFilters 已停用，永遠隱藏）
+  ['searchWrap','gtabs'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.style.display = isDash ? '' : 'none';
   });
+  // browseFilters 永遠不顯示（功能已停用）
+  var bf = document.getElementById('browseFilters');
+  if (bf) bf.style.display = 'none';
+
   if (!isDash) {
     ['filterBar','watchGrid','emptyState'].forEach(function(id) {
       var el = document.getElementById(id);
