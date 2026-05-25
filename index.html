@@ -1201,6 +1201,7 @@ function parseFinMind(records, ticker) {
       closes:      allCloses.slice(-300),
       highs:       validRecords.slice(-300).map(function(r) { return r.max; }),
       lows:        validRecords.slice(-300).map(function(r) { return r.min; }),
+      volumes:     validRecords.slice(-300).map(function(r) { return r.Trading_Volume ? r.Trading_Volume / 1000 : null; }),
       ma240:       L(calcMA(allCloses, 240)),
       rawRecords:  validRecords
     };
@@ -1456,7 +1457,7 @@ function scrCondSetField(idx, name, value) { if (screenerCustomConds[idx]) scree
 function evalCondAtLastBar(c, d) {
   if (!d.closes || d.closes.length === 0) return false;
   var ctx = {
-    closes: d.closes, highs: d.highs || [], lows: d.lows || [],
+    closes: d.closes, highs: d.highs || [], lows: d.lows || [], volumes: d.volumes || [],
     rsiCache: {}, maCache: {}, kdCache: null, macdCache: null,
     dmiCache: null, williamsCache: null,
     idx: d.closes.length - 1, pnlPct: 0, holdDays: 0, dates: []
@@ -2778,6 +2779,7 @@ function _runAllMarketScreener(hasInd, hasFund) {
           closes:   closes,
           highs:    highs,
           lows:     lows,
+          volumes:  rows.map(function(r) { return r.volume != null ? +r.volume / 1000 : null; }),
           pctFromLow: n>=252 ? (closes[n]-Math.min.apply(null,closes.slice(n-252)))/Math.min.apply(null,closes.slice(n-252))*100 : null,
           isBullish: ma5[n]!=null && ma20[n]!=null && ma5[n]>ma20[n],
           pct5d:    n>=5 ? (closes[n]-closes[n-5])/closes[n-5]*100 : null,
@@ -3552,6 +3554,14 @@ var INDICATORS = {
         options: [['bull','+DI > -DI（多方）'],['bear','-DI > +DI（空方）'],
                   ['cross_up','+DI 黃金叉'],['cross_down','+DI 死亡叉']] }
     ]
+  },
+  vol_avg: {
+    label: '均量（張）', category: 'vol',
+    fields: [
+      { name: 'period', label: '近', type: 'num', default: 5, min: 1, max: 60, width: 35 },
+      { name: 'op',     label: '日均量', type: 'op', default: '>' },
+      { name: 'value',  label: '張', type: 'num', default: 1000, min: 0, step: 500, width: 70 }
+    ]
   }
 };
 
@@ -3566,9 +3576,10 @@ var btCond = {
 // ── 條件評估引擎 ──────────────────────────────────
 function makeCtx(rows) {
   var closes = rows.map(function(r) { return +r.close; });
-  var highs  = rows.map(function(r) { return r.max != null ? +r.max : null; });
-  var lows   = rows.map(function(r) { return r.min != null ? +r.min : null; });
-  return { closes: closes, highs: highs, lows: lows,
+  var highs   = rows.map(function(r) { return r.max != null ? +r.max : null; });
+  var lows    = rows.map(function(r) { return r.min != null ? +r.min : null; });
+  var volumes = rows.map(function(r) { return r.volume != null ? +r.volume / 1000 : (r.Trading_Volume != null ? +r.Trading_Volume / 1000 : null); });
+  return { closes: closes, highs: highs, lows: lows, volumes: volumes,
            dates: rows.map(function(r) { return r.date; }),
            rsiCache: {}, maCache: {}, kdCache: null, macdCache: null,
            dmiCache: null, williamsCache: null,
@@ -3674,6 +3685,16 @@ function evalOne(c, ctx) {
       return cmp(ctx.pnlPct, c.op, +c.value);
     case 'hold_days':
       return cmp(ctx.holdDays, c.op, +c.value);
+    case 'vol_avg': {
+      var vols = ctx.volumes || [];
+      var vn = +c.period || 5;
+      if (i < vn - 1) return false;
+      var vsum = 0, vcnt = 0;
+      for (var vi = i - vn + 1; vi <= i; vi++) {
+        if (vols[vi] != null) { vsum += vols[vi]; vcnt++; }
+      }
+      return vcnt > 0 && cmp(vsum / vcnt, c.op, +c.value);
+    }
     case 'williams':
       return cmp(getWilliams(ctx, +c.period||14)[i], c.op, +c.value);
     case 'dmi_adx':
