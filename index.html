@@ -6,7 +6,7 @@
 <title>台股 AI 分析儀表板</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4/dist/lightweight-charts.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.production.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;}
@@ -671,6 +671,19 @@ select.bt-input{cursor:pointer;}
             <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
             <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
           </div>
+          <!-- 自定義技術指標條件 -->
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e293b;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="color:#94a3b8;font-size:12px;">自定義指標條件</span>
+              <select id="screener-cond-logic" class="cond-logic-sel" onchange="screenerCondLogic=this.value" style="width:70px;font-size:11px;padding:2px 5px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;">
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+              </select>
+              <span style="color:#475569;font-size:11px;">（與快速篩選並列 AND）</span>
+            </div>
+            <div id="screener-custom-conds"></div>
+            <button class="cond-add-btn" onclick="addScreenerCond()" style="margin-top:4px;">+ 新增技術條件</button>
+          </div>
           <div id="ind-global-note" style="display:none;margin-top:8px;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:7px 10px;font-size:11px;color:#86efac;">
             ⚠ 全市場模式：技術指標會套用在財報篩選結果的前 50 檔（需抓取價格，約需 1 分鐘）
           </div>
@@ -752,6 +765,8 @@ var stocks    = {};
 var current   = null;
 var myChart   = null;
 var activeFilters = {};
+var screenerCustomConds = [];
+var screenerCondLogic = 'AND';
 var filterParams  = { rsi: 30, maN: 20, nearLow: 10, pullback: 3, revYoy: 10, epsMin: 3 };
 var chartPeriod   = 'day';
 var monthlyRevCache = {};
@@ -1205,7 +1220,10 @@ function parseFinMind(records, ticker) {
       high20:      high20,
       low20:       low20,
       range20:     range20,
-      closes:      allCloses.slice(-65),
+      closes:      allCloses.slice(-300),
+      highs:       validRecords.slice(-300).map(function(r) { return r.max; }),
+      lows:        validRecords.slice(-300).map(function(r) { return r.min; }),
+      ma240:       L(calcMA(allCloses, 240)),
       rawRecords:  validRecords
     };
   } catch(e) {
@@ -1384,6 +1402,82 @@ function clearFilters() {
   var btns = document.querySelectorAll('[id^="fbtn-"]');
   for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
   renderGrid();
+}
+
+// ── 選股器自定義指標條件 ─────────────────────────────
+function renderScreenerConds() {
+  var el = document.getElementById('screener-custom-conds');
+  if (!el) return;
+  if (screenerCustomConds.length === 0) {
+    el.innerHTML = '<div style="color:#475569;font-size:12px;padding:4px 0;">尚無條件，點下方按鈕新增</div>';
+    return;
+  }
+  el.innerHTML = screenerCustomConds.map(function(c, i) {
+    return renderScrCondRow(c, i);
+  }).join('');
+}
+function renderScrCondRow(c, idx) {
+  var spec = INDICATORS[c.indicator];
+  if (!spec) return '';
+  var indOpts = Object.keys(INDICATORS).filter(function(k) {
+    return !INDICATORS[k].exitOnly;
+  }).map(function(k) {
+    return '<option value="' + k + '"' + (k === c.indicator ? ' selected' : '') + '>' + INDICATORS[k].label + '</option>';
+  }).join('');
+  var html = '<div class="cond-row entry">';
+  html += '<select class="cond-sel" onchange="scrCondChangeInd(' + idx + ',this.value)">' + indOpts + '</select>';
+  spec.fields.forEach(function(f) {
+    if (f.type === 'num') {
+      var val = c[f.name] != null ? c[f.name] : f.default;
+      var lbl = f.label ? '<span class="cond-text">' + f.label + '</span>' : '';
+      html += lbl + '<input class="cond-num" type="number" value="' + val + '" '
+        + (f.min!=null?'min="'+f.min+'" ':'') + (f.max!=null?'max="'+f.max+'" ':'')
+        + (f.step!=null?'step="'+f.step+'" ':'') + 'style="width:' + (f.width||50) + 'px;" '
+        + 'onchange="scrCondSetField(' + idx + ',\'' + f.name + '\',+this.value)">';
+    } else if (f.type === 'op') {
+      var ops = ['>','>=','<','<=','==','!='];
+      html += '<select class="cond-sel" onchange="scrCondSetField(' + idx + ',\'' + f.name + '\',this.value)">'
+        + ops.map(function(o) {
+          return '<option value="' + o + '"' + ((c[f.name]||f.default)===o?' selected':'') + '>' + o + '</option>';
+        }).join('') + '</select>';
+    } else if (f.type === 'enum') {
+      html += '<select class="cond-sel" onchange="scrCondSetField(' + idx + ',\'' + f.name + '\',this.value)">'
+        + f.options.map(function(opt) {
+          return '<option value="' + opt[0] + '"' + ((c[f.name]||f.default)===opt[0]?' selected':'') + '>' + opt[1] + '</option>';
+        }).join('') + '</select>';
+    } else if (f.type === 'text') {
+      html += '<span class="cond-text">' + f.text + '</span>';
+    }
+  });
+  html += '<button class="cond-del" onclick="scrCondDel(' + idx + ')" title="刪除">✕</button></div>';
+  return html;
+}
+function addScreenerCond() {
+  var newCond = { indicator: 'rsi' };
+  INDICATORS.rsi.fields.forEach(function(f) { if (f.default !== undefined) newCond[f.name] = f.default; });
+  screenerCustomConds.push(newCond);
+  renderScreenerConds();
+}
+function scrCondDel(idx) { screenerCustomConds.splice(idx, 1); renderScreenerConds(); }
+function scrCondChangeInd(idx, newInd) {
+  var spec = INDICATORS[newInd];
+  var newCond = { indicator: newInd };
+  spec.fields.forEach(function(f) { if (f.default !== undefined) newCond[f.name] = f.default; });
+  screenerCustomConds[idx] = newCond;
+  renderScreenerConds();
+}
+function scrCondSetField(idx, name, value) { if (screenerCustomConds[idx]) screenerCustomConds[idx][name] = value; }
+
+// 在最新一根 K 棒上評估單一條件（選股器用）
+function evalCondAtLastBar(c, d) {
+  if (!d.closes || d.closes.length === 0) return false;
+  var ctx = {
+    closes: d.closes, highs: d.highs || [], lows: d.lows || [],
+    rsiCache: {}, maCache: {}, kdCache: null, macdCache: null,
+    dmiCache: null, williamsCache: null,
+    idx: d.closes.length - 1, pnlPct: 0, holdDays: 0, dates: []
+  };
+  return evalOne(c, ctx);
 }
 
 function setFilter(name) { clearFilters(); }
@@ -2548,7 +2642,7 @@ function setScope(s) {
   _scope = s;
   document.getElementById('scope-watch').classList.toggle('active', s === 'watchlist');
   document.getElementById('scope-all').classList.toggle('active', s === 'all');
-  var hasInd = Object.keys(activeFilters).length > 0;
+  var hasInd = Object.keys(activeFilters).length > 0 || screenerCustomConds.length > 0;
   var note = document.getElementById('ind-global-note');
   if (note) note.style.display = (s === 'all' && hasInd) ? '' : 'none';
   document.getElementById('screenerRunBtn').textContent = s === 'watchlist' ? '篩選' : '篩選全市場';
@@ -2556,7 +2650,7 @@ function setScope(s) {
 
 // ── 統一選股器 ────────────────────────────────────
 function runUnifiedScreener() {
-  var hasInd  = Object.keys(activeFilters).length > 0;
+  var hasInd  = Object.keys(activeFilters).length > 0 || screenerCustomConds.length > 0;
   var hasFund = screenConds.some(function(c) { return c.on; });
 
   if (!hasInd && !hasFund) {
@@ -2587,21 +2681,31 @@ function _runWatchlistScreener(hasInd, hasFund) {
         return c.op === '>' ? v > c.val : v < c.val;
       })) return false;
     }
-    // 技術指標
-    if (hasInd) {
+    // 技術指標（快速篩選按鈕）
+    if (Object.keys(activeFilters).length > 0) {
       var d = stocks[t];
       if (!d) return false;
       if (!Object.keys(activeFilters).every(function(k) { return matchFilter(d, k); })) return false;
+    }
+    // 自定義指標條件
+    if (screenerCustomConds.length > 0) {
+      var d2 = stocks[t];
+      if (!d2) return false;
+      var customPass = screenerCondLogic === 'OR'
+        ? screenerCustomConds.some(function(c) { return evalCondAtLastBar(c, d2); })
+        : screenerCustomConds.every(function(c) { return evalCondAtLastBar(c, d2); });
+      if (!customPass) return false;
     }
     return true;
   });
 
   window.lastScreenerResults = matches.map(function(t) { return { sid: t }; });
   var parts = [];
-  if (hasInd)  parts.push(Object.keys(activeFilters).map(function(k){
+  if (Object.keys(activeFilters).length > 0) parts.push(Object.keys(activeFilters).map(function(k){
     var m={'oversold':'RSI','breakout':'MA突破','near-low':'距年低','bullish':'多頭','pullback':'回檔','rev-yoy':'YoY','eps-min':'EPS'};
     return m[k]||k;
   }).join('+'));
+  if (screenerCustomConds.length > 0) parts.push('自定義指標×' + screenerCustomConds.length);
   if (hasFund) parts.push('財報條件');
   _applyWatchlistResult(matches, parts.join(' + '));
 }
@@ -2658,6 +2762,8 @@ function _runAllMarketScreener(hasInd, hasFund) {
 
       if (!err && rows) {
         var closes = rows.map(function(r) { return +r.close; });
+        var highs  = rows.map(function(r) { return r.max != null ? +r.max : null; });
+        var lows   = rows.map(function(r) { return r.min != null ? +r.min : null; });
         var n = closes.length - 1;
         var rsiArr = calcRSI(closes, 14);
         var ma5  = calcMA(closes, 5);
@@ -2665,12 +2771,19 @@ function _runAllMarketScreener(hasInd, hasFund) {
         var mockD = {
           rsi:      rsiArr[n],
           closes:   closes,
+          highs:    highs,
+          lows:     lows,
           pctFromLow: n>=252 ? (closes[n]-Math.min.apply(null,closes.slice(n-252)))/Math.min.apply(null,closes.slice(n-252))*100 : null,
           isBullish: ma5[n]!=null && ma20[n]!=null && ma5[n]>ma20[n],
           pct5d:    n>=5 ? (closes[n]-closes[n-5])/closes[n-5]*100 : null,
           monthRev: stocks[sid]?stocks[sid].monthRev:null
         };
         var pass = Object.keys(activeFilters).every(function(k) { return matchFilter(mockD, k); });
+        if (pass && screenerCustomConds.length > 0) {
+          pass = screenerCondLogic === 'OR'
+            ? screenerCustomConds.some(function(c) { return evalCondAtLastBar(c, mockD); })
+            : screenerCustomConds.every(function(c) { return evalCondAtLastBar(c, mockD); });
+        }
         if (pass) {
           passed++;
           if (statusEl) statusEl.innerHTML = '<span style="color:#22c55e;font-weight:600;">✅</span>';
@@ -2767,6 +2880,7 @@ function openScreener() {
   document.getElementById('screenerOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
   renderScreenConds();
+  renderScreenerConds();
   setScope(_scope); // 同步範圍按鈕狀態
   updateFilterStatus(filterTickers(watchlist).length);
   var sub = document.getElementById('screenerSub');
@@ -2842,6 +2956,11 @@ function editScreenVal(i, e) {
 }
 
 function resetScreener() {
+  screenerCustomConds = [];
+  screenerCondLogic = 'AND';
+  var logicSel = document.getElementById('screener-cond-logic');
+  if (logicSel) logicSel.value = 'AND';
+  renderScreenerConds();
   screenConds = [
     { key:'eps',         label:'EPS TTM',      unit:'元', op:'>', val:5,  on:true  },
     { key:'gm',          label:'毛利率',        unit:'%',  op:'>', val:20, on:false },
@@ -3032,6 +3151,63 @@ function calcMACD(prices) {
   var signal = calcEMA(macd, 9);
   var hist   = macd.map(function(v, i) { return v - signal[i]; });
   return { macd: macd, signal: signal, hist: hist };
+}
+
+function calcDMI(closes, highs, lows, n) {
+  n = n || 14;
+  var len = closes.length;
+  var plusDI  = new Array(len).fill(null);
+  var minusDI = new Array(len).fill(null);
+  var adxArr  = new Array(len).fill(null);
+  if (!highs || !lows || len < n + 1) return { plusDI: plusDI, minusDI: minusDI, adx: adxArr };
+  var smoothTR = 0, smoothPDM = 0, smoothMDM = 0;
+  var dxBuf = [];
+  for (var i = 1; i < len; i++) {
+    var h = highs[i], l = lows[i], pc = closes[i-1];
+    var ph = highs[i-1], pl = lows[i-1];
+    if (h == null || l == null || pc == null || ph == null || pl == null) continue;
+    var tr  = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    var pdm = Math.max(h - ph, 0); if (pl - l >= pdm) pdm = 0;
+    var mdm = Math.max(pl - l, 0); if (h - ph >= mdm) mdm = 0;
+    if (i <= n) {
+      smoothTR += tr; smoothPDM += pdm; smoothMDM += mdm;
+      if (i < n) continue;
+    } else {
+      smoothTR  = smoothTR  - smoothTR  / n + tr;
+      smoothPDM = smoothPDM - smoothPDM / n + pdm;
+      smoothMDM = smoothMDM - smoothMDM / n + mdm;
+    }
+    var pdi = smoothTR > 0 ? 100 * smoothPDM / smoothTR : 0;
+    var mdi = smoothTR > 0 ? 100 * smoothMDM / smoothTR : 0;
+    plusDI[i]  = pdi;
+    minusDI[i] = mdi;
+    var dx = (pdi + mdi) > 0 ? 100 * Math.abs(pdi - mdi) / (pdi + mdi) : 0;
+    dxBuf.push({ i: i, dx: dx });
+    if (dxBuf.length === n) {
+      var sum = 0; for (var j = 0; j < n; j++) sum += dxBuf[j].dx;
+      adxArr[i] = sum / n;
+    } else if (dxBuf.length > n) {
+      var prev = adxArr[dxBuf[dxBuf.length - 2].i];
+      adxArr[i] = prev != null ? (prev * (n - 1) + dx) / n : dx;
+    }
+  }
+  return { plusDI: plusDI, minusDI: minusDI, adx: adxArr };
+}
+
+function calcWilliams(closes, highs, lows, n) {
+  n = n || 14;
+  var len = closes.length;
+  var result = new Array(len).fill(null);
+  if (!highs || !lows) return result;
+  for (var i = n - 1; i < len; i++) {
+    var hh = -Infinity, ll = Infinity;
+    for (var j = i - n + 1; j <= i; j++) {
+      if (highs[j] != null && highs[j] > hh) hh = highs[j];
+      if (lows[j]  != null && lows[j]  < ll) ll = lows[j];
+    }
+    result[i] = (hh === ll) ? -50 : -100 * (hh - closes[i]) / (hh - ll);
+  }
+  return result;
 }
 
 // ─────────────────────────────────
@@ -3351,6 +3527,31 @@ var INDICATORS = {
       { name: 'op',    label: '', type: 'op',  default: '>=' },
       { name: 'value', label: '天', type: 'num', default: 30, min: 1, width: 50 }
     ]
+  },
+  williams: {
+    label: '威廉指標 %R', category: 'osc',
+    fields: [
+      { name: 'period', label: '週期', type: 'num', default: 14, min: 2, max: 50, width: 40 },
+      { name: 'op',     label: '',    type: 'op',  default: '<' },
+      { name: 'value',  label: '%',   type: 'num', default: -80, min: -100, max: 0, width: 55 }
+    ]
+  },
+  dmi_adx: {
+    label: 'DMI ADX', category: 'osc',
+    fields: [
+      { name: 'period', label: '週期', type: 'num', default: 14, min: 2, max: 30, width: 40 },
+      { name: 'op',     label: '',    type: 'op',  default: '>' },
+      { name: 'value',  label: '',    type: 'num', default: 25, min: 0, max: 100, width: 50 }
+    ]
+  },
+  dmi_cross: {
+    label: 'DMI 方向', category: 'cross',
+    fields: [
+      { name: 'period', label: '週期', type: 'num', default: 14, min: 2, max: 30, width: 40 },
+      { name: 'dir',    label: '',    type: 'enum', default: 'bull',
+        options: [['bull','+DI > -DI（多方）'],['bear','-DI > +DI（空方）'],
+                  ['cross_up','+DI 黃金叉'],['cross_down','+DI 死亡叉']] }
+    ]
   }
 };
 
@@ -3365,8 +3566,12 @@ var btCond = {
 // ── 條件評估引擎 ──────────────────────────────────
 function makeCtx(rows) {
   var closes = rows.map(function(r) { return +r.close; });
-  return { closes: closes, dates: rows.map(function(r) { return r.date; }),
+  var highs  = rows.map(function(r) { return r.max != null ? +r.max : null; });
+  var lows   = rows.map(function(r) { return r.min != null ? +r.min : null; });
+  return { closes: closes, highs: highs, lows: lows,
+           dates: rows.map(function(r) { return r.date; }),
            rsiCache: {}, maCache: {}, kdCache: null, macdCache: null,
+           dmiCache: null, williamsCache: null,
            idx: 0, pnlPct: 0, holdDays: 0 };
 }
 function getMA(ctx, n) {
@@ -3387,6 +3592,18 @@ function getKD(ctx, n) {
 function getMACD(ctx) {
   if (!ctx.macdCache) ctx.macdCache = calcMACD(ctx.closes);
   return ctx.macdCache;
+}
+function getDMI(ctx, n) {
+  if (!ctx.dmiCache || ctx.dmiCache.n !== n) {
+    var d = calcDMI(ctx.closes, ctx.highs, ctx.lows, n);
+    ctx.dmiCache = { n: n, plusDI: d.plusDI, minusDI: d.minusDI, adx: d.adx };
+  }
+  return ctx.dmiCache;
+}
+function getWilliams(ctx, n) {
+  if (!ctx.williamsCache || ctx.williamsCache.n !== n)
+    ctx.williamsCache = { n: n, values: calcWilliams(ctx.closes, ctx.highs, ctx.lows, n) };
+  return ctx.williamsCache.values;
 }
 function cmp(a, op, b) {
   if (a == null || b == null) return false;
@@ -3457,6 +3674,23 @@ function evalOne(c, ctx) {
       return cmp(ctx.pnlPct, c.op, +c.value);
     case 'hold_days':
       return cmp(ctx.holdDays, c.op, +c.value);
+    case 'williams':
+      return cmp(getWilliams(ctx, +c.period||14)[i], c.op, +c.value);
+    case 'dmi_adx':
+      return cmp(getDMI(ctx, +c.period||14).adx[i], c.op, +c.value);
+    case 'dmi_cross': {
+      var dmi = getDMI(ctx, +c.period||14);
+      var pdi = dmi.plusDI[i], mdi = dmi.minusDI[i];
+      if (pdi == null || mdi == null) return false;
+      if (c.dir === 'bull') return pdi > mdi;
+      if (c.dir === 'bear') return mdi > pdi;
+      if (i < 1) return false;
+      var ppdi = dmi.plusDI[i-1], pmdi = dmi.minusDI[i-1];
+      if (ppdi == null || pmdi == null) return false;
+      if (c.dir === 'cross_up')   return ppdi <= pmdi && pdi > mdi;
+      if (c.dir === 'cross_down') return ppdi >= pmdi && pdi < mdi;
+      return false;
+    }
   }
   return false;
 }
