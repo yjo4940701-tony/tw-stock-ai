@@ -657,12 +657,7 @@ select.bt-input{cursor:pointer;}
       <!-- 技術指標區塊 -->
       <div class="scrn-section">
         <div class="scrn-section-title" onclick="toggleScrSection('ind')" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;">
-          <span>📈 技術指標條件
-            <select id="screener-cond-logic" class="cond-logic-sel" onclick="event.stopPropagation()" onchange="screenerCondLogic=this.value" style="width:65px;font-size:11px;padding:2px 4px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;margin-left:6px;">
-              <option value="AND">AND</option>
-              <option value="OR">OR</option>
-            </select>
-          </span>
+          <span>📈 技術指標條件 <span style="color:#475569;font-weight:400;font-size:11px;">AND 優先・可逐列切換 AND/OR</span></span>
           <span id="scrn-chevron-ind" style="color:#475569;font-size:13px;">▾</span>
         </div>
         <div id="scrn-body-ind">
@@ -750,7 +745,6 @@ var current   = null;
 var myChart   = null;
 var activeFilters = {};
 var screenerCustomConds = [];
-var screenerCondLogic = 'AND';
 var filterParams  = { rsi: 30, maN: 20, nearLow: 10, pullback: 3, revYoy: 10, epsMin: 3 };
 var chartPeriod   = 'day';
 var monthlyRevCache = {};
@@ -1408,7 +1402,15 @@ function renderScrCondRow(c, idx) {
   }).map(function(k) {
     return '<option value="' + k + '"' + (k === c.indicator ? ' selected' : '') + '>' + INDICATORS[k].label + '</option>';
   }).join('');
+  var logic = c.logic || 'AND';
+  var logicSel = idx === 0
+    ? '<span class="cond-text" style="color:#475569;font-size:11px;min-width:32px;">—</span>'
+    : '<select class="cond-sel" style="min-width:52px;font-weight:700;color:' + (logic==='OR'?'#f59e0b':'#60a5fa') + ';" onchange="scrCondSetField(' + idx + ',\'logic\',this.value);renderScreenerConds()">'
+      + '<option value="AND"' + (logic==='AND'?' selected':'') + '>AND</option>'
+      + '<option value="OR"'  + (logic==='OR' ?' selected':'') + '>OR</option>'
+      + '</select>';
   var html = '<div class="cond-row entry">';
+  html += logicSel;
   html += '<select class="cond-sel" onchange="scrCondChangeInd(' + idx + ',this.value)">' + indOpts + '</select>';
   spec.fields.forEach(function(f) {
     if (f.type === 'num') {
@@ -1437,7 +1439,7 @@ function renderScrCondRow(c, idx) {
   return html;
 }
 function addScreenerCond() {
-  var newCond = { indicator: 'rsi' };
+  var newCond = { indicator: 'rsi', logic: screenerCustomConds.length === 0 ? null : 'AND' };
   INDICATORS.rsi.fields.forEach(function(f) { if (f.default !== undefined) newCond[f.name] = f.default; });
   screenerCustomConds.push(newCond);
   renderScreenerConds();
@@ -1445,7 +1447,7 @@ function addScreenerCond() {
 function scrCondDel(idx) { screenerCustomConds.splice(idx, 1); renderScreenerConds(); }
 function scrCondChangeInd(idx, newInd) {
   var spec = INDICATORS[newInd];
-  var newCond = { indicator: newInd };
+  var newCond = { indicator: newInd, logic: screenerCustomConds[idx].logic };
   spec.fields.forEach(function(f) { if (f.default !== undefined) newCond[f.name] = f.default; });
   screenerCustomConds[idx] = newCond;
   renderScreenerConds();
@@ -1462,6 +1464,20 @@ function evalCondAtLastBar(c, d) {
     idx: d.closes.length - 1, pnlPct: 0, holdDays: 0, dates: []
   };
   return evalOne(c, ctx);
+}
+
+// AND 優先：遇 OR 切新組，組內 AND，組間 OR
+// 例：A AND B OR C AND D = (A AND B) OR (C AND D)
+function evalScreenerConds(conds, d) {
+  if (!conds || !conds.length) return true;
+  var groups = [[]];
+  for (var i = 0; i < conds.length; i++) {
+    if (i > 0 && conds[i].logic === 'OR') groups.push([]);
+    groups[groups.length - 1].push(conds[i]);
+  }
+  return groups.some(function(group) {
+    return group.every(function(c) { return evalCondAtLastBar(c, d); });
+  });
 }
 
 function setFilter(name) { clearFilters(); }
@@ -2671,14 +2687,11 @@ function _runWatchlistScreener(hasInd, hasFund) {
       if (!d) return false;
       if (!Object.keys(activeFilters).every(function(k) { return matchFilter(d, k); })) return false;
     }
-    // 自定義指標條件
+    // 自定義指標條件（AND 優先）
     if (screenerCustomConds.length > 0) {
       var d2 = stocks[t];
       if (!d2) return false;
-      var customPass = screenerCondLogic === 'OR'
-        ? screenerCustomConds.some(function(c) { return evalCondAtLastBar(c, d2); })
-        : screenerCustomConds.every(function(c) { return evalCondAtLastBar(c, d2); });
-      if (!customPass) return false;
+      if (!evalScreenerConds(screenerCustomConds, d2)) return false;
     }
     return true;
   });
@@ -2764,9 +2777,7 @@ function _runAllMarketScreener(hasInd, hasFund) {
         };
         var pass = Object.keys(activeFilters).every(function(k) { return matchFilter(mockD, k); });
         if (pass && screenerCustomConds.length > 0) {
-          pass = screenerCondLogic === 'OR'
-            ? screenerCustomConds.some(function(c) { return evalCondAtLastBar(c, mockD); })
-            : screenerCustomConds.every(function(c) { return evalCondAtLastBar(c, mockD); });
+          pass = evalScreenerConds(screenerCustomConds, mockD);
         }
         if (pass) {
           passed++;
@@ -2941,9 +2952,6 @@ function editScreenVal(i, e) {
 
 function resetScreener() {
   screenerCustomConds = [];
-  screenerCondLogic = 'AND';
-  var logicSel = document.getElementById('screener-cond-logic');
-  if (logicSel) logicSel.value = 'AND';
   renderScreenerConds();
   screenConds = [
     { key:'eps',         label:'EPS TTM',      unit:'元', op:'>', val:5,  on:true  },
