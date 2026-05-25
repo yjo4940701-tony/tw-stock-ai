@@ -1403,12 +1403,10 @@ function renderScrCondRow(c, idx) {
     return '<option value="' + k + '"' + (k === c.indicator ? ' selected' : '') + '>' + INDICATORS[k].label + '</option>';
   }).join('');
   var logic = c.logic || 'AND';
-  var logicSel = idx === 0
-    ? '<span class="cond-text" style="color:#475569;font-size:11px;min-width:32px;">—</span>'
-    : '<select class="cond-sel" style="min-width:52px;font-weight:700;color:' + (logic==='OR'?'#f59e0b':'#60a5fa') + ';" onchange="scrCondSetField(' + idx + ',\'logic\',this.value);renderScreenerConds()">'
-      + '<option value="AND"' + (logic==='AND'?' selected':'') + '>AND</option>'
-      + '<option value="OR"'  + (logic==='OR' ?' selected':'') + '>OR</option>'
-      + '</select>';
+  var logicSel = '<select class="cond-sel" style="min-width:52px;font-weight:700;color:' + (logic==='OR'?'#f59e0b':'#60a5fa') + ';" onchange="scrCondSetField(' + idx + ',\'logic\',this.value);renderScreenerConds()">'
+    + '<option value="AND"' + (logic==='AND'?' selected':'') + '>AND</option>'
+    + '<option value="OR"'  + (logic==='OR' ?' selected':'') + '>OR</option>'
+    + '</select>';
   var html = '<div class="cond-row entry">';
   html += logicSel;
   html += '<select class="cond-sel" onchange="scrCondChangeInd(' + idx + ',this.value)">' + indOpts + '</select>';
