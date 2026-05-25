@@ -2453,20 +2453,30 @@ function runAnalysis() {
     { macd: last(macdData.macd), signal: last(macdData.signal),
       hist: last(macdData.hist), prevHist: prev(macdData.hist) });
 
-  // 抓取近期新聞
+  // 同時抓取 FinMind 近期新聞 + Google News（Cloudflare Worker）
   var newsDate = new Date(); newsDate.setMonth(newsDate.getMonth() - 3);
   var newsUrl  = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockNews&data_id=' + d.ticker + '&start_date=' + newsDate.toISOString().slice(0,10);
+  var workerUrl = 'https://tw-stock-news.yjo4940701.workers.dev/?id=' + encodeURIComponent(d.ticker) + '&name=' + encodeURIComponent(d.name || '') + '&count=8';
 
-  fetch(newsUrl)
-  .then(function(r){ return r.ok ? r.json() : {data:[]}; })
-  .catch(function(){ return {data:[]}; })
-  .then(function(newsData) {
+  Promise.all([
+    fetch(newsUrl).then(function(r){ return r.ok ? r.json() : {data:[]}; }).catch(function(){ return {data:[]}; }),
+    fetch(workerUrl).then(function(r){ return r.ok ? r.json() : {ok:false}; }).catch(function(){ return {ok:false}; })
+  ])
+  .then(function(results) {
+    var newsData = results[0], workerData = results[1];
     var newsRows = (newsData.data || [])
       .sort(function(a,b){ return b.date > a.date ? 1 : -1; })
       .slice(0, 5);
-    var newsStr = newsRows.length > 0
+    var finmindStr = newsRows.length > 0
       ? newsRows.map(function(n){ return '・' + n.date.slice(0,10) + ' ' + n.title; }).join('\n')
-      : '（近期無新聞資料）';
+      : '';
+    var googleStr = (workerData.ok && workerData.items && workerData.items.length > 0)
+      ? workerData.items.map(function(n){
+          var d = n.pubDate ? n.pubDate.slice(0,16) : '';
+          return '・' + d + ' ' + n.title + (n.source ? '（' + n.source + '）' : '');
+        }).join('\n')
+      : '';
+    var newsStr = [finmindStr, googleStr].filter(Boolean).join('\n') || '（近期無新聞資料）';
 
     // 抓取 Finnhub 國際財經新聞
     function fetchFinnhubAndAnalyze(intlNewsStr) {
