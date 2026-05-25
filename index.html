@@ -2172,7 +2172,7 @@ function closeBatch() {
 }
 
 function runBatchAnalysis() {
-  var apiKey = localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  var apiKey = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (!apiKey) { openSettings(); toast('請先設定 API Key', 'err'); return; }
 
   var filtered = filterTickers(watchlist).filter(function(t){ return stocks[t]; });
