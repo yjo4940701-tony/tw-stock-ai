@@ -183,7 +183,7 @@ select.bt-input{cursor:pointer;}
 .cond-row.exit{border-left:3px solid #ef4444;}
 .cond-sel{background:#1e293b;border:1px solid #334155;border-radius:6px;color:#fff;padding:6px 8px;font-size:13px;cursor:pointer;}
 .cond-sel:focus{outline:none;border-color:#3b82f6;}
-.cond-num{background:#1e293b;border:1px solid #334155;border-radius:6px;color:#fff;padding:6px 8px;font-size:13px;width:56px;text-align:center;}
+.cond-num{background:#1e293b;border:1px solid #334155;border-radius:6px;color:#fff;padding:6px 8px;font-size:13px;min-width:55px;width:55px;text-align:center;}
 .cond-num:focus{outline:none;border-color:#3b82f6;}
 .cond-text{color:#94a3b8;font-size:13px;}
 .cond-del{margin-left:auto;background:none;border:none;color:#475569;font-size:16px;cursor:pointer;padding:2px 6px;}
@@ -1417,7 +1417,7 @@ function renderScrCondRow(c, idx) {
       var lbl = f.label ? '<span class="cond-text">' + f.label + '</span>' : '';
       html += lbl + '<input class="cond-num" type="number" value="' + val + '" '
         + (f.min!=null?'min="'+f.min+'" ':'') + (f.max!=null?'max="'+f.max+'" ':'')
-        + (f.step!=null?'step="'+f.step+'" ':'') + 'style="width:' + (f.width||50) + 'px;" '
+        + (f.step!=null?'step="'+f.step+'" ':'') + 'style="width:' + Math.max(f.width||60, 60) + 'px;" '
         + 'onchange="scrCondSetField(' + idx + ',\'' + f.name + '\',+this.value)">';
     } else if (f.type === 'op') {
       var ops = ['>','>=','<','<=','==','!='];
@@ -3758,7 +3758,7 @@ function renderCondRow(kind, c, idx) {
       var lbl = f.label ? '<span class="cond-text">' + f.label + '</span>' : '';
       html += lbl + '<input class="cond-num" type="number" value="' + val + '" '
         + (f.min!=null?'min="'+f.min+'" ':'') + (f.max!=null?'max="'+f.max+'" ':'')
-        + (f.step!=null?'step="'+f.step+'" ':'') + 'style="width:' + (f.width||50) + 'px;" '
+        + (f.step!=null?'step="'+f.step+'" ':'') + 'style="width:' + Math.max(f.width||60, 60) + 'px;" '
         + 'onchange="updateCondField(\'' + kind + '\',' + idx + ',\'' + f.name + '\',+this.value)">';
     } else if (f.type === 'op') {
       var ops = ['>','>=','<','<=','==','!='];
