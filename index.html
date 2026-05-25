@@ -657,33 +657,17 @@ select.bt-input{cursor:pointer;}
       <!-- 技術指標區塊 -->
       <div class="scrn-section">
         <div class="scrn-section-title" onclick="toggleScrSection('ind')" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;">
-          <span>📈 技術指標 <span style="color:#475569;font-weight:400;font-size:11px;">多選 AND・點數值可調整</span></span>
+          <span>📈 技術指標條件
+            <select id="screener-cond-logic" class="cond-logic-sel" onclick="event.stopPropagation()" onchange="screenerCondLogic=this.value" style="width:65px;font-size:11px;padding:2px 4px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;margin-left:6px;">
+              <option value="AND">AND</option>
+              <option value="OR">OR</option>
+            </select>
+          </span>
           <span id="scrn-chevron-ind" style="color:#475569;font-size:13px;">▾</span>
         </div>
         <div id="scrn-body-ind">
-          <div id="filterBar" class="indicator-filters" style="margin-bottom:0;">
-            <button class="fbtn" id="fbtn-all" onclick="clearFilters()">清除全部</button>
-            <button class="fbtn" id="fbtn-oversold" onclick="toggleFilter('oversold')">RSI&lt;<span class="param-val" id="pv-rsi" onclick="editParam('rsi',event)">30</span></button>
-            <button class="fbtn" id="fbtn-breakout" onclick="toggleFilter('breakout')">突破MA<span class="param-val" id="pv-man" onclick="editParam('maN',event)">20</span></button>
-            <button class="fbtn" id="fbtn-near-low" onclick="toggleFilter('near-low')">距年低&lt;<span class="param-val" id="pv-nearlow" onclick="editParam('nearLow',event)">10</span>%</button>
-            <button class="fbtn" id="fbtn-bullish" onclick="toggleFilter('bullish')">多頭排列</button>
-            <button class="fbtn" id="fbtn-pullback" onclick="toggleFilter('pullback')">回檔&lt;-<span class="param-val" id="pv-pb" onclick="editParam('pullback',event)">3</span>%</button>
-            <button class="fbtn" id="fbtn-rev-yoy" onclick="toggleFilter('rev-yoy')">YoY&gt;<span class="param-val" id="pv-ryoy" onclick="editParam('revYoy',event)">10</span>%</button>
-            <button class="fbtn" id="fbtn-eps-min" onclick="toggleFilter('eps-min')">EPS&gt;<span class="param-val" id="pv-eps" onclick="editParam('epsMin',event)">3</span></button>
-          </div>
-          <!-- 自定義技術指標條件 -->
-          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e293b;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="color:#94a3b8;font-size:12px;">自定義指標條件</span>
-              <select id="screener-cond-logic" class="cond-logic-sel" onchange="screenerCondLogic=this.value" style="width:70px;font-size:11px;padding:2px 5px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;">
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
-              </select>
-              <span style="color:#475569;font-size:11px;">（與快速篩選並列 AND）</span>
-            </div>
-            <div id="screener-custom-conds"></div>
-            <button class="cond-add-btn" onclick="addScreenerCond()" style="margin-top:4px;">+ 新增技術條件</button>
-          </div>
+          <div id="screener-custom-conds"></div>
+          <button class="cond-add-btn" onclick="addScreenerCond()" style="margin-top:6px;">+ 新增技術條件</button>
           <div id="ind-global-note" style="display:none;margin-top:8px;background:#1c2a1c;border:1px solid #15803d;border-radius:6px;padding:7px 10px;font-size:11px;color:#86efac;">
             ⚠ 全市場模式：技術指標會套用在財報篩選結果的前 50 檔（需抓取價格，約需 1 分鐘）
           </div>
