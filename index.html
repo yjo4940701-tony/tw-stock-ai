@@ -4673,7 +4673,18 @@ if (typeof Notification !== 'undefined' && Notification.permission === 'default'
   Notification.requestPermission();
 }
 checkAllAlerts();
-setInterval(checkAllAlerts, 3 * 60 * 1000);
+
+// 日K 一天只更新一次，每天台股收盤後 15:30 再查一次就夠
+(function scheduleDailyAlertCheck() {
+  var now = new Date();
+  var next = new Date(now);
+  next.setHours(15, 30, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1); // 今天已過 15:30 → 等明天
+  setTimeout(function() {
+    checkAllAlerts();
+    setInterval(checkAllAlerts, 24 * 60 * 60 * 1000); // 之後每 24 小時一次
+  }, next - now);
+})();
 </script>
 </body>
 </html>
