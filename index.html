@@ -229,15 +229,27 @@ select.bt-input{cursor:pointer;}
 }
 
 /* ── PRICE ALERTS ── */
-.alert-chip{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:4px 11px;font-size:12px;cursor:pointer;transition:all .15s;border:1px solid rgba(234,179,8,.3);background:rgba(234,179,8,.06);color:#fbbf24;}
-.alert-chip:hover{background:rgba(234,179,8,.18);border-color:#fbbf24;}
-.alert-chip.stop{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.07);color:#f87171;}
-.alert-chip.stop:hover{background:rgba(239,68,68,.18);}
-.alert-chip.target{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.07);color:#4ade80;}
-.alert-chip.target:hover{background:rgba(34,197,94,.18);}
-.alert-chip.saved{opacity:.55;cursor:default;pointer-events:none;}
-#alertsBox{margin-top:12px;padding:10px 14px;background:rgba(234,179,8,.04);border:1px solid rgba(234,179,8,.18);border-radius:10px;}
-.ab-title{font-size:11px;color:#fbbf24;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;}
+#alertsBox{margin-top:12px;padding:12px 14px;background:#0f172a;border:1px solid #1e293b;border-radius:10px;}
+.ab-title{font-size:11px;color:#fbbf24;font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em;}
+.alert-form-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #1e293b;}
+.alert-form-row:last-child{border-bottom:none;}
+.alert-form-label{font-size:12px;font-weight:600;min-width:52px;flex-shrink:0;}
+.alert-form-label.stop{color:#f87171;}
+.alert-form-label.target{color:#4ade80;}
+.alert-form-label.add{color:#fbbf24;}
+.alert-form-input{background:#1e293b;border:1px solid #334155;border-radius:6px;color:#fff;font-size:13px;padding:5px 8px;width:88px;text-align:right;}
+.alert-form-input:focus{outline:none;border-color:#3b82f6;}
+.alert-form-unit{color:#64748b;font-size:12px;flex-shrink:0;}
+.alert-form-hint{color:#475569;font-size:11px;flex:1;}
+.alert-form-btn{border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.alert-form-btn.stop{background:rgba(239,68,68,.15);color:#f87171;}
+.alert-form-btn.stop:hover{background:rgba(239,68,68,.3);}
+.alert-form-btn.target{background:rgba(34,197,94,.15);color:#4ade80;}
+.alert-form-btn.target:hover{background:rgba(34,197,94,.3);}
+.alert-form-btn.add{background:rgba(234,179,8,.12);color:#fbbf24;}
+.alert-form-btn.add:hover{background:rgba(234,179,8,.25);}
+.alert-form-del{background:none;border:none;color:#334155;cursor:pointer;font-size:15px;padding:0 3px;line-height:1;}
+.alert-form-del:hover{color:#ef4444;}
 .alert-badge{background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:10px;padding:1px 5px;position:absolute;top:-5px;right:-5px;line-height:1.4;}
 /* Alert Popup */
 #alertPopup{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);backdrop-filter:blur(6px);}
@@ -573,7 +585,10 @@ select.bt-input{cursor:pointer;}
         <div id="aiResult">
           <p style="color:#475569;">點擊「開始分析」，AI 將分析優勢、劣勢、技術面與進場位置建議。</p>
         </div>
-        <div id="alertsBox" style="display:none;"></div>
+        <div id="alertsBox">
+          <div class="ab-title">🔔 設定價格提醒</div>
+          <div id="alertFormRows"></div>
+        </div>
       </div>
       <div class="disclaimer">以上分析僅供參考，不構成投資建議，投資人應自行判斷。</div>
     </div>
@@ -1782,6 +1797,8 @@ function openModal(ticker) {
 
   // 持倉
   renderPosBox(ticker);
+  // 價格提醒表單
+  renderAlertForm(ticker);
   // 載入月營收 + 估值
   loadMonthlyRevenue(ticker);
   loadPER(ticker);
@@ -2640,7 +2657,7 @@ function runAnalysis() {
         : (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content);
       if (!text) throw new Error('回應格式異常');
       res.innerHTML = md2html(text);
-      attachAlertButtons(text, d.ticker, d.name);
+      prefillAlertForm(text);
       btn.textContent = '🔄 重新分析';
       btn.disabled = false;
     });
@@ -4504,42 +4521,77 @@ function extractAlertPrices(text) {
   return results;
 }
 
-function attachAlertButtons(text, ticker, name) {
-  var box = document.getElementById('alertsBox');
-  if (!box) return;
-  var prices = extractAlertPrices(text);
-  if (prices.length === 0) { box.style.display = 'none'; return; }
-
+// 渲染提醒表單（開 modal 時呼叫，顯示三列輸入框）
+function renderAlertForm(ticker) {
+  var rows = document.getElementById('alertFormRows');
+  if (!rows) return;
   var existing = loadAlerts();
-  var html = '<div class="ab-title">🔔 設定價格提醒</div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
-  prices.forEach(function(item) {
-    var saved = existing.some(function(a){
-      return a.ticker === ticker && a.price === item.price && a.type === item.type && !a.triggered;
-    });
-    var cls = 'alert-chip ' + (item.type === 'stop' ? 'stop' : item.type === 'target' ? 'target' : '') + (saved ? ' saved' : '');
-    var icon = item.type === 'stop' ? '🛑' : item.type === 'target' ? '🎯' : '📥';
-    var safeName = (name || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    html += '<button class="' + cls.trim() + '" onclick="saveAlertChip(this,\'' + ticker + '\',\'' + safeName + '\',' + item.price + ',\'' + item.type + '\',\'' + item.direction + '\')">'
-      + icon + ' ' + item.label + ' ' + item.price + ' 元' + (saved ? ' ✓' : ' ＋') + '</button>';
+
+  function savedPrice(type) {
+    var a = existing.find(function(a){ return a.ticker===ticker && a.type===type && !a.triggered; });
+    return a ? a.price : '';
+  }
+
+  var defs = [
+    { type:'stop',   dir:'below', icon:'🛑', label:'停損', cls:'stop'   },
+    { type:'target', dir:'above', icon:'🎯', label:'目標', cls:'target' },
+    { type:'add',    dir:'below', icon:'📥', label:'加碼', cls:'add'    },
+  ];
+
+  var html = '';
+  defs.forEach(function(r) {
+    var val  = savedPrice(r.type);
+    var hasSaved = val !== '';
+    html += '<div class="alert-form-row">'
+      + '<span class="alert-form-label ' + r.cls + '">' + r.icon + ' ' + r.label + '</span>'
+      + '<input class="alert-form-input" id="alertInput_' + r.type + '" type="number" placeholder="輸入價格" step="0.01"' + (hasSaved ? ' value="'+val+'"' : '') + '>'
+      + '<span class="alert-form-unit">元</span>'
+      + '<button class="alert-form-btn ' + r.cls + '" onclick="saveAlertFromForm(\'' + r.type + '\',\'' + r.dir + '\')">' + (hasSaved ? '更新' : '設定') + '</button>'
+      + (hasSaved ? '<button class="alert-form-del" onclick="removeAlertByType(\'' + ticker + '\',\'' + r.type + '\')" title="移除此提醒">✕</button>' : '<span style="width:20px;"></span>')
+      + '</div>';
   });
-  html += '</div>';
-  box.innerHTML = html;
-  box.style.display = 'block';
+  rows.innerHTML = html;
 }
 
-function saveAlertChip(btn, ticker, name, price, type, direction) {
-  var alerts = loadAlerts();
-  if (alerts.some(function(a){ return a.ticker===ticker && a.price===price && a.type===type && !a.triggered; })) {
-    toast('此提醒已設定'); return;
-  }
-  alerts.push({ id: Date.now(), ticker: ticker, name: name, price: price, type: type,
-                direction: direction, createdAt: new Date().toISOString(), triggered: false });
+// AI 分析完成後，把抓到的建議價格填入空白輸入框（不蓋掉已填的）
+function prefillAlertForm(text) {
+  extractAlertPrices(text).forEach(function(s) {
+    var input = document.getElementById('alertInput_' + s.type);
+    if (input && !input.value) input.value = s.price;
+  });
+}
+
+function saveAlertFromForm(type, direction) {
+  var input = document.getElementById('alertInput_' + type);
+  if (!input) return;
+  var price = parseFloat(input.value);
+  if (isNaN(price) || price <= 0) { toast('請輸入有效價格', 'err'); return; }
+
+  var d    = stocks[current];
+  var name = d ? d.name : current;
+  // 移除同 ticker + 同 type 的未觸發舊提醒
+  var alerts = loadAlerts().filter(function(a){
+    return !(a.ticker===current && a.type===type && !a.triggered);
+  });
+  alerts.push({ id:Date.now(), ticker:current, name:name, price:price, type:type,
+                direction:direction, createdAt:new Date().toISOString(), triggered:false });
   saveAlerts(alerts);
-  btn.classList.add('saved');
-  btn.innerHTML = btn.innerHTML.replace('＋', '✓');
-  updateAlertBadge();
   syncAlertsToRepo(alerts);
-  toast('提醒已設定：' + price + ' 元', 'ok');
+  updateAlertBadge();
+  renderAlertForm(current);
+  var label = type==='stop'?'停損':type==='target'?'目標':'加碼';
+  toast(label + '提醒已設定：' + price + ' 元', 'ok');
+}
+
+function removeAlertByType(ticker, type) {
+  var alerts = loadAlerts().filter(function(a){
+    return !(a.ticker===ticker && a.type===type && !a.triggered);
+  });
+  saveAlerts(alerts);
+  syncAlertsToRepo(alerts);
+  updateAlertBadge();
+  renderAlertForm(ticker);
+  toast('提醒已移除');
 }
 
 // ─── 同步 alerts.json 到 GitHub repo ───
