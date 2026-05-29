@@ -4455,32 +4455,37 @@ function updateAlertBadge() {
 
 // Regex 從 AI 文字抓出停損 / 目標 / 加碼價格
 function extractAlertPrices(text) {
+  // 先去掉 markdown 粗體/斜體標記（**停損價** → 停損價），避免 * 截斷 regex
+  var t = text.replace(/\*+/g, '').replace(/_{1,2}/g, '');
+
   var results = [];
   function addUnique(price, type, label, direction) {
-    if (price <= 0) return;
+    if (!price || price <= 0 || price > 99999) return;
     if (results.some(function(r){ return r.price === price && r.type === type; })) return;
     results.push({ price: price, type: type, label: label, direction: direction });
   }
-  var stopRe = [
-    /停損[價點位]?[：:為設至跌破\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
-    /跌破\s*([0-9]+(?:\.[0-9]+)?)\s*元/g,
-    /下方\s*([0-9]+(?:\.[0-9]+)?)\s*元[^，。]*(?:停損|止損)/g,
-  ];
-  stopRe.forEach(function(re){ var m; while((m=re.exec(text))!==null) addUnique(parseFloat(m[1]),'stop','停損','below'); });
 
-  var targetRe = [
-    /目標[價位]?[：:為至\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
-    /上看\s*([0-9]+(?:\.[0-9]+)?)\s*元/g,
-    /漲至\s*([0-9]+(?:\.[0-9]+)?)\s*元/g,
-    /壓力[：:\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
-  ];
-  targetRe.forEach(function(re){ var m; while((m=re.exec(text))!==null) addUnique(parseFloat(m[1]),'target','目標','above'); });
+  // 停損：「停損」後 0-12 個非數字字元，再接數字＋元
+  var m;
+  var stopRe = /停損[^0-9\n]{0,12}([0-9]+(?:\.[0-9]+)?)\s*元/g;
+  while ((m = stopRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'stop', '停損', 'below');
 
-  var addRe = [
-    /加碼[點位價]?[：:為至\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
-    /加[碼倉][至到\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
-  ];
-  addRe.forEach(function(re){ var m; while((m=re.exec(text))!==null) addUnique(parseFloat(m[1]),'add','加碼','below'); });
+  var breakRe = /跌破\s*([0-9]+(?:\.[0-9]+)?)\s*元/g;
+  while ((m = breakRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'stop', '停損', 'below');
+
+  // 目標：「目標」後 0-12 個非數字字元
+  var targetRe = /目標[^0-9\n]{0,12}([0-9]+(?:\.[0-9]+)?)\s*元/g;
+  while ((m = targetRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'target', '目標', 'above');
+
+  var upRe = /上看\s*([0-9]+(?:\.[0-9]+)?)\s*元/g;
+  while ((m = upRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'target', '目標', 'above');
+
+  var riseRe = /漲至\s*([0-9]+(?:\.[0-9]+)?)\s*元/g;
+  while ((m = riseRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'target', '目標', 'above');
+
+  // 加碼：「加碼」後 0-12 個非數字字元
+  var addRe = /加碼[^0-9\n]{0,12}([0-9]+(?:\.[0-9]+)?)\s*元/g;
+  while ((m = addRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'add', '加碼', 'below');
 
   return results;
 }
