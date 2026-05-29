@@ -227,6 +227,36 @@ select.bt-input{cursor:pointer;}
   #bt-layout{grid-template-columns:1fr!important;}
   .bt-metrics{grid-template-columns:1fr 1fr 1fr;}
 }
+
+/* ── PRICE ALERTS ── */
+.alert-chip{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:4px 11px;font-size:12px;cursor:pointer;transition:all .15s;border:1px solid rgba(234,179,8,.3);background:rgba(234,179,8,.06);color:#fbbf24;}
+.alert-chip:hover{background:rgba(234,179,8,.18);border-color:#fbbf24;}
+.alert-chip.stop{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.07);color:#f87171;}
+.alert-chip.stop:hover{background:rgba(239,68,68,.18);}
+.alert-chip.target{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.07);color:#4ade80;}
+.alert-chip.target:hover{background:rgba(34,197,94,.18);}
+.alert-chip.saved{opacity:.55;cursor:default;pointer-events:none;}
+#alertsBox{margin-top:12px;padding:10px 14px;background:rgba(234,179,8,.04);border:1px solid rgba(234,179,8,.18);border-radius:10px;}
+.ab-title{font-size:11px;color:#fbbf24;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;}
+.alert-badge{background:#ef4444;color:#fff;font-size:9px;font-weight:700;border-radius:10px;padding:1px 5px;position:absolute;top:-5px;right:-5px;line-height:1.4;}
+/* Alert Popup */
+#alertPopup{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);backdrop-filter:blur(6px);}
+#alertPopup.show{display:flex;}
+.alert-popup-box{background:#0f172a;border:2px solid #ef4444;border-radius:18px;padding:28px 32px;max-width:340px;width:90%;text-align:center;animation:popIn .3s ease;}
+.alert-popup-box.target-popup{border-color:#22c55e;}
+.alert-popup-box.add-popup{border-color:#fbbf24;}
+@keyframes popIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+.ap-icon{font-size:40px;margin-bottom:8px;}
+.ap-title{font-size:17px;font-weight:700;margin-bottom:6px;}
+.ap-detail{color:#94a3b8;font-size:13px;margin-bottom:4px;}
+.ap-price{font-size:26px;font-weight:700;margin:10px 0 4px;}
+.ap-sub{color:#64748b;font-size:12px;}
+.ap-btns{display:flex;gap:8px;margin-top:18px;}
+.ap-btn{flex:1;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:500;cursor:pointer;}
+.ap-btn-keep{background:#1e293b;color:#e2e8f0;}
+.ap-btn-keep:hover{background:#334155;}
+.ap-btn-dismiss{background:transparent;color:#475569;border:1px solid #334155;}
+.ap-btn-dismiss:hover{color:#94a3b8;}
 </style>
 </head>
 <body>
@@ -244,6 +274,7 @@ select.bt-input{cursor:pointer;}
     <button class="nav-btn active" id="nav-dashboard" onclick="showPage('dashboard')">📊 儀表板</button>
     <button class="nav-btn" id="nav-backtest" onclick="showPage('backtest')">📈 回測</button>
     <button class="btn-settings" onclick="openScreener()" style="border-color:rgba(124,58,237,.5);color:#a78bfa;">🔍 選股</button>
+    <button class="btn-settings" onclick="openAlertList()" style="position:relative;">🔔 提醒<span class="alert-badge" id="alertBadge" style="display:none;">0</span></button>
     <button class="btn-settings" onclick="openSettings()">⚙ 設定</button>
   </div>
 </header>
@@ -542,8 +573,24 @@ select.bt-input{cursor:pointer;}
         <div id="aiResult">
           <p style="color:#475569;">點擊「開始分析」，AI 將分析優勢、劣勢、技術面與進場位置建議。</p>
         </div>
+        <div id="alertsBox" style="display:none;"></div>
       </div>
       <div class="disclaimer">以上分析僅供參考，不構成投資建議，投資人應自行判斷。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ALERT POPUP -->
+<div id="alertPopup">
+  <div id="alertPopupBox" class="alert-popup-box">
+    <div class="ap-icon" id="apIcon"></div>
+    <div class="ap-title" id="apTitle"></div>
+    <div class="ap-detail" id="apDetail"></div>
+    <div class="ap-price" id="apPrice"></div>
+    <div class="ap-sub" id="apSub"></div>
+    <div class="ap-btns">
+      <button class="ap-btn ap-btn-keep" onclick="closeAlertPopup()">知道了，繼續追蹤</button>
+      <button class="ap-btn ap-btn-dismiss" onclick="dismissCurrentAlert()">停止此提醒</button>
     </div>
   </div>
 </div>
@@ -2577,6 +2624,7 @@ function runAnalysis() {
         : (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content);
       if (!text) throw new Error('回應格式異常');
       res.innerHTML = md2html(text);
+      attachAlertButtons(text, d.ticker, d.name);
       btn.textContent = '🔄 重新分析';
       btn.disabled = false;
     });
@@ -4388,6 +4436,244 @@ function loadFromBatch(ticker) {
 // ═══════════════════════════════════════════════════
 // 回測系統 END
 // ═══════════════════════════════════════════════════
+
+// ─────────────────────────────────
+// 價格提醒系統
+// ─────────────────────────────────
+function loadAlerts() {
+  try { return JSON.parse(localStorage.getItem('tw_alerts') || '[]'); } catch(e) { return []; }
+}
+function saveAlerts(arr) { localStorage.setItem('tw_alerts', JSON.stringify(arr)); }
+
+function updateAlertBadge() {
+  var n = loadAlerts().filter(function(a){ return !a.triggered; }).length;
+  var b = document.getElementById('alertBadge');
+  if (!b) return;
+  if (n > 0) { b.textContent = n; b.style.display = ''; }
+  else { b.style.display = 'none'; }
+}
+
+// Regex 從 AI 文字抓出停損 / 目標 / 加碼價格
+function extractAlertPrices(text) {
+  var results = [];
+  function addUnique(price, type, label, direction) {
+    if (price <= 0) return;
+    if (results.some(function(r){ return r.price === price && r.type === type; })) return;
+    results.push({ price: price, type: type, label: label, direction: direction });
+  }
+  var stopRe = [
+    /停損[價點位]?[：:為設至跌破\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
+    /跌破\s*([0-9]+(?:\.[0-9]+)?)\s*元/g,
+    /下方\s*([0-9]+(?:\.[0-9]+)?)\s*元[^，。]*(?:停損|止損)/g,
+  ];
+  stopRe.forEach(function(re){ var m; while((m=re.exec(text))!==null) addUnique(parseFloat(m[1]),'stop','停損','below'); });
+
+  var targetRe = [
+    /目標[價位]?[：:為至\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
+    /上看\s*([0-9]+(?:\.[0-9]+)?)\s*元/g,
+    /漲至\s*([0-9]+(?:\.[0-9]+)?)\s*元/g,
+    /壓力[：:\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
+  ];
+  targetRe.forEach(function(re){ var m; while((m=re.exec(text))!==null) addUnique(parseFloat(m[1]),'target','目標','above'); });
+
+  var addRe = [
+    /加碼[點位價]?[：:為至\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
+    /加[碼倉][至到\s]*?([0-9]+(?:\.[0-9]+)?)\s*元/g,
+  ];
+  addRe.forEach(function(re){ var m; while((m=re.exec(text))!==null) addUnique(parseFloat(m[1]),'add','加碼','below'); });
+
+  return results;
+}
+
+function attachAlertButtons(text, ticker, name) {
+  var box = document.getElementById('alertsBox');
+  if (!box) return;
+  var prices = extractAlertPrices(text);
+  if (prices.length === 0) { box.style.display = 'none'; return; }
+
+  var existing = loadAlerts();
+  var html = '<div class="ab-title">🔔 設定價格提醒</div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  prices.forEach(function(item) {
+    var saved = existing.some(function(a){
+      return a.ticker === ticker && a.price === item.price && a.type === item.type && !a.triggered;
+    });
+    var cls = 'alert-chip ' + (item.type === 'stop' ? 'stop' : item.type === 'target' ? 'target' : '') + (saved ? ' saved' : '');
+    var icon = item.type === 'stop' ? '🛑' : item.type === 'target' ? '🎯' : '📥';
+    var safeName = (name || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    html += '<button class="' + cls.trim() + '" onclick="saveAlertChip(this,\'' + ticker + '\',\'' + safeName + '\',' + item.price + ',\'' + item.type + '\',\'' + item.direction + '\')">'
+      + icon + ' ' + item.label + ' ' + item.price + ' 元' + (saved ? ' ✓' : ' ＋') + '</button>';
+  });
+  html += '</div>';
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
+function saveAlertChip(btn, ticker, name, price, type, direction) {
+  var alerts = loadAlerts();
+  if (alerts.some(function(a){ return a.ticker===ticker && a.price===price && a.type===type && !a.triggered; })) {
+    toast('此提醒已設定'); return;
+  }
+  alerts.push({ id: Date.now(), ticker: ticker, name: name, price: price, type: type,
+                direction: direction, createdAt: new Date().toISOString(), triggered: false });
+  saveAlerts(alerts);
+  btn.classList.add('saved');
+  btn.innerHTML = btn.innerHTML.replace('＋', '✓');
+  updateAlertBadge();
+  toast('提醒已設定：' + price + ' 元', 'ok');
+}
+
+// 查詢個股最新收盤價（抓近 5 天資料取最後一筆）
+function fetchLatestPrice(ticker, cb) {
+  var d = new Date(Date.now() - 6 * 86400000);
+  function pad(n){ return n < 10 ? '0'+n : ''+n; }
+  var s = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  fetch('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=' + ticker + '&start_date=' + s)
+    .then(function(r){ return r.json(); })
+    .then(function(json){
+      if (!json.data || !json.data.length) { cb(null); return; }
+      json.data.sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+      cb(json.data[json.data.length-1].close || null);
+    })
+    .catch(function(){ cb(null); });
+}
+
+var _alertCheckRunning = false;
+function checkAllAlerts() {
+  if (_alertCheckRunning) return;
+  var pending = loadAlerts().filter(function(a){ return !a.triggered; });
+  if (pending.length === 0) return;
+  _alertCheckRunning = true;
+
+  var tickers = [];
+  pending.forEach(function(a){ if (tickers.indexOf(a.ticker) < 0) tickers.push(a.ticker); });
+
+  var done = 0, fired = [];
+  function onDone() {
+    done++;
+    if (done < tickers.length) return;
+    _alertCheckRunning = false;
+    if (!fired.length) return;
+    var all = loadAlerts();
+    fired.forEach(function(f){
+      var al = all.find(function(a){ return a.id === f.alert.id; });
+      if (al) al.triggered = true;
+    });
+    saveAlerts(all);
+    updateAlertBadge();
+    fired.forEach(function(f, i){
+      setTimeout(function(){ showAlertTriggered(f.alert, f.price); }, i * 500);
+    });
+  }
+
+  tickers.forEach(function(ticker) {
+    fetchLatestPrice(ticker, function(price) {
+      if (price != null) {
+        pending.filter(function(a){ return a.ticker === ticker; }).forEach(function(alert) {
+          var hit = (alert.direction === 'below' && price <= alert.price)
+                 || (alert.direction === 'above' && price >= alert.price);
+          if (hit) fired.push({ alert: alert, price: price });
+        });
+      }
+      onDone();
+    });
+  });
+}
+
+var _currentAlertId = null;
+function showAlertTriggered(alert, currentPrice) {
+  _currentAlertId = alert.id;
+  var isStop   = alert.type === 'stop';
+  var isTarget = alert.type === 'target';
+  var box = document.getElementById('alertPopupBox');
+  box.className = 'alert-popup-box' + (isTarget ? ' target-popup' : isStop ? '' : ' add-popup');
+  document.getElementById('apIcon').textContent  = isStop ? '🛑' : isTarget ? '🎯' : '📥';
+  document.getElementById('apTitle').textContent = alert.name + '（' + alert.ticker + '）價格提醒觸發！';
+  var typeStr = isStop ? '停損價' : isTarget ? '目標價' : '加碼點';
+  document.getElementById('apDetail').textContent = typeStr + ' ' + alert.price + ' 元';
+  var color = isTarget ? '#22c55e' : '#ef4444';
+  document.getElementById('apPrice').innerHTML = '現價 <span style="color:' + color + ';font-weight:700;">' + currentPrice.toFixed(2) + '</span> 元';
+  document.getElementById('apSub').textContent = (alert.direction === 'below' ? '↘ 跌破' : '↗ 突破') + ' 設定價 ' + alert.price + ' 元';
+  document.getElementById('alertPopup').classList.add('show');
+
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('📈 台股提醒：' + alert.name, {
+      body: typeStr + ' ' + alert.price + ' 元 已觸及，現價 ' + currentPrice.toFixed(2) + ' 元'
+    });
+  }
+}
+
+function closeAlertPopup() {
+  document.getElementById('alertPopup').classList.remove('show');
+}
+function dismissCurrentAlert() {
+  if (_currentAlertId != null) {
+    var all = loadAlerts().filter(function(a){ return a.id !== _currentAlertId; });
+    saveAlerts(all);
+    updateAlertBadge();
+  }
+  closeAlertPopup();
+}
+
+// 右上角鈴鐺 → 浮動清單
+function openAlertList() {
+  var existing = document.getElementById('alertPanel');
+  if (existing) { existing.remove(); return; }
+
+  var alerts  = loadAlerts();
+  var active  = alerts.filter(function(a){ return !a.triggered; });
+  var done    = alerts.filter(function(a){ return a.triggered; });
+
+  var inner = '';
+  if (active.length === 0 && done.length === 0) {
+    inner = '<p style="color:#64748b;font-size:13px;text-align:center;padding:12px 0;">目前沒有任何提醒</p>';
+  }
+  active.forEach(function(a) {
+    var icon = a.type==='stop'?'🛑':a.type==='target'?'🎯':'📥';
+    var dirStr = a.direction==='below'?'跌至':'漲至';
+    inner += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e293b;">'
+      + '<div><div style="font-size:13px;font-weight:600;color:#e2e8f0;">' + icon + ' ' + a.name + '（' + a.ticker + '）</div>'
+      + '<div style="font-size:11px;color:#64748b;margin-top:2px;">' + dirStr + ' ' + a.price + ' 元 · ' + a.createdAt.slice(0,10) + '</div></div>'
+      + '<button onclick="removeAlertById(' + a.id + ')" style="background:none;border:none;color:#475569;font-size:18px;cursor:pointer;padding:2px 6px;" title="移除">✕</button>'
+      + '</div>';
+  });
+  if (done.length) {
+    inner += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e293b;display:flex;justify-content:space-between;align-items:center;">'
+      + '<span style="font-size:11px;color:#475569;">已觸發 ' + done.length + ' 個</span>'
+      + '<button onclick="clearTriggeredAlerts()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">清除</button>'
+      + '</div>';
+  }
+
+  var panel = document.createElement('div');
+  panel.id = 'alertPanel';
+  panel.style.cssText = 'position:fixed;top:62px;right:16px;z-index:150;background:#0f172a;border:1px solid #334155;border-radius:14px;padding:16px;min-width:270px;max-width:340px;max-height:380px;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.65);';
+  panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+    + '<div style="font-weight:700;font-size:14px;">🔔 價格提醒（' + active.length + '）</div>'
+    + '<button onclick="document.getElementById(\'alertPanel\').remove()" style="background:none;border:none;color:#475569;font-size:18px;cursor:pointer;line-height:1;">✕</button>'
+    + '</div>' + inner;
+  document.body.appendChild(panel);
+}
+
+function removeAlertById(id) {
+  var all = loadAlerts().filter(function(a){ return a.id !== id; });
+  saveAlerts(all);
+  updateAlertBadge();
+  var p = document.getElementById('alertPanel');
+  if (p) { p.remove(); openAlertList(); }
+  toast('提醒已移除');
+}
+function clearTriggeredAlerts() {
+  saveAlerts(loadAlerts().filter(function(a){ return !a.triggered; }));
+  var p = document.getElementById('alertPanel');
+  if (p) { p.remove(); openAlertList(); }
+}
+
+// ── 初始化 ──
+updateAlertBadge();
+if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+checkAllAlerts();
+setInterval(checkAllAlerts, 3 * 60 * 1000);
 </script>
 </body>
 </html>
