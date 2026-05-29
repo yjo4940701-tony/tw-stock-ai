@@ -1,0 +1,38 @@
+name: Price Alert（台股收盤提醒）
+
+on:
+  schedule:
+    - cron: '45 7 * * 1-5'  # 台灣時間 15:45，週一至週五
+  workflow_dispatch:          # 手動觸發（測試用）
+
+jobs:
+  check-alerts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Check price alerts & send Telegram
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python check_alerts.py
+
+      - name: Commit updated alerts.json
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add alerts.json
+          git diff --staged --quiet || git commit -m "chore: update triggered alerts [skip ci]"
+          git push

@@ -681,6 +681,17 @@ select.bt-input{cursor:pointer;}
       <input id="finnhubInput" class="form-input" type="text" placeholder="d...（Finnhub API Key）">
     </div>
 
+    <!-- GitHub PAT（價格提醒同步到 repo，讓 Actions 發 TG） -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
+      <label class="form-label">GitHub Token <span style="color:#64748b;font-size:11px;">（價格提醒同步 → Telegram 推送）</span></label>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;color:#64748b;line-height:1.6;">
+        🔔 設定後，儲存提醒時自動同步到 repo，每天收盤後 GitHub Actions 查價並發 TG<br>
+        ① 前往 <a href="https://github.com/settings/tokens/new?scopes=public_repo&description=tw-stock-alert" target="_blank" style="color:#60a5fa;">github.com → Settings → Tokens</a><br>
+        ② Scopes 勾 <strong style="color:#e2e8f0;">public_repo</strong>，產生後複製（ghp_ 開頭）
+      </div>
+      <input id="ghPatInput" class="form-input" type="password" placeholder="ghp_...（GitHub Personal Access Token）">
+    </div>
+
     <div id="keyStatus" class="status-msg"></div>
     <div class="btn-row">
       <button type="button" class="btn-save" onclick="saveKey()">儲存全部</button>
@@ -827,6 +838,8 @@ var PROXIES = [
   if (fg) document.getElementById('fugleInput').value = fg;
   var fh = localStorage.getItem('tw_finnhub');
   if (fh) document.getElementById('finnhubInput').value = fh;
+  var gh = localStorage.getItem('tw_gh_pat');
+  if (gh) document.getElementById('ghPatInput').value = gh;
   // 之前停在瀏覽全市場模式的話，自動回到群組1
   if (GROUPS.active === -1) { GROUPS.active = 0; saveGroups(); }
   renderTabs();
@@ -922,6 +935,9 @@ function saveKey() {
   var fh = document.getElementById('finnhubInput').value.trim();
   if (fh) localStorage.setItem('tw_finnhub', fh);
   else localStorage.removeItem('tw_finnhub');
+  var gh = document.getElementById('ghPatInput').value.trim();
+  if (gh) localStorage.setItem('tw_gh_pat', gh);
+  else localStorage.removeItem('tw_gh_pat');
 
   s.style.background = '#14532d';
   s.style.color = '#86efac';
@@ -4524,7 +4540,45 @@ function saveAlertChip(btn, ticker, name, price, type, direction) {
   btn.classList.add('saved');
   btn.innerHTML = btn.innerHTML.replace('＋', '✓');
   updateAlertBadge();
+  syncAlertsToRepo(alerts);
   toast('提醒已設定：' + price + ' 元', 'ok');
+}
+
+// ─── 同步 alerts.json 到 GitHub repo ───
+var GH_REPO = 'yjo4940701-tony/tw-stock-ai';
+var GH_FILE = 'alerts.json';
+
+function syncAlertsToRepo(alerts) {
+  var pat = localStorage.getItem('tw_gh_pat');
+  if (!pat) return; // 沒設定 PAT 就跳過
+
+  var content = btoa(unescape(encodeURIComponent(JSON.stringify(alerts, null, 2) + '\n')));
+  var apiUrl = 'https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE;
+  var headers = {
+    'Authorization': 'token ' + pat,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  };
+
+  // 先 GET 取得目前的 SHA（PUT 時需要）
+  fetch(apiUrl, { headers: headers })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      return fetch(apiUrl, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify({
+          message: 'chore: sync alerts from browser [skip ci]',
+          content: content,
+          sha: data.sha || undefined
+        })
+      });
+    })
+    .then(function(r){
+      if (r.ok) console.log('[Alert] 同步到 repo 成功');
+      else r.json().then(function(e){ console.warn('[Alert] 同步失敗:', e.message); });
+    })
+    .catch(function(e){ console.warn('[Alert] 同步失敗:', e.message); });
 }
 
 // 查詢個股最新收盤價（抓近 5 天資料取最後一筆）
@@ -4661,13 +4715,16 @@ function openAlertList() {
 function removeAlertById(id) {
   var all = loadAlerts().filter(function(a){ return a.id !== id; });
   saveAlerts(all);
+  syncAlertsToRepo(all);
   updateAlertBadge();
   var p = document.getElementById('alertPanel');
   if (p) { p.remove(); openAlertList(); }
   toast('提醒已移除');
 }
 function clearTriggeredAlerts() {
-  saveAlerts(loadAlerts().filter(function(a){ return !a.triggered; }));
+  var all = loadAlerts().filter(function(a){ return !a.triggered; });
+  saveAlerts(all);
+  syncAlertsToRepo(all);
   var p = document.getElementById('alertPanel');
   if (p) { p.remove(); openAlertList(); }
 }
