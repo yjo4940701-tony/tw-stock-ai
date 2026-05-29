@@ -37,6 +37,8 @@
     "type": "target",
     "direction": "above",
     "createdAt": "2026-05-29T15:35:32.290Z",
-    "triggered": false
+    "triggered": true,
+    "triggeredAt": "2026-05-29T15:36:26.284893",
+    "triggeredPrice": 158.5
   }
 ]
