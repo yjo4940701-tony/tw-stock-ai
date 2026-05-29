@@ -4469,39 +4469,37 @@ function updateAlertBadge() {
   else { b.style.display = 'none'; }
 }
 
-// Regex 從 AI 文字抓出停損 / 目標 / 加碼價格
+// 從 AI 文字抓出停損 / 目標 / 加碼價格
+// 策略：逐句掃描，先判斷句子含哪種關鍵字，再抓句中所有「數字 元」
 function extractAlertPrices(text) {
-  // 先去掉 markdown 粗體/斜體標記（**停損價** → 停損價），避免 * 截斷 regex
   var t = text.replace(/\*+/g, '').replace(/_{1,2}/g, '');
-
   var results = [];
+
   function addUnique(price, type, label, direction) {
-    if (!price || price <= 0 || price > 99999) return;
+    if (!price || price < 1 || price > 99999) return;
     if (results.some(function(r){ return r.price === price && r.type === type; })) return;
     results.push({ price: price, type: type, label: label, direction: direction });
   }
 
-  // 停損：「停損」後 0-12 個非數字字元，再接數字＋元
-  var m;
-  var stopRe = /停損[^0-9\n]{0,12}([0-9]+(?:\.[0-9]+)?)\s*元/g;
-  while ((m = stopRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'stop', '停損', 'below');
+  // 按換行 + 中文句號拆成句子逐句分析
+  var segments = t.split(/[\n。！？]+/);
+  var priceRe  = /([0-9]+(?:\.[0-9]+)?)\s*元/g;
 
-  var breakRe = /跌破\s*([0-9]+(?:\.[0-9]+)?)\s*元/g;
-  while ((m = breakRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'stop', '停損', 'below');
+  segments.forEach(function(seg) {
+    var isStop   = /停損|止損|跌破/.test(seg);
+    var isTarget = /目標|上看|挑戰|漲至/.test(seg);
+    var isAdd    = /加碼/.test(seg);
+    if (!isStop && !isTarget && !isAdd) return;
 
-  // 目標：「目標」後 0-12 個非數字字元
-  var targetRe = /目標[^0-9\n]{0,12}([0-9]+(?:\.[0-9]+)?)\s*元/g;
-  while ((m = targetRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'target', '目標', 'above');
-
-  var upRe = /上看\s*([0-9]+(?:\.[0-9]+)?)\s*元/g;
-  while ((m = upRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'target', '目標', 'above');
-
-  var riseRe = /漲至\s*([0-9]+(?:\.[0-9]+)?)\s*元/g;
-  while ((m = riseRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'target', '目標', 'above');
-
-  // 加碼：「加碼」後 0-12 個非數字字元
-  var addRe = /加碼[^0-9\n]{0,12}([0-9]+(?:\.[0-9]+)?)\s*元/g;
-  while ((m = addRe.exec(t)) !== null) addUnique(parseFloat(m[1]), 'add', '加碼', 'below');
+    priceRe.lastIndex = 0;
+    var m;
+    while ((m = priceRe.exec(seg)) !== null) {
+      var p = parseFloat(m[1]);
+      if (isStop)   addUnique(p, 'stop',   '停損', 'below');
+      if (isTarget) addUnique(p, 'target', '目標', 'above');
+      if (isAdd)    addUnique(p, 'add',    '加碼', 'below');
+    }
+  });
 
   return results;
 }
