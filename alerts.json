@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": 1748476800000,
+    "ticker": "1785",
+    "name": "光洋科",
+    "price": 158,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-05-29T00:00:00.000Z",
+    "triggered": false
+  }
+]
