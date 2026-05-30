@@ -40,13 +40,13 @@
     "triggered": true
   },
   {
-    "id": 1780156446320,
+    "id": 1780156449441,
     "ticker": "2344",
     "name": "華邦電",
     "price": 145,
     "type": "add",
     "direction": "below",
-    "createdAt": "2026-05-30T15:54:06.320Z",
+    "createdAt": "2026-05-30T15:54:09.441Z",
     "triggered": false
   }
 ]
