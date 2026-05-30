@@ -6,7 +6,7 @@
 <title>台股 AI 分析儀表板</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@3.8.0/dist/lightweight-charts.production.js"></script>
+<script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.production.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;}
@@ -2140,6 +2140,10 @@ function switchPeriod(p) {
 function drawChart(d) {
   var chartContainer = document.getElementById('priceChart');
   if (!chartContainer) return;
+  if (typeof LightweightCharts === 'undefined') {
+    chartContainer.innerHTML = '<p style="color:#64748b;font-size:12px;text-align:center;padding:24px 0;">圖表元件未載入，請重新整理頁面（Ctrl+Shift+R）</p>';
+    return;
+  }
   if (myChart) {
     try { myChart.remove(); } catch(e) {}
     myChart = null;
