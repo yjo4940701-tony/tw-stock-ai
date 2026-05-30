@@ -1153,7 +1153,7 @@ function fetchStock(ticker) {
   // 用 FinMind API（台股專用、免費、支援 CORS、不需 proxy）
   // 抓近 1 年的日線資料
   var d = new Date();
-  d.setFullYear(d.getFullYear() - 1);
+  d.setFullYear(d.getFullYear() - 2);
   var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
   var url = fmUrl('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=' + ticker + '&start_date=' + startDate);
 
@@ -2192,7 +2192,7 @@ function drawChart(d) {
 
   // 建立 TradingView Lightweight Charts
   myChart = LightweightCharts.createChart(chartContainer, {
-    width: chartContainer.offsetWidth,
+    autoSize: true,
     height: 350,
     layout: { background: { color: '#1e293b' }, textColor: '#94a3b8', fontSize: 12, fontFamily: 'system-ui, -apple-system, Segoe UI' },
     grid: { horzLines: { color: 'rgba(51,65,85,.3)' }, vertLines: { color: 'rgba(51,65,85,.3)' } },
@@ -2200,11 +2200,13 @@ function drawChart(d) {
     rightPriceScale: { textColor: '#94a3b8' }
   });
 
-  // 蠟燭圖
+  // 蠟燭圖（v4 簡化選項）
   var candlestickSeries = myChart.addCandlestickSeries({
-    upColor: '#22c55e', downColor: '#ef4444',
-    wickUpColor: '#22c55e', wickDownColor: '#ef4444',
-    borderUpColor: '#22c55e', borderDownColor: '#ef4444'
+    upColor: '#22c55e',
+    downColor: '#ef4444',
+    borderVisible: false,
+    wickUpColor: '#22c55e',
+    wickDownColor: '#ef4444'
   });
   candlestickSeries.setData(ohlcData);
 
@@ -2232,13 +2234,7 @@ function drawChart(d) {
     '<span style="color:#f59e0b;">● MA5</span>  <span style="color:#3b82f6;">● MA10</span>  <span style="color:#8b5cf6;">● MA20</span>' +
     (costLineData.length ? '  <span style="color:#ec4899;">● 扣抵值</span>' : '');
 
-  // 視窗大小改變時重繪
-  var resizeObserver = new ResizeObserver(function() {
-    if (myChart && chartContainer) {
-      myChart.applyOptions({ width: chartContainer.offsetWidth });
-    }
-  });
-  resizeObserver.observe(chartContainer);
+  // autoSize:true 已自動處理 resize，不需要手動監聽
 }
 
 // ─────────────────────────────────
