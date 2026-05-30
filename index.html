@@ -2104,16 +2104,17 @@ function aggregatePeriod(rawRecords, period) {
     var r = rawRecords[i];
     var key;
     if (period === 'month') {
-      key = r.date.slice(0, 7);
+      key = r.date.slice(0, 7) + '-01';   // "YYYY-MM-01"
     } else {
-      var dt = new Date(r.date);
+      // 週K：找該週一日期
+      var dt = new Date(r.date + 'T00:00:00');
       var dow = dt.getDay();
       var diff = dt.getDate() - dow + (dow === 0 ? -6 : 1);
       var mon = new Date(dt.getFullYear(), dt.getMonth(), diff);
       key = mon.getFullYear() + '-' + pad(mon.getMonth() + 1) + '-' + pad(mon.getDate());
     }
     if (!grouped[key]) {
-      grouped[key] = { label: period === 'month' ? key : key.slice(5), open: r.open, close: r.close, high: r.max, low: r.min };
+      grouped[key] = { label: key, open: r.open, close: r.close, high: r.max, low: r.min };
       order.push(key);
     } else {
       var g = grouped[key];
@@ -2153,23 +2154,21 @@ function drawChart(d) {
   var pos = getPosition(current);
   if (pos) { d.positionCost = pos.cost; }
 
-  // 準備 OHLC 數據
+  // 準備 OHLC 數據（v4 用 "YYYY-MM-DD" 字串當 time）
   var ohlcData = [];
   var prices = [];
   if (chartPeriod !== 'day' && d.rawRecords && d.rawRecords.length > 0) {
     var agg = aggregatePeriod(d.rawRecords, chartPeriod);
     ohlcData = agg.map(function(x) {
-      var ts = new Date(x.label).getTime() / 1000;
       prices.push(x.close);
-      return { time: ts, open: x.open, high: x.high, low: x.low, close: x.close };
+      return { time: x.label, open: x.open, high: x.high, low: x.low, close: x.close };
     });
   } else {
     if (!d.chartData || !d.chartData.length) return;
-    var cd = d.chartData.slice(-60);
+    var cd = d.chartData.slice(-90);   // 90 天，讓 MA20 有足夠點數
     ohlcData = cd.map(function(x) {
-      var ts = new Date(x.date).getTime() / 1000;
       prices.push(x.close);
-      return { time: ts, open: x.open, high: x.max, low: x.min, close: x.close };
+      return { time: x.date, open: x.open, high: x.max, low: x.min, close: x.close };
     });
   }
 
@@ -2197,7 +2196,7 @@ function drawChart(d) {
     height: 350,
     layout: { background: { color: '#1e293b' }, textColor: '#94a3b8', fontSize: 12, fontFamily: 'system-ui, -apple-system, Segoe UI' },
     grid: { horzLines: { color: 'rgba(51,65,85,.3)' }, vertLines: { color: 'rgba(51,65,85,.3)' } },
-    timeScale: { timeVisible: true, secondsVisible: false, tickMarkFormatter: function(t) { return new Date(t*1000).toLocaleDateString('zh-TW'); } },
+    timeScale: { timeVisible: false, secondsVisible: false },
     rightPriceScale: { textColor: '#94a3b8' }
   });
 
