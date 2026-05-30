@@ -2086,7 +2086,7 @@ function overlayClick(e) {
 function closeModal() {
   document.getElementById('analysisOverlay').classList.remove('show');
   document.body.style.overflow = '';
-  if (myChart) { myChart.destroy(); myChart = null; }
+  if (myChart) { try { myChart.remove(); } catch(e) {} myChart = null; }
 }
 function resetAI() {
   document.getElementById('aiResult').innerHTML = '<p style="color:#475569;">點擊「開始分析」，AI 將分析優勢、劣勢、技術面與進場位置建議。</p>';
