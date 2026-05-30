@@ -2164,9 +2164,8 @@ function drawChart(d) {
       return { time: x.label, open: x.open, high: x.high, low: x.low, close: x.close };
     });
   } else {
-    if (!d.chartData || !d.chartData.length) return;
-    var cd = d.chartData.slice(-90);   // 90 天，讓 MA20 有足夠點數
-    ohlcData = cd.map(function(x) {
+    if (!d.rawRecords || !d.rawRecords.length) return;
+    ohlcData = d.rawRecords.map(function(x) {
       prices.push(x.close);
       return { time: x.date, open: x.open, high: x.max, low: x.min, close: x.close };
     });
@@ -2183,12 +2182,6 @@ function drawChart(d) {
   var ma5Data = ohlcData.map(function(x, i) { return { time: x.time, value: ma5[i] }; }).filter(function(x) { return x.value != null; });
   var ma10Data = ohlcData.map(function(x, i) { return { time: x.time, value: ma10[i] }; }).filter(function(x) { return x.value != null; });
   var ma20Data = ohlcData.map(function(x, i) { return { time: x.time, value: ma20[i] }; }).filter(function(x) { return x.value != null; });
-
-  // 扣抵值線（進場均價）
-  var costLineData = [];
-  if (d.positionCost && d.positionCost > 0) {
-    costLineData = ohlcData.map(function(x) { return { time: x.time, value: d.positionCost }; });
-  }
 
   // 建立 TradingView Lightweight Charts
   myChart = LightweightCharts.createChart(chartContainer, {
@@ -2220,19 +2213,12 @@ function drawChart(d) {
   var ma20Series = myChart.addLineSeries({ color: '#8b5cf6', lineWidth: 1 });
   ma20Series.setData(ma20Data);
 
-  // 扣抵值線
-  if (costLineData.length) {
-    var costSeries = myChart.addLineSeries({ color: '#ec4899', lineWidth: 1, lineStyle: 1 });
-    costSeries.setData(costLineData);
-  }
-
   // 自動縮放
   myChart.timeScale().fitContent();
 
   // 圖例
   document.getElementById('chartLeg').innerHTML =
-    '<span style="color:#f59e0b;">● MA5</span>  <span style="color:#3b82f6;">● MA10</span>  <span style="color:#8b5cf6;">● MA20</span>' +
-    (costLineData.length ? '  <span style="color:#ec4899;">● 扣抵值</span>' : '');
+    '<span style="color:#f59e0b;">● MA5</span>  <span style="color:#3b82f6;">● MA10</span>  <span style="color:#8b5cf6;">● MA20</span>';
 
   // autoSize:true 已自動處理 resize，不需要手動監聽
 }
