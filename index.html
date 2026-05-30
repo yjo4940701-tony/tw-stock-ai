@@ -2195,22 +2195,22 @@ function drawChart(d) {
 
   // 蠟燭圖（v4 簡化選項）
   var candlestickSeries = myChart.addCandlestickSeries({
-    upColor: '#22c55e',
-    downColor: '#ef4444',
+    upColor: '#22c55e', downColor: '#ef4444',
     borderVisible: false,
-    wickUpColor: '#22c55e',
-    wickDownColor: '#ef4444'
+    wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+    priceLineVisible: false, lastValueVisible: true
   });
   candlestickSeries.setData(ohlcData);
 
   // 均線
-  var ma5Series = myChart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
+  var lineOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: true };
+  var ma5Series  = myChart.addLineSeries(Object.assign({ color: '#f59e0b' }, lineOpts));
   ma5Series.setData(ma5Data);
 
-  var ma10Series = myChart.addLineSeries({ color: '#3b82f6', lineWidth: 1 });
+  var ma10Series = myChart.addLineSeries(Object.assign({ color: '#3b82f6' }, lineOpts));
   ma10Series.setData(ma10Data);
 
-  var ma20Series = myChart.addLineSeries({ color: '#8b5cf6', lineWidth: 1 });
+  var ma20Series = myChart.addLineSeries(Object.assign({ color: '#8b5cf6' }, lineOpts));
   ma20Series.setData(ma20Data);
 
   // 自動縮放
