@@ -26,15 +26,19 @@ export default {
       const token = url.searchParams.get('token') || '';
       const fmUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=${stockId}&start_date=${startDate}${token ? '&token=' + token : ''}`;
       try {
-        const resp = await fetch(fmUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          cf: { cacheTtl: 3600, cacheEverything: true }
+        const resp = await fetch(fmUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const text = await resp.text();
+        // 不管狀態碼，直接把 FinMind 回應透傳（方便 debug）
+        return new Response(text, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json;charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'X-FM-Status': String(resp.status)
+          }
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        return json(data);
       } catch (e) {
-        return json({ ok: false, message: 'FinMind 失敗: ' + e.message }, 502);
+        return json({ ok: false, message: 'Worker fetch 失敗: ' + e.message }, 502);
       }
     }
 
