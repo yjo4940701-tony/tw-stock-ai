@@ -58,14 +58,14 @@ jobs:
         with:
           path: data/parts/
 
-      # 1. å…ˆåˆä½µè²¡å‹™å ±è¡¨
+      # 1. ¥ı¦X¨Ö°]°È³øªí
       - name: Merge financial statements
         run: |
           python3 - <<'EOF'
           import json, os, glob
           from datetime import datetime
 
-          # ä¿ç•™èˆŠçš„æœˆç‡Ÿæ”¶æ¬„ä½
+          # «O¯dÂÂªº¤ëÀç¦¬Äæ¦ì
           REV_KEYS = {"rev_yoy","rev_cum_yoy","rev_mom","rev_ym","rev_d"}
           existing = {}
           if os.path.exists("data/fundamentals.json"):
@@ -83,7 +83,7 @@ jobs:
               except Exception as e:
                   print(f"Skip {f}: {e}")
 
-          # æŠŠèˆŠçš„æœˆç‡Ÿæ”¶è³‡æ–™è£œå›æ–°è³‡æ–™
+          # §âÂÂªº¤ëÀç¦¬¸ê®Æ¸É¦^·s¸ê®Æ
           for sid, old in existing.items():
               rev = {k: v for k, v in old.items() if k in REV_KEYS}
               if rev:
@@ -106,5 +106,8 @@ jobs:
           git add data/fundamentals.json
           git diff --staged --quiet || git commit -m "chore: update fundamentals $(date +%Y-%m-%d)"
           git pull --rebase origin main
-          git pull --rebase origin main
-          git push
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push failed, retry $i/3..."
+            sleep 10
+          done

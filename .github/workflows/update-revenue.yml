@@ -2,11 +2,11 @@ name: Update Revenue
 
 on:
   schedule:
-    - cron: '0 2 11 * *'  # æ¯æœˆ11æ—¥ 10:00 AM å°ç£æ™‚é–“
+    - cron: '0 2 11 * *'  # ¨C¤ë11¤é 10:00 AM ¥xÆW®É¶¡
   workflow_dispatch:
     inputs:
       range:
-        description: 'è‚¡ç¥¨ç¯„åœï¼ˆall = å…¨éƒ¨åŒæ™‚è·‘ï¼‰'
+        description: 'ªÑ²¼½d³ò¡]all = ¥ş³¡¦P®É¶]¡^'
         required: false
         default: '1000-1999'
         type: choice
@@ -78,7 +78,7 @@ jobs:
               except Exception as e:
                   print(f"Skip {f}: {e}")
 
-          print(f"æœ¬æ¬¡æ›´æ–°ï¼š{len(rev_map)} æª”")
+          print(f"¥»¦¸§ó·s¡G{len(rev_map)} ÀÉ")
 
           with open("data/fundamentals.json", encoding="utf-8") as f:
               fund = json.load(f)
@@ -97,7 +97,7 @@ jobs:
               json.dump(fund, f, ensure_ascii=False, separators=(",", ":"))
 
           valid = sum(1 for v in stocks.values() if v.get("rev_yoy") is not None)
-          print(f"rev_yoy ç´¯è¨ˆæœ‰å€¼ï¼š{valid} æª”")
+          print(f"rev_yoy ²Ö­p¦³­È¡G{valid} ÀÉ")
           EOF
 
       - name: Commit and push
@@ -107,5 +107,8 @@ jobs:
           git add data/fundamentals.json
           git diff --staged --quiet || git commit -m "chore: update revenue $(date +%Y-%m-%d) (${{ github.event.inputs.range || 'scheduled' }})"
           git pull --rebase origin main
-          git pull --rebase origin main
-          git push
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push failed, retry $i/3..."
+            sleep 10
+          done

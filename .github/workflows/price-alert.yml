@@ -1,9 +1,9 @@
-name: Price Alertï¼ˆå°è‚¡æ”¶ç›¤æé†’ï¼‰
+name: Price Alert¡]¥xªÑ¦¬½L´£¿ô¡^
 
 on:
   schedule:
-    - cron: '45 7 * * 1-5'  # å°ç£æ™‚é–“ 15:45ï¼Œé€±ä¸€è‡³é€±äº”
-  workflow_dispatch:          # æ‰‹å‹•è§¸ç™¼ï¼ˆæ¸¬è©¦ç”¨ï¼‰
+    - cron: '45 7 * * 1-5'  # ¥xÆW®É¶¡ 15:45¡A¶g¤@¦Ü¶g¤­
+  workflow_dispatch:          # ¤â°ÊÄ²µo¡]´ú¸Õ¥Î¡^
 
 jobs:
   check-alerts:
@@ -35,5 +35,8 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add alerts.json
           git diff --staged --quiet || git commit -m "chore: update triggered alerts [skip ci]"
-          git pull --rebase origin main
-          git push
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push failed, retry $i/3..."
+            sleep 10
+          done
