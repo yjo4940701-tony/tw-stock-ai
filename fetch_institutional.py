@@ -13,7 +13,7 @@ OUTPUT = 'data/institutional.json'
 def fetch_twse(date_str):
     """抓上市股票當日三大法人（TWSE T86）"""
     d = date_str.replace('-', '')   # YYYYMMDD
-    url = f'https://www.twse.com.tw/rwd/zh/fund/T86?date={d}&selectType=ALLBUT0999&response=json'
+    url = f'https://www.twse.com.tw/rwd/zh/fund/T86?date={d}&selectType=ALL&response=json'
     try:
         r = requests.get(url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
         j = r.json()
@@ -27,7 +27,6 @@ def fetch_twse(date_str):
 
 def fetch_tpex(date_str):
     """抓上櫃股票當日三大法人（TPEX）"""
-    # TPEX 日期格式：民國年/MM/DD
     dt = datetime.strptime(date_str, '%Y-%m-%d')
     roc = dt.year - 1911
     d_str = f'{roc}/{dt.month:02d}/{dt.day:02d}'
@@ -35,8 +34,11 @@ def fetch_tpex(date_str):
     try:
         r = requests.get(url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
         j = r.json()
-        rows = j.get('aaData') or j.get('data') or []
-        return rows
+        # TPEX 回應格式：tables[0]['data']
+        tables = j.get('tables', [])
+        if tables and tables[0].get('data'):
+            return tables[0]['data']
+        return []
     except Exception as e:
         print(f'  [{date_str}] TPEX 失敗: {e}')
         return []
@@ -96,16 +98,16 @@ def main():
             stocks[sid][date_str] = [foreign, trust, dealer]
             count += 1
 
-        # TPEX 欄位：[代號, 名稱, 外資買進, 外資賣出, 外資買賣超, 投信買進, 投信賣出, 投信買賣超, 自營買賣超, ...]
+        # TPEX 欄位：[代號, 名稱, ..., 外資買賣超[4], ..., 投信買賣超[13], ..., 自營買賣超合計[22], ...]
         for row in tpex_rows:
-            if len(row) < 9:
+            if len(row) < 23:
                 continue
             sid = str(row[0]).strip()
             if not sid or not sid.isdigit():
                 continue
             foreign = parse_num(row[4])
-            trust   = parse_num(row[7])
-            dealer  = parse_num(row[8])
+            trust   = parse_num(row[13])
+            dealer  = parse_num(row[22])
             if sid not in stocks:
                 stocks[sid] = {}
             stocks[sid][date_str] = [foreign, trust, dealer]
