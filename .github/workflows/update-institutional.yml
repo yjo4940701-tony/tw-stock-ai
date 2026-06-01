@@ -1,0 +1,37 @@
+name: Update Institutional（三大法人）
+
+on:
+  schedule:
+    - cron: '50 7 * * 1-5'  # 台灣時間 15:50，週一至週五
+  workflow_dispatch:          # 手動觸發（測試用）
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch institutional data
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python fetch_institutional.py
+
+      - name: Commit data
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/institutional.json
+          git diff --staged --quiet || git commit -m "data: update institutional investors [skip ci]"
+          git push

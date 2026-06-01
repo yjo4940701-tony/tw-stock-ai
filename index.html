@@ -1945,106 +1945,84 @@ function loadMonthlyRevenue(ticker) {
 }
 
 // ─────────────────────────────────
-// 三大法人買賣超
+// 三大法人買賣超（讀 data/institutional.json，GitHub Actions 每日更新）
 // ─────────────────────────────────
-var currentII = null; // 供 AI prompt 使用
+var currentII      = null;  // 供 AI prompt 使用
+var iiCache        = null;  // 整包 JSON 快取（頁面生命週期內）
+
+function loadInstitutionalCache(cb) {
+  if (iiCache) { cb(iiCache); return; }
+  fetch('data/institutional.json')
+    .then(function(r){ return r.json(); })
+    .then(function(data){ iiCache = data; cb(data); })
+    .catch(function(e){
+      console.warn('[三大法人] 讀取靜態 JSON 失敗:', e.message);
+      cb(null);
+    });
+}
 
 function loadInstitutional(ticker) {
-  var box     = document.getElementById('iiBox');
-  var content = document.getElementById('iiContent');
-  if (!box || !content) return;
+  var box = document.getElementById('iiBox');
+  if (!box) return;
   box.style.display = 'none';
   currentII = null;
 
-  var d = new Date();
-  d.setDate(d.getDate() - 35); // 往回 35 天確保拿到 20 個交易日
-  function pad(n){ return n < 10 ? '0'+n : ''+n; }
-  var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
-
-  // 透過 Cloudflare Worker proxy（Worker 帶 token 打 FinMind，繞過 CORS）
-  var fmToken = localStorage.getItem('tw_finmind') || '';
-  var iiUrl = 'https://tw-stock-news.yjo4940701.workers.dev/?type=ii&id=' + ticker + '&start=' + startDate
-    + (fmToken ? '&token=' + encodeURIComponent(fmToken) : '');
-  fetch(iiUrl)
-    .then(function(r){ return r.json(); })
-    .then(function(json){
-      console.log('[三大法人] msg:', json.msg, '筆數:', json.data && json.data.length);
-      if (json.data && json.data.length) console.log('[三大法人] 第一筆:', JSON.stringify(json.data[0]));
-      if (!json.data || !json.data.length) return;
-      renderII(json.data);
-    })
-    .catch(function(e){ console.warn('[三大法人] 失敗:', e.message); });
+  loadInstitutionalCache(function(cache) {
+    if (!cache || !cache.stocks || !cache.stocks[ticker]) return;
+    renderII(cache.dates, cache.stocks[ticker], cache.updated);
+  });
 }
 
-function renderII(rows) {
-  // 依日期分組：{ '2026-05-29': { 外資: 3500, 投信: 200, 自營商: -100 }, ... }
-  var byDate = {};
-  rows.forEach(function(r) {
-    if (!r.date) return;
-    if (!byDate[r.date]) byDate[r.date] = {};
-    var net = (r.buy_minus_sell !== undefined) ? Number(r.buy_minus_sell) : (Number(r.buy) - Number(r.sell));
-    byDate[r.date][r.name] = Math.round(net / 1000); // 股 → 張
-  });
+function renderII(dates, stockArr, updated) {
+  // stockArr = [[外資,投信,自營商], ...] 依 dates 索引排列，index 0 = 最新
+  var INST = ['外資', '投信', '自營商'];
 
-  // 排序日期（最新在前），取最近 20 個交易日
-  var dates = Object.keys(byDate).sort(function(a, b){ return b > a ? 1 : -1; }).slice(0, 20);
-  if (!dates.length) return;
-
-  var institutions = ['外資', '投信', '自營商'];
-
-  // 計算累計
   function sumDays(n) {
-    var result = {};
-    institutions.forEach(function(inst) {
-      var total = 0;
-      dates.slice(0, n).forEach(function(dt) {
-        total += (byDate[dt][inst] || 0);
-      });
-      result[inst] = total;
-    });
-    return result;
+    var r = { '外資': 0, '投信': 0, '自營商': 0 };
+    for (var i = 0; i < Math.min(n, stockArr.length); i++) {
+      var d = stockArr[i] || [0, 0, 0];
+      INST.forEach(function(k, j){ r[k] += (d[j] || 0); });
+    }
+    return r;
   }
 
-  var s1  = byDate[dates[0]] || {};
+  var s1  = { '外資': (stockArr[0]||[0])[0]||0, '投信': (stockArr[0]||[0,0])[1]||0, '自營商': (stockArr[0]||[0,0,0])[2]||0 };
   var s5  = sumDays(5);
   var s10 = sumDays(10);
   var s20 = sumDays(20);
 
-  // 儲存給 AI prompt 用
   currentII = { s5: s5, s10: s10, latestDate: dates[0] };
 
   function cell(v) {
     var color = v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#64748b';
-    var sign  = v > 0 ? '+' : '';
-    return '<td style="text-align:right;color:' + color + ';font-weight:' + (Math.abs(v) > 0 ? '600' : '400') + ';">'
-      + sign + v.toLocaleString() + '</td>';
+    return '<td style="text-align:right;color:' + color + ';font-weight:' + (v !== 0 ? '600' : '400') + ';padding:5px 8px;border-bottom:1px solid #1e293b;">'
+      + (v > 0 ? '+' : '') + v.toLocaleString() + '</td>';
   }
 
   var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
     + '<thead><tr>'
     + '<th style="color:#64748b;font-weight:500;padding:5px 8px;text-align:left;border-bottom:1px solid #334155;"></th>'
-    + institutions.map(function(i){ return '<th style="color:#94a3b8;font-weight:600;padding:5px 8px;text-align:right;border-bottom:1px solid #334155;">' + i + '</th>'; }).join('')
+    + INST.map(function(i){ return '<th style="color:#94a3b8;font-weight:600;padding:5px 8px;text-align:right;border-bottom:1px solid #334155;">' + i + '</th>'; }).join('')
     + '</tr></thead><tbody>';
 
   [
-    { label: '昨日',    data: s1  },
+    { label: '最新日', data: s1  },
     { label: '近 5 日', data: s5  },
     { label: '近 10 日',data: s10 },
     { label: '近 20 日',data: s20 },
   ].forEach(function(row) {
     html += '<tr><td style="color:#64748b;padding:5px 8px;border-bottom:1px solid #1e293b;">' + row.label + '</td>'
-      + institutions.map(function(i){ return cell(row.data[i] || 0); }).join('')
-      + '</tr>';
+      + INST.map(function(k){ return cell(row.data[k] || 0); }).join('') + '</tr>';
   });
 
-  html += '</tbody></table><div style="color:#334155;font-size:10px;margin-top:6px;text-align:right;">單位：張　資料日期：' + dates[0] + '</div>';
+  html += '</tbody></table><div style="color:#334155;font-size:10px;margin-top:6px;text-align:right;">單位：張　資料更新：' + (updated || dates[0]) + '</div>';
 
   var content = document.getElementById('iiContent');
   var dateEl  = document.getElementById('iiDate');
+  var box     = document.getElementById('iiBox');
   if (content) content.innerHTML = html;
   if (dateEl)  dateEl.textContent = dates[0];
-  var box = document.getElementById('iiBox');
-  if (box) box.style.display = 'block';
+  if (box)     box.style.display = 'block';
 }
 
 // ─────────────────────────────────
