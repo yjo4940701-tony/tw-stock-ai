@@ -23,7 +23,8 @@ export default {
       const startDate = url.searchParams.get('start') || '';
       if (!stockId) return json({ ok: false, message: '缺少 id 參數' }, 400);
 
-      const fmUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=${stockId}&start_date=${startDate}`;
+      const token = url.searchParams.get('token') || '';
+      const fmUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=${stockId}&start_date=${startDate}${token ? '&token=' + token : ''}`;
       try {
         const resp = await fetch(fmUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0' },

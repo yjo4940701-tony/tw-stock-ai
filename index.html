@@ -1961,8 +1961,10 @@ function loadInstitutional(ticker) {
   function pad(n){ return n < 10 ? '0'+n : ''+n; }
   var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
 
-  // 透過 Cloudflare Worker proxy 繞過 FinMind CORS 限制
-  var iiUrl = 'https://tw-stock-news.yjo4940701.workers.dev/?type=ii&id=' + ticker + '&start=' + startDate;
+  // 透過 Cloudflare Worker proxy（Worker 帶 token 打 FinMind，繞過 CORS）
+  var fmToken = localStorage.getItem('tw_finmind') || '';
+  var iiUrl = 'https://tw-stock-news.yjo4940701.workers.dev/?type=ii&id=' + ticker + '&start=' + startDate
+    + (fmToken ? '&token=' + encodeURIComponent(fmToken) : '');
   fetch(iiUrl)
     .then(function(r){ return r.json(); })
     .then(function(json){
