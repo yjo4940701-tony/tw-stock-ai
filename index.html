@@ -1999,10 +1999,15 @@ function renderII(dates, stockArr, updated) {
       + (v > 0 ? '+' : '') + v.toLocaleString() + '</td>';
   }
 
+  function total(data) {
+    return (data['外資']||0) + (data['投信']||0) + (data['自營商']||0);
+  }
+
   var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
     + '<thead><tr>'
     + '<th style="color:#64748b;font-weight:500;padding:5px 8px;text-align:left;border-bottom:1px solid #334155;"></th>'
     + INST.map(function(i){ return '<th style="color:#94a3b8;font-weight:600;padding:5px 8px;text-align:right;border-bottom:1px solid #334155;">' + i + '</th>'; }).join('')
+    + '<th style="color:#e2e8f0;font-weight:700;padding:5px 8px;text-align:right;border-bottom:1px solid #334155;border-left:1px solid #334155;">合計</th>'
     + '</tr></thead><tbody>';
 
   [
@@ -2011,8 +2016,12 @@ function renderII(dates, stockArr, updated) {
     { label: '近 10 日',data: s10 },
     { label: '近 20 日',data: s20 },
   ].forEach(function(row) {
+    var t = total(row.data);
     html += '<tr><td style="color:#64748b;padding:5px 8px;border-bottom:1px solid #1e293b;">' + row.label + '</td>'
-      + INST.map(function(k){ return cell(row.data[k] || 0); }).join('') + '</tr>';
+      + INST.map(function(k){ return cell(row.data[k] || 0); }).join('')
+      + '<td style="text-align:right;color:' + (t>0?'#22c55e':t<0?'#ef4444':'#64748b') + ';font-weight:700;padding:5px 8px;border-bottom:1px solid #1e293b;border-left:1px solid #334155;">'
+      + (t>0?'+':'') + t.toLocaleString() + '</td>'
+      + '</tr>';
   });
 
   html += '</tbody></table><div style="color:#334155;font-size:10px;margin-top:6px;text-align:right;">單位：張　資料更新：' + (updated || dates[0]) + '</div>';
