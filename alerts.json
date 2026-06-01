@@ -10,16 +10,6 @@
     "triggered": false
   },
   {
-    "id": 1780067563741,
-    "ticker": "2002",
-    "name": "中鋼",
-    "price": 21.5,
-    "type": "target",
-    "direction": "above",
-    "createdAt": "2026-05-29T15:12:43.741Z",
-    "triggered": false
-  },
-  {
     "id": 1780068447752,
     "ticker": "1785",
     "name": "光洋科",
