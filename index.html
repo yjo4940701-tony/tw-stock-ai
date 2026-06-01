@@ -541,6 +541,15 @@ select.bt-input{cursor:pointer;}
         <div id="revContent" style="min-height:120px;"></div>
       </div>
 
+      <!-- 三大法人買賣超 -->
+      <div id="iiBox" class="chart-box" style="display:none;">
+        <div class="chart-title">
+          <span>🏦 三大法人買賣超</span>
+          <span id="iiDate" style="color:#64748b;font-size:11px;"></span>
+        </div>
+        <div id="iiContent"></div>
+      </div>
+
       <!-- 持倉記錄 -->
       <div class="chart-box" id="posBox">
         <div class="chart-title">
@@ -1799,9 +1808,10 @@ function openModal(ticker) {
   renderPosBox(ticker);
   // 價格提醒表單
   renderAlertForm(ticker);
-  // 載入月營收 + 估值
+  // 載入月營收 + 估值 + 三大法人（並行）
   loadMonthlyRevenue(ticker);
   loadPER(ticker);
+  loadInstitutional(ticker);
 }
 
 // ─────────────────────────────────
@@ -1932,6 +1942,103 @@ function loadMonthlyRevenue(ticker) {
     .catch(function(e) {
       content.innerHTML = '<p style="color:#f87171;font-size:12px;padding:10px 0;">月營收載入失敗：'+e.message+'</p>';
     });
+}
+
+// ─────────────────────────────────
+// 三大法人買賣超
+// ─────────────────────────────────
+var currentII = null; // 供 AI prompt 使用
+
+function loadInstitutional(ticker) {
+  var box     = document.getElementById('iiBox');
+  var content = document.getElementById('iiContent');
+  if (!box || !content) return;
+  box.style.display = 'none';
+  currentII = null;
+
+  var d = new Date();
+  d.setDate(d.getDate() - 35); // 往回 35 天確保拿到 20 個交易日
+  function pad(n){ return n < 10 ? '0'+n : ''+n; }
+  var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+
+  fetch('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + startDate)
+    .then(function(r){ return r.json(); })
+    .then(function(json){
+      if (!json.data || !json.data.length) return;
+      renderII(json.data);
+    })
+    .catch(function(e){ console.warn('[三大法人] 失敗:', e.message); });
+}
+
+function renderII(rows) {
+  // 依日期分組：{ '2026-05-29': { 外資: 3500, 投信: 200, 自營商: -100 }, ... }
+  var byDate = {};
+  rows.forEach(function(r) {
+    if (!r.date) return;
+    if (!byDate[r.date]) byDate[r.date] = {};
+    var net = (r.buy_minus_sell !== undefined) ? Number(r.buy_minus_sell) : (Number(r.buy) - Number(r.sell));
+    byDate[r.date][r.name] = Math.round(net / 1000); // 股 → 張
+  });
+
+  // 排序日期（最新在前），取最近 20 個交易日
+  var dates = Object.keys(byDate).sort(function(a, b){ return b > a ? 1 : -1; }).slice(0, 20);
+  if (!dates.length) return;
+
+  var institutions = ['外資', '投信', '自營商'];
+
+  // 計算累計
+  function sumDays(n) {
+    var result = {};
+    institutions.forEach(function(inst) {
+      var total = 0;
+      dates.slice(0, n).forEach(function(dt) {
+        total += (byDate[dt][inst] || 0);
+      });
+      result[inst] = total;
+    });
+    return result;
+  }
+
+  var s1  = byDate[dates[0]] || {};
+  var s5  = sumDays(5);
+  var s10 = sumDays(10);
+  var s20 = sumDays(20);
+
+  // 儲存給 AI prompt 用
+  currentII = { s5: s5, s10: s10, latestDate: dates[0] };
+
+  function cell(v) {
+    var color = v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : '#64748b';
+    var sign  = v > 0 ? '+' : '';
+    return '<td style="text-align:right;color:' + color + ';font-weight:' + (Math.abs(v) > 0 ? '600' : '400') + ';">'
+      + sign + v.toLocaleString() + '</td>';
+  }
+
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+    + '<thead><tr>'
+    + '<th style="color:#64748b;font-weight:500;padding:5px 8px;text-align:left;border-bottom:1px solid #334155;"></th>'
+    + institutions.map(function(i){ return '<th style="color:#94a3b8;font-weight:600;padding:5px 8px;text-align:right;border-bottom:1px solid #334155;">' + i + '</th>'; }).join('')
+    + '</tr></thead><tbody>';
+
+  [
+    { label: '昨日',    data: s1  },
+    { label: '近 5 日', data: s5  },
+    { label: '近 10 日',data: s10 },
+    { label: '近 20 日',data: s20 },
+  ].forEach(function(row) {
+    html += '<tr><td style="color:#64748b;padding:5px 8px;border-bottom:1px solid #1e293b;">' + row.label + '</td>'
+      + institutions.map(function(i){ return cell(row.data[i] || 0); }).join('')
+      + '</tr>';
+  });
+
+  html += '</tbody></table><div style="color:#334155;font-size:10px;margin-top:6px;text-align:right;">單位：張　資料日期：' + dates[0] + '</div>';
+
+  var content = document.getElementById('iiContent');
+  var dateEl  = document.getElementById('iiDate');
+  if (content) content.innerHTML = html;
+  if (dateEl)  dateEl.textContent = dates[0];
+  var box = document.getElementById('iiBox');
+  if (box) box.style.display = 'block';
 }
 
 // ─────────────────────────────────
@@ -2574,6 +2681,11 @@ function runAnalysis() {
     + 'MA5：' + fp(last(ma5)) + '　MA20：' + fp(last(ma20)) + '　MA60：' + fp(last(ma60)) + '\n'
     + '近5日收盤：' + r5 + '\n'
     + revSupp
+    + (currentII ? '【三大法人（近 5 / 10 日累計，單位：張）】\n'
+        + '外資：' + (currentII.s5['外資']||0).toLocaleString() + ' / ' + (currentII.s10['外資']||0).toLocaleString() + '\n'
+        + '投信：' + (currentII.s5['投信']||0).toLocaleString() + ' / ' + (currentII.s10['投信']||0).toLocaleString() + '\n'
+        + '自營商：' + (currentII.s5['自營商']||0).toLocaleString() + ' / ' + (currentII.s10['自營商']||0).toLocaleString() + '\n\n'
+      : '')
     + '\n【台股近期新聞】\n' + newsStr + '\n'
     + (intlNewsStr ? '\n【國際財經新聞（Finnhub）】\n' + intlNewsStr + '\n' : '')
     + '\n請依序用以下格式撰寫（繁體中文，精簡有力，每點不超過2行）：\n\n'
