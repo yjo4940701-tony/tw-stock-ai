@@ -107,4 +107,5 @@ jobs:
           git add data/fundamentals.json
           git diff --staged --quiet || git commit -m "chore: update revenue $(date +%Y-%m-%d) (${{ github.event.inputs.range || 'scheduled' }})"
           git pull --rebase origin main
+          git pull --rebase origin main
           git push

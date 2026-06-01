@@ -106,4 +106,5 @@ jobs:
           git add data/fundamentals.json
           git diff --staged --quiet || git commit -m "chore: update fundamentals $(date +%Y-%m-%d)"
           git pull --rebase origin main
+          git pull --rebase origin main
           git push
