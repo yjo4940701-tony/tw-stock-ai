@@ -1964,6 +1964,8 @@ function loadInstitutional(ticker) {
   fetch('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + startDate)
     .then(function(r){ return r.json(); })
     .then(function(json){
+      console.log('[三大法人] msg:', json.msg, '筆數:', json.data && json.data.length);
+      if (json.data && json.data.length) console.log('[三大法人] 第一筆:', JSON.stringify(json.data[0]));
       if (!json.data || !json.data.length) return;
       renderII(json.data);
     })
