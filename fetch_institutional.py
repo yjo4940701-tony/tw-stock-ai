@@ -25,7 +25,7 @@ INST_MAP = {
 def fetch_day(date_str):
     """抓單日全市場三大法人資料"""
     params = {
-        'dataset':    'TaiwanStockInstitutionalInvestors',
+        'dataset':    'TaiwanStockInstitutionalInvestorsBuySell',
         'start_date': date_str,
         'end_date':   date_str,
     }
