@@ -15,6 +15,29 @@ export default {
     }
 
     const url = new URL(request.url);
+    const type = url.searchParams.get('type') || 'news';
+
+    // ── 路由：三大法人（type=ii） ──────────────────────
+    if (type === 'ii') {
+      const stockId   = url.searchParams.get('id') || '';
+      const startDate = url.searchParams.get('start') || '';
+      if (!stockId) return json({ ok: false, message: '缺少 id 參數' }, 400);
+
+      const fmUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=${stockId}&start_date=${startDate}`;
+      try {
+        const resp = await fetch(fmUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          cf: { cacheTtl: 3600, cacheEverything: true }
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        return json(data);
+      } catch (e) {
+        return json({ ok: false, message: 'FinMind 失敗: ' + e.message }, 502);
+      }
+    }
+
+    // ── 路由：Google News（type=news，預設） ────────────
     const stockId   = url.searchParams.get('id')   || '';
     const stockName = url.searchParams.get('name') || '';
     const count     = Math.min(+(url.searchParams.get('count') || 10), 20);

@@ -1961,7 +1961,9 @@ function loadInstitutional(ticker) {
   function pad(n){ return n < 10 ? '0'+n : ''+n; }
   var startDate = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
 
-  fetch('https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestors&data_id=' + ticker + '&start_date=' + startDate)
+  // 透過 Cloudflare Worker proxy 繞過 FinMind CORS 限制
+  var iiUrl = 'https://tw-stock-news.yjo4940701.workers.dev/?type=ii&id=' + ticker + '&start=' + startDate;
+  fetch(iiUrl)
     .then(function(r){ return r.json(); })
     .then(function(json){
       console.log('[三大法人] msg:', json.msg, '筆數:', json.data && json.data.length);
