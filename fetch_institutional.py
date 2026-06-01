@@ -1,5 +1,5 @@
 """
-每日抓取全市場三大法人買賣超資料
+每日抓取全市場三大法人買賣超資料（TWSE + TPEX 官方 API，免費無需驗證）
 輸出：data/institutional.json
 """
 import requests
@@ -8,116 +8,133 @@ import os
 import time
 from datetime import datetime, timedelta
 
-TOKEN  = os.environ.get('FINMIND_TOKEN', '')
 OUTPUT = 'data/institutional.json'
 
-INST_MAP = {
-    '外資': '外資',
-    '外資及陸資': '外資',
-    '外資及陸資(不含外資自營商)': '外資',
-    '外資自營商': '外資',   # 外資自營商也歸入外資合計
-    '投信': '投信',
-    '自營商': '自營商',
-    '自營商(自行買賣)': '自營商',
-    '自營商(避險)': '自營商',
-}
-
-def fetch_day(date_str):
-    """抓單日全市場三大法人資料"""
-    params = {
-        'dataset':    'TaiwanStockInstitutionalInvestorsBuySell',
-        'start_date': date_str,
-        'end_date':   date_str,
-    }
-    if TOKEN:
-        params['token'] = TOKEN
-
+def fetch_twse(date_str):
+    """抓上市股票當日三大法人（TWSE T86）"""
+    d = date_str.replace('-', '')   # YYYYMMDD
+    url = f'https://www.twse.com.tw/rwd/zh/fund/T86?date={d}&selectType=ALLBUT0999&response=json'
     try:
-        r = requests.get(
-            'https://api.finmindtrade.com/api/v4/data',
-            params=params, timeout=30
-        )
-        d = r.json()
-        if d.get('status') == 200 and d.get('data'):
-            return d['data']
-        print(f'  [{date_str}] FinMind 回應: {d.get("msg", d.get("detail", "無資料"))}')
+        r = requests.get(url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
+        j = r.json()
+        if j.get('stat') == 'OK' and j.get('data'):
+            return j['data']
+        # 假日或無資料
         return []
     except Exception as e:
-        print(f'  [{date_str}] 失敗: {e}')
+        print(f'  [{date_str}] TWSE 失敗: {e}')
         return []
 
-def main():
-    print(f'開始抓取三大法人資料 (token: {"有" if TOKEN else "無"})')
+def fetch_tpex(date_str):
+    """抓上櫃股票當日三大法人（TPEX）"""
+    # TPEX 日期格式：民國年/MM/DD
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    roc = dt.year - 1911
+    d_str = f'{roc}/{dt.month:02d}/{dt.day:02d}'
+    url = f'https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d={d_str}&se=EW&s=0,asc,0&_={int(time.time()*1000)}'
+    try:
+        r = requests.get(url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
+        j = r.json()
+        rows = j.get('aaData') or j.get('data') or []
+        return rows
+    except Exception as e:
+        print(f'  [{date_str}] TPEX 失敗: {e}')
+        return []
 
-    # 往回 45 個日曆天，確保拿到 30 個交易日
+def parse_num(s):
+    """把帶逗號的數字字串轉整數，再除以1000換算為張"""
+    try:
+        return round(int(str(s).replace(',', '').replace(' ', '') or '0') / 1000)
+    except:
+        return 0
+
+def main():
+    print('開始抓取三大法人資料（TWSE + TPEX）...')
+
+    # 往回 45 個日曆天，確保取到 30 個交易日
     today = datetime.now()
     dates_to_try = [
         (today - timedelta(days=i)).strftime('%Y-%m-%d')
         for i in range(45)
     ]
 
-    # { stock_id: { date: { '外資': X, '投信': X, '自營商': X } } }
-    stocks     = {}
+    # { stock_id: { date: [外資淨, 投信淨, 自營淨] } }
+    stocks      = {}
     valid_dates = []
 
     for date_str in dates_to_try:
         if len(valid_dates) >= 30:
             break
 
-        rows = fetch_day(date_str)
-        if not rows:
+        # ── 上市（TWSE） ──
+        twse_rows = fetch_twse(date_str)
+        # ── 上櫃（TPEX） ──
+        tpex_rows = fetch_tpex(date_str)
+
+        if not twse_rows and not tpex_rows:
+            print(f'  {date_str}: 無資料（假日）')
+            time.sleep(0.5)
             continue
 
         valid_dates.append(date_str)
-        print(f'  {date_str}: {len(rows)} 筆')
+        count = 0
 
-        for row in rows:
-            sid  = str(row.get('stock_id', ''))
-            name = row.get('name', '')
-            cat  = INST_MAP.get(name)
-            if not sid or not cat:
+        # TWSE 欄位：[代號, 名稱, 外陸資買進, 外陸資賣出, 外陸資買賣超, 投信買進, 投信賣出, 投信買賣超, 自營買賣超合計, ...]
+        for row in twse_rows:
+            if len(row) < 9:
                 continue
-
-            # FinMind 單位為「股」，除以 1000 換算為「張」
-            net = round(
-                (row.get('buy_minus_sell') or
-                 (row.get('buy', 0) - row.get('sell', 0))) / 1000
-            )
-
+            sid = str(row[0]).strip()
+            if not sid or not sid.isdigit():
+                continue
+            foreign = parse_num(row[4])   # 外陸資買賣超股數
+            trust   = parse_num(row[7])   # 投信買賣超股數
+            dealer  = parse_num(row[8])   # 自營商買賣超合計
             if sid not in stocks:
                 stocks[sid] = {}
-            if date_str not in stocks[sid]:
-                stocks[sid][date_str] = {'外資': 0, '投信': 0, '自營商': 0}
-            stocks[sid][date_str][cat] += net
+            stocks[sid][date_str] = [foreign, trust, dealer]
+            count += 1
 
-        time.sleep(2)   # 避免 rate limit
+        # TPEX 欄位：[代號, 名稱, 外資買進, 外資賣出, 外資買賣超, 投信買進, 投信賣出, 投信買賣超, 自營買賣超, ...]
+        for row in tpex_rows:
+            if len(row) < 9:
+                continue
+            sid = str(row[0]).strip()
+            if not sid or not sid.isdigit():
+                continue
+            foreign = parse_num(row[4])
+            trust   = parse_num(row[7])
+            dealer  = parse_num(row[8])
+            if sid not in stocks:
+                stocks[sid] = {}
+            stocks[sid][date_str] = [foreign, trust, dealer]
+            count += 1
+
+        print(f'  {date_str}: {count} 檔')
+        time.sleep(1.5)   # 避免打太快
 
     if not valid_dates:
         print('錯誤：沒有抓到任何資料，中止。')
         return
 
-    # 組成精簡格式：{ dates: [...], stocks: { sid: [[外資,投信,自營商], ...] } }
+    # 組成精簡格式：{ updated, dates: [...], stocks: { sid: [[外資,投信,自營], ...] } }
     output = {
         'updated': today.strftime('%Y-%m-%d'),
-        'dates':   valid_dates,   # 最多 30 個交易日，index 0 = 最新
+        'dates':   valid_dates,
         'stocks':  {}
     }
 
     for sid, date_map in stocks.items():
         arr = []
         for date_str in valid_dates:
-            d = date_map.get(date_str, {})
-            arr.append([d.get('外資', 0), d.get('投信', 0), d.get('自營商', 0)])
+            arr.append(date_map.get(date_str, [0, 0, 0]))
         output['stocks'][sid] = arr
 
     os.makedirs('data', exist_ok=True)
     with open(OUTPUT, 'w', encoding='utf-8') as f:
-        # 不縮排，最小化檔案大小
         json.dump(output, f, ensure_ascii=False, separators=(',', ':'))
 
     size_kb = os.path.getsize(OUTPUT) / 1024
-    print(f'完成！{len(stocks)} 檔 × {len(valid_dates)} 交易日，'
-          f'檔案大小 {size_kb:.0f} KB')
+    print(f'完成！{len(stocks)} 檔 × {len(valid_dates)} 交易日，檔案 {size_kb:.0f} KB')
 
 if __name__ == '__main__':
     main()
