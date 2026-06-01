@@ -86,9 +86,11 @@ def main():
             sid = str(row[0]).strip()
             if not sid or not sid.isdigit():
                 continue
-            foreign = parse_num(row[4])   # 外陸資買賣超股數
-            trust   = parse_num(row[7])   # 投信買賣超股數
-            dealer  = parse_num(row[8])   # 自營商買賣超合計
+            if len(row) < 12:
+                continue
+            foreign = parse_num(row[4])    # 外陸資買賣超（不含外資自營商）
+            trust   = parse_num(row[10])   # 投信買賣超
+            dealer  = parse_num(row[11])   # 自營商買賣超合計
             if sid not in stocks:
                 stocks[sid] = {}
             stocks[sid][date_str] = [foreign, trust, dealer]
