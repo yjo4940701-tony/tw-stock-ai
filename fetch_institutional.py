@@ -86,7 +86,7 @@ def main():
             if len(row) < 9:
                 continue
             sid = str(row[0]).strip()
-            if not sid or not sid.isdigit():
+            if not sid or len(sid) < 4 or len(sid) > 7:
                 continue
             if len(row) < 12:
                 continue
@@ -103,7 +103,7 @@ def main():
             if len(row) < 23:
                 continue
             sid = str(row[0]).strip()
-            if not sid or not sid.isdigit():
+            if not sid or len(sid) < 4 or len(sid) > 7:
                 continue
             foreign = parse_num(row[4])
             trust   = parse_num(row[13])
