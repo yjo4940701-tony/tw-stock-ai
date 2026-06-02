@@ -784,7 +784,7 @@ select.bt-input{cursor:pointer;}
       </div>
       <div style="display:flex;gap:8px;">
         <input id="gistIdInput" class="form-input" type="text" placeholder="貼上 Gist ID（32 位英數字）" style="flex:1;">
-        <button onclick="syncFromGist()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap;">⬇ 立即同步</button>
+        <button onclick="saveAndSync()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap;">⬇ 立即同步</button>
       </div>
     </div>
 
@@ -4652,6 +4652,16 @@ function getGistHeaders() {
 }
 
 // 從 Gist 載入並合併到 localStorage
+function saveAndSync() {
+  // 先把表單值存進 localStorage，再執行同步
+  var pat = document.getElementById('ghPatInput').value.trim();
+  var gid = document.getElementById('gistIdInput').value.trim();
+  if (!pat || !gid) { toast('請先填入 GitHub Token 和 Gist ID', 'err'); return; }
+  if (pat) localStorage.setItem('tw_gh_pat', pat);
+  if (gid) localStorage.setItem('tw_gist_id', gid);
+  syncFromGist(false);
+}
+
 function syncFromGist(silent) {
   var gistId = localStorage.getItem('tw_gist_id');
   var pat    = localStorage.getItem('tw_gh_pat');
