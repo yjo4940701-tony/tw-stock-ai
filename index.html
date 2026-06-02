@@ -991,6 +991,21 @@ function toast(msg, type) {
 // 設定
 // ─────────────────────────────────
 function openSettings() {
+  // 每次開啟都從 localStorage 重新填入（同步後立即反映）
+  var k = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  document.getElementById('apiKeyInput').value  = k || '';
+  var k2 = localStorage.getItem('tw_key2');
+  document.getElementById('apiKeyInput2').value = k2 || '';
+  var fm = localStorage.getItem('tw_finmind');
+  document.getElementById('finmindInput').value = fm || '';
+  var fg = localStorage.getItem('tw_fugle');
+  document.getElementById('fugleInput').value   = fg || '';
+  var fh = localStorage.getItem('tw_finnhub');
+  document.getElementById('finnhubInput').value = fh || '';
+  var gh = localStorage.getItem('tw_gh_pat');
+  document.getElementById('ghPatInput').value   = gh || '';
+  var gi = localStorage.getItem('tw_gist_id');
+  document.getElementById('gistIdInput').value  = gi || '';
   document.getElementById('settingsOverlay').classList.add('show');
 }
 function closeSettings() {
