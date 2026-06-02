@@ -78,6 +78,14 @@ def main():
             time.sleep(0.5)
             continue
 
+        # 若全市場加總都是 0，TWSE 資料尚未發布，跳過此日
+        total_abs = sum(abs(parse_num(r[4])) + abs(parse_num(r[10])) + abs(parse_num(r[11]))
+                        for r in twse_rows if len(r) >= 12)
+        if total_abs == 0 and len(twse_rows) > 100:
+            print(f'  {date_str}: TWSE 資料尚未發布（全為 0），跳過')
+            time.sleep(0.5)
+            continue
+
         valid_dates.append(date_str)
         count = 0
 
