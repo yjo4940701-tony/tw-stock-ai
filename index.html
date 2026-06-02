@@ -773,6 +773,21 @@ select.bt-input{cursor:pointer;}
       <input id="ghPatInput" class="form-input" type="password" placeholder="ghp_...（GitHub Personal Access Token）" autocomplete="off">
     </div>
 
+    <!-- Gist ID（跨裝置同步） -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
+      <label class="form-label">Gist ID <span style="color:#64748b;font-size:11px;">（手機 ↔ 電腦同步自選股與設定）</span></label>
+      <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;color:#64748b;line-height:1.6;">
+        📱 設定後自選股、API Key、持倉記錄自動跨裝置同步<br>
+        ① 前往 <a href="https://gist.github.com" target="_blank" style="color:#60a5fa;">gist.github.com</a> → New Gist<br>
+        ② 檔名填 <strong style="color:#e2e8f0;">tw-stock-settings.json</strong>，內容填 <code style="color:#94a3b8;">{}</code><br>
+        ③ 點「Create secret gist」→ 複製網址中的 ID（32 位英數字）
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input id="gistIdInput" class="form-input" type="text" placeholder="貼上 Gist ID（32 位英數字）" style="flex:1;">
+        <button onclick="syncFromGist()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap;">⬇ 立即同步</button>
+      </div>
+    </div>
+
     <div id="keyStatus" class="status-msg"></div>
     <div class="btn-row">
       <button type="button" class="btn-save" onclick="saveKey()">儲存全部</button>
@@ -873,7 +888,7 @@ function loadGroups() {
     ]
   };
 }
-function saveGroups() { localStorage.setItem('tw_groups', JSON.stringify(GROUPS)); }
+function saveGroups() { localStorage.setItem('tw_groups', JSON.stringify(GROUPS)); scheduleGistPush(); }
 function activeGroup() { return GROUPS.list[GROUPS.active]; }
 
 var GROUPS = loadGroups();
@@ -921,6 +936,8 @@ var PROXIES = [
   if (fh) document.getElementById('finnhubInput').value = fh;
   var gh = localStorage.getItem('tw_gh_pat');
   if (gh) document.getElementById('ghPatInput').value = gh;
+  var gi = localStorage.getItem('tw_gist_id');
+  if (gi) document.getElementById('gistIdInput').value = gi;
   // 之前停在瀏覽全市場模式的話，自動回到群組1
   if (GROUPS.active === -1) { GROUPS.active = 0; saveGroups(); }
   renderTabs();
@@ -1019,10 +1036,14 @@ function saveKey() {
   var gh = document.getElementById('ghPatInput').value.trim();
   if (gh) localStorage.setItem('tw_gh_pat', gh);
   else localStorage.removeItem('tw_gh_pat');
+  var gi = document.getElementById('gistIdInput').value.trim();
+  if (gi) localStorage.setItem('tw_gist_id', gi);
+  else localStorage.removeItem('tw_gist_id');
 
   s.style.background = '#14532d';
   s.style.color = '#86efac';
   s.textContent = '✅ 儲存成功！' + (fm ? ' FinMind' : '') + (fg ? ' Fugle' : '') + (fh ? ' Finnhub' : '') + ' 按取消關閉此視窗。';
+  scheduleGistPush();
 }
 
 // FinMind URL helper（已停用 token：FinMind 對帶 token 的請求不發 CORS header）
@@ -4618,6 +4639,74 @@ function loadFromBatch(ticker) {
 // ═══════════════════════════════════════════════════
 
 // ─────────────────────────────────
+// GitHub Gist 跨裝置同步
+// ─────────────────────────────────
+var SYNC_KEYS = ['tw_key1','tw_key2','tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions'];
+var _gistSyncTimer = null;
+
+function getGistHeaders() {
+  var pat = localStorage.getItem('tw_gh_pat') || '';
+  return { 'Authorization': 'token ' + pat, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
+}
+
+// 從 Gist 載入並合併到 localStorage
+function syncFromGist(silent) {
+  var gistId = localStorage.getItem('tw_gist_id');
+  var pat    = localStorage.getItem('tw_gh_pat');
+  if (!gistId || !pat) {
+    if (!silent) toast('請先在設定頁填入 Gist ID 和 GitHub Token', 'err');
+    return;
+  }
+  fetch('https://api.github.com/gists/' + gistId, { headers: getGistHeaders() })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var file = data.files && (data.files['tw-stock-settings.json'] || Object.values(data.files)[0]);
+      if (!file) { if (!silent) toast('Gist 找不到設定檔', 'err'); return; }
+      var remote = JSON.parse(file.content || '{}');
+      // 合併：remote 值覆蓋本地
+      SYNC_KEYS.forEach(function(k){
+        if (remote[k] !== undefined) localStorage.setItem(k, typeof remote[k] === 'string' ? remote[k] : JSON.stringify(remote[k]));
+      });
+      // 重新載入 GROUPS 和畫面
+      GROUPS = loadGroups();
+      renderTabs();
+      renderGrid();
+      if (!silent) toast('同步完成 ✓', 'ok');
+      console.log('[Gist] 同步完成，來自:', data.updated_at);
+    })
+    .catch(function(e){ if (!silent) toast('同步失敗：' + e.message, 'err'); });
+}
+
+// 把 localStorage 寫回 Gist（debounce 2 秒）
+function scheduleGistPush() {
+  var gistId = localStorage.getItem('tw_gist_id');
+  var pat    = localStorage.getItem('tw_gh_pat');
+  if (!gistId || !pat) return;
+  clearTimeout(_gistSyncTimer);
+  _gistSyncTimer = setTimeout(pushToGist, 2000);
+}
+
+function pushToGist() {
+  var gistId = localStorage.getItem('tw_gist_id');
+  var pat    = localStorage.getItem('tw_gh_pat');
+  if (!gistId || !pat) return;
+  var payload = {};
+  SYNC_KEYS.forEach(function(k){
+    var v = localStorage.getItem(k);
+    if (v !== null) {
+      try { payload[k] = JSON.parse(v); } catch(e) { payload[k] = v; }
+    }
+  });
+  fetch('https://api.github.com/gists/' + gistId, {
+    method: 'PATCH',
+    headers: getGistHeaders(),
+    body: JSON.stringify({ files: { 'tw-stock-settings.json': { content: JSON.stringify(payload, null, 2) } } })
+  })
+  .then(function(){ console.log('[Gist] 已同步'); })
+  .catch(function(e){ console.warn('[Gist] 推送失敗:', e.message); });
+}
+
+// ─────────────────────────────────
 // 價格提醒系統
 // ─────────────────────────────────
 function loadAlerts() {
@@ -4932,6 +5021,8 @@ if (typeof Notification !== 'undefined' && Notification.permission === 'default'
   Notification.requestPermission();
 }
 checkAllAlerts();
+// 頁面載入時靜默從 Gist 同步
+setTimeout(function(){ syncFromGist(true); }, 1500);
 
 // 日K 一天只更新一次，每天台股收盤後 15:30 再查一次就夠
 (function scheduleDailyAlertCheck() {
