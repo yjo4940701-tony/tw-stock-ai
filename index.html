@@ -1007,7 +1007,9 @@ function saveKey() {
   var s = document.getElementById('keyStatus');
   s.style.cssText = 'font-size:13px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:block;';
 
-  if (!k && !fm) {
+  var gh2 = document.getElementById('ghPatInput').value.trim();
+  var gi2 = document.getElementById('gistIdInput').value.trim();
+  if (!k && !fm && !gh2 && !gi2) {
     s.style.background = '#7f1d1d';
     s.style.color = '#fca5a5';
     s.textContent = '⚠ 至少要填一個 Key 或 Token';
