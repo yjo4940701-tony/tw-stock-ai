@@ -18,5 +18,15 @@
     "direction": "above",
     "createdAt": "2026-06-02T19:18:20.070Z",
     "triggered": false
+  },
+  {
+    "id": 1780427906911,
+    "ticker": "3211",
+    "name": "順達",
+    "price": 400,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-02T19:18:26.911Z",
+    "triggered": false
   }
 ]
