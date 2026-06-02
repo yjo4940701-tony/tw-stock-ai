@@ -2,7 +2,9 @@ name: Update Institutional（三大法人）
 
 on:
   schedule:
-    - cron: '0 9 * * 1-5'   # 台灣時間 17:00，週一至週五
+    - cron: '0 8 * * 1-5'    # 台灣時間 16:00（第一次）
+    - cron: '30 8 * * 1-5'   # 台灣時間 16:30（備援）
+    - cron: '0 9 * * 1-5'    # 台灣時間 17:00（備援）
   workflow_dispatch:          # 手動觸發（測試用）
 
 jobs:

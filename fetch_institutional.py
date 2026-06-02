@@ -50,7 +50,30 @@ def parse_num(s):
     except:
         return 0
 
+def already_updated_today():
+    """今日有效資料已存在就跳過（防止三個 cron 重複跑）"""
+    if not os.path.exists(OUTPUT):
+        return False
+    try:
+        with open(OUTPUT, 'r', encoding='utf-8') as f:
+            d = json.load(f)
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        if d.get('updated') != today_str:
+            return False
+        dates = d.get('dates', [])
+        stocks = d.get('stocks', {})
+        if dates and dates[0] == today_str and stocks:
+            sample = list(stocks.values())[:20]
+            total = sum(abs(v) for row in sample for v in row[0])
+            return total > 0   # 有非零資料才算有效
+    except:
+        pass
+    return False
+
 def main():
+    if already_updated_today():
+        print('今日有效資料已存在，跳過。')
+        return
     print('開始抓取三大法人資料（TWSE + TPEX）...')
 
     # 往回 45 個日曆天，確保取到 30 個交易日
