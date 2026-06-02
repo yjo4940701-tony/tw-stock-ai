@@ -1,0 +1,19 @@
+{
+  "name": "台股 AI 分析儀表板",
+  "short_name": "台股AI",
+  "description": "自選股 AI 優劣分析、三大法人、K線圖、價格提醒",
+  "start_url": "/tw-stock-ai/",
+  "scope": "/tw-stock-ai/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0f1e",
+  "theme_color": "#0a0f1e",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text y='.9em' font-size='65' x='10'>📈</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
