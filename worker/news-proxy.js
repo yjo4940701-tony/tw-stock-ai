@@ -55,19 +55,30 @@ export default {
     const query   = stockName ? `${stockName} ${stockId}` : stockId;
     const rssUrl  = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
 
-    let xml;
-    try {
-      const resp = await fetch(rssUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; RSSReader/1.0)',
-          'Accept': 'application/rss+xml, application/xml, text/xml'
-        },
-        cf: { cacheTtl: 1800, cacheEverything: true } // Cloudflare 快取 30 分鐘
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      xml = await resp.text();
-    } catch (e) {
-      return json({ ok: false, message: '抓取失敗: ' + e.message }, 502);
+    // Google News 對 Cloudflare IP 會間歇性回 503，重試最多 3 次
+    const UA_LIST = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile Safari/604.1'
+    ];
+    let xml = null, lastStatus = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const resp = await fetch(rssUrl, {
+          headers: {
+            'User-Agent': UA_LIST[attempt % UA_LIST.length],
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8'
+          },
+          cf: { cacheTtl: 1800, cacheEverything: true }
+        });
+        lastStatus = resp.status;
+        if (resp.ok) { xml = await resp.text(); break; }
+      } catch (e) { lastStatus = -1; }
+    }
+    if (xml === null) {
+      // 抓不到新聞時回 200 + 空陣列（讓前端優雅降級，不在 console 跳紅錯）
+      return json({ ok: true, query, count: 0, items: [], note: 'Google News 暫時無法存取 (HTTP ' + lastStatus + ')' });
     }
 
     // 解析 RSS XML → 取 title / link / pubDate / source
