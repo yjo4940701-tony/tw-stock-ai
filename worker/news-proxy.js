@@ -2,9 +2,9 @@
 // 用途：抓 Google News RSS 並回傳 JSON（含 CORS header，供 GitHub Pages 使用）
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     try {
-      return await handleRequest(request);
+      return await handleRequest(request, env);
     } catch (e) {
       // 頂層保底：任何意外都回 200+空結果，永遠不讓 Cloudflare 噴 502
       return json({ ok: true, count: 0, items: [], note: 'Worker 例外: ' + e.message });
@@ -12,7 +12,7 @@ export default {
   }
 };
 
-async function handleRequest(request) {
+async function handleRequest(request, env) {
     // 處理 CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -65,6 +65,9 @@ async function handleRequest(request) {
     const query   = stockName ? `${stockName} ${stockId}` : stockId;
     const rssUrl  = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
 
+    // KV cache key（per 股票代號）
+    const kvKey = 'gnews_' + stockId;
+
     // Google News 對 Cloudflare IP 會間歇性回 503，重試最多 3 次
     // 每次加 4 秒 timeout，防止慢回應累積超過 Cloudflare 30 秒 wall-time → 502
     const UA_LIST = [
@@ -94,8 +97,13 @@ async function handleRequest(request) {
         clearTimeout(timer);
       }
     }
+
     if (xml === null) {
-      // 抓不到新聞時回 200 + 空陣列（讓前端優雅降級，不在 console 跳紅錯）
+      // Google 抓不到 → 嘗試回傳 KV 快取的舊結果
+      const cached = env.NEWS_CACHE ? await env.NEWS_CACHE.get(kvKey, 'json') : null;
+      if (cached) {
+        return json({ ...cached, cached: true, note: 'Google News 暫時不可用，顯示快取資料' });
+      }
       return json({ ok: true, query, count: 0, items: [], note: 'Google News 暫時無法存取 (HTTP ' + lastStatus + ')' });
     }
 
@@ -112,7 +120,14 @@ async function handleRequest(request) {
       if (title) items.push({ title, link, pubDate, source });
     }
 
-    return json({ ok: true, query, count: items.length, items });
+    const result = { ok: true, query, count: items.length, items };
+
+    // 成功抓到新聞 → 存進 KV（TTL 4 小時）
+    if (env.NEWS_CACHE && items.length > 0) {
+      await env.NEWS_CACHE.put(kvKey, JSON.stringify(result), { expirationTtl: 14400 });
+    }
+
+    return json(result);
 }
 
 // ── 工具函數 ─────────────────────────────────────────

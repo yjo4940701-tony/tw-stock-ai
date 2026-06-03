@@ -1,3 +1,7 @@
 name = "tw-stock-news"
 main = "news-proxy.js"
 compatibility_date = "2026-05-25"
+
+[[kv_namespaces]]
+binding = "NEWS_CACHE"
+id = "b509b0fb91b248c5acfca4275fd31eb4"
