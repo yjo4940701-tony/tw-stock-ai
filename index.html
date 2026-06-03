@@ -4658,7 +4658,9 @@ function loadFromBatch(ticker) {
 // ─────────────────────────────────
 // GitHub Gist 跨裝置同步
 // ─────────────────────────────────
-var SYNC_KEYS = ['tw_key1','tw_key2','tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions'];
+// ⚠️ AI Key (tw_key1/tw_key2) 不同步 Gist（GitHub 會掃描並撤銷 key）
+// 手機的 AI Key 需手動填入設定頁
+var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions'];
 var _gistSyncTimer = null;
 
 function getGistHeaders() {
