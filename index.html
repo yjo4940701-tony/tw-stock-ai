@@ -2842,14 +2842,16 @@ function runAnalysis() {
         : (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content);
       if (!text) throw new Error('回應格式異常');
       res.innerHTML = md2html(text);
-      // 新聞來源 badge
-      var srcTags = [];
-      if (finmindStr) srcTags.push('FinMind');
-      if (googleStr) srcTags.push('Google News' + (workerData.cached ? '&thinsp;<span style="color:#f59e0b;">快取</span>' : ''));
-      if (intlNewsStr) srcTags.push('Finnhub');
-      if (srcTags.length) {
-        res.innerHTML += '<div style="margin-top:14px;padding:5px 10px;background:rgba(15,23,42,0.7);border:1px solid #1e293b;border-radius:6px;font-size:11px;color:#64748b;">📡 新聞來源：' + srcTags.join('&ensp;／&ensp;') + '</div>';
+      // 新聞來源 badge（永遠顯示，✓ 有資料 / ✗ 無資料）
+      function srcTag(label, hasData, extra) {
+        var color = hasData ? '#34d399' : '#475569';
+        var icon  = hasData ? '✓' : '✗';
+        return '<span style="color:' + color + ';">' + icon + '&thinsp;' + label + (extra ? '&thinsp;<span style="color:#f59e0b;font-size:10px;">' + extra + '</span>' : '') + '</span>';
       }
+      var googleExtra = workerData.cached ? '快取' : (workerData.note && !googleStr ? '失敗' : '');
+      res.innerHTML += '<div style="margin-top:14px;padding:5px 10px;background:rgba(15,23,42,0.7);border:1px solid #1e293b;border-radius:6px;font-size:11px;color:#64748b;">📡 新聞來源：'
+        + [srcTag('FinMind', !!finmindStr), srcTag('Google News', !!googleStr, googleExtra), srcTag('Finnhub', !!intlNewsStr)].join('&ensp;')
+        + '</div>';
       prefillAlertForm(text);
       btn.textContent = '🔄 重新分析';
       btn.disabled = false;
