@@ -3,6 +3,16 @@
 
 export default {
   async fetch(request) {
+    try {
+      return await handleRequest(request);
+    } catch (e) {
+      // 頂層保底：任何意外都回 200+空結果，永遠不讓 Cloudflare 噴 502
+      return json({ ok: true, count: 0, items: [], note: 'Worker 例外: ' + e.message });
+    }
+  }
+};
+
+async function handleRequest(request) {
     // 處理 CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -56,6 +66,7 @@ export default {
     const rssUrl  = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
 
     // Google News 對 Cloudflare IP 會間歇性回 503，重試最多 3 次
+    // 每次加 4 秒 timeout，防止慢回應累積超過 Cloudflare 30 秒 wall-time → 502
     const UA_LIST = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
@@ -63,8 +74,11 @@ export default {
     ];
     let xml = null, lastStatus = 0;
     for (let attempt = 0; attempt < 3; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000); // 每次最多等 4 秒
       try {
         const resp = await fetch(rssUrl, {
+          signal: ctrl.signal,
           headers: {
             'User-Agent': UA_LIST[attempt % UA_LIST.length],
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
@@ -74,7 +88,11 @@ export default {
         });
         lastStatus = resp.status;
         if (resp.ok) { xml = await resp.text(); break; }
-      } catch (e) { lastStatus = -1; }
+      } catch (e) {
+        lastStatus = e.name === 'AbortError' ? -408 : -1;
+      } finally {
+        clearTimeout(timer);
+      }
     }
     if (xml === null) {
       // 抓不到新聞時回 200 + 空陣列（讓前端優雅降級，不在 console 跳紅錯）
@@ -95,8 +113,7 @@ export default {
     }
 
     return json({ ok: true, query, count: items.length, items });
-  }
-};
+}
 
 // ── 工具函數 ─────────────────────────────────────────
 function extract(str, tag) {
