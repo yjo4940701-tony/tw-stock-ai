@@ -2850,7 +2850,7 @@ function runAnalysis() {
       }
       var googleExtra = workerData.cached ? '快取' : (workerData.note && !googleStr ? '失敗' : '');
       res.innerHTML += '<div style="margin-top:14px;padding:5px 10px;background:rgba(15,23,42,0.7);border:1px solid #1e293b;border-radius:6px;font-size:11px;color:#64748b;">📡 新聞來源：'
-        + [srcTag('FinMind', !!finmindStr), srcTag('Google News', !!googleStr, googleExtra), srcTag('Finnhub', !!intlNewsStr)].join('&ensp;')
+        + [srcTag('FinMind', !!finmindStr), srcTag('Yahoo 股市', !!googleStr, googleExtra), srcTag('Finnhub', !!intlNewsStr)].join('&ensp;')
         + '</div>';
       prefillAlertForm(text);
       btn.textContent = '🔄 重新分析';

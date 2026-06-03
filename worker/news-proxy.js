@@ -61,15 +61,14 @@ async function handleRequest(request, env) {
       return json({ ok: false, message: '缺少 id 參數' }, 400);
     }
 
-    // 搜尋關鍵字：公司名稱 + 股號（提升相關性）
+    // Yahoo 台股個股新聞 RSS（不封 Cloudflare IP，取代原本 Google News）
     const query   = stockName ? `${stockName} ${stockId}` : stockId;
-    const rssUrl  = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+    const rssUrl  = `https://tw.stock.yahoo.com/rss?s=${encodeURIComponent(stockId)}`;
 
     // KV cache key（per 股票代號）
     const kvKey = 'gnews_' + stockId;
 
-    // Google News 對 Cloudflare IP 會間歇性回 503，重試最多 3 次
-    // 每次加 4 秒 timeout，防止慢回應累積超過 Cloudflare 30 秒 wall-time → 502
+    // 重試最多 3 次，每次 4 秒 timeout
     const UA_LIST = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
@@ -104,7 +103,7 @@ async function handleRequest(request, env) {
       if (cached) {
         return json({ ...cached, cached: true, note: 'Google News 暫時不可用，顯示快取資料' });
       }
-      return json({ ok: true, query, count: 0, items: [], note: 'Google News 暫時無法存取 (HTTP ' + lastStatus + ')' });
+      return json({ ok: true, count: 0, items: [], note: 'Yahoo 新聞暫時無法存取 (HTTP ' + lastStatus + ')' });
     }
 
     // 解析 RSS XML → 取 title / link / pubDate / source
