@@ -18,5 +18,15 @@
     "direction": "below",
     "createdAt": "2026-06-04T13:25:01.982Z",
     "triggered": false
+  },
+  {
+    "id": 1780579559108,
+    "ticker": "1514",
+    "name": "亞力",
+    "price": 160,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-06-04T13:25:59.108Z",
+    "triggered": false
   }
 ]
