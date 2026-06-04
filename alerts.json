@@ -1,12 +1,12 @@
 [
   {
-    "id": 1780410908806,
+    "id": 1780405870670,
     "ticker": "1785",
     "name": "光洋科",
-    "price": 185,
-    "type": "target",
-    "direction": "above",
-    "createdAt": "2026-06-02T14:35:08.806Z",
+    "price": 136,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-02T13:11:10.670Z",
     "triggered": false
   }
 ]
