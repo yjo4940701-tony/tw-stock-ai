@@ -8,5 +8,15 @@
     "direction": "below",
     "createdAt": "2026-06-05T14:00:29.636Z",
     "triggered": false
+  },
+  {
+    "id": 1780668412282,
+    "ticker": "00631L",
+    "name": "元大台灣50正2",
+    "price": 30,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-05T14:06:52.282Z",
+    "triggered": false
   }
 ]
