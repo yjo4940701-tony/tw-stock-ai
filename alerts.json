@@ -1,22 +1,42 @@
 [
   {
-    "id": 1780668029636,
+    "id": 1780410908806,
+    "ticker": "1785",
+    "name": "光洋科",
+    "price": 185,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-06-02T14:35:08.806Z",
+    "triggered": false
+  },
+  {
+    "id": 1780579501982,
     "ticker": "1785",
     "name": "光洋科",
     "price": 130,
     "type": "stop",
     "direction": "below",
-    "createdAt": "2026-06-05T14:00:29.636Z",
+    "createdAt": "2026-06-04T13:25:01.982Z",
     "triggered": false
   },
   {
-    "id": 1780668412282,
-    "ticker": "00631L",
-    "name": "元大台灣50正2",
-    "price": 30,
-    "type": "stop",
+    "id": 1780579559108,
+    "ticker": "1514",
+    "name": "亞力",
+    "price": 160,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-06-04T13:25:59.108Z",
+    "triggered": false
+  },
+  {
+    "id": 1780850322345,
+    "ticker": "3231",
+    "name": "緯創",
+    "price": 160,
+    "type": "add",
     "direction": "below",
-    "createdAt": "2026-06-05T14:06:52.282Z",
+    "createdAt": "2026-06-07T16:38:42.345Z",
     "triggered": false
   }
 ]
