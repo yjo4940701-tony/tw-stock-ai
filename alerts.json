@@ -10,16 +10,6 @@
     "triggered": false
   },
   {
-    "id": 1780850322345,
-    "ticker": "3231",
-    "name": "緯創",
-    "price": 160,
-    "type": "add",
-    "direction": "below",
-    "createdAt": "2026-06-07T16:38:42.345Z",
-    "triggered": false
-  },
-  {
     "id": 1780984701079,
     "ticker": "1785",
     "name": "光洋科",
@@ -37,6 +27,16 @@
     "type": "target",
     "direction": "above",
     "createdAt": "2026-06-09T05:58:30.160Z",
+    "triggered": false
+  },
+  {
+    "id": 1781000060882,
+    "ticker": "3231",
+    "name": "緯創",
+    "price": 145,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-09T10:14:20.882Z",
     "triggered": false
   }
 ]
