@@ -10,16 +10,6 @@
     "triggered": false
   },
   {
-    "id": 1780579501982,
-    "ticker": "1785",
-    "name": "光洋科",
-    "price": 130,
-    "type": "stop",
-    "direction": "below",
-    "createdAt": "2026-06-04T13:25:01.982Z",
-    "triggered": false
-  },
-  {
     "id": 1780579559108,
     "ticker": "1514",
     "name": "亞力",
@@ -37,6 +27,16 @@
     "type": "add",
     "direction": "below",
     "createdAt": "2026-06-07T16:38:42.345Z",
+    "triggered": false
+  },
+  {
+    "id": 1780984701079,
+    "ticker": "1785",
+    "name": "光洋科",
+    "price": 130,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-09T05:58:21.079Z",
     "triggered": false
   }
 ]
