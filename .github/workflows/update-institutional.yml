@@ -28,6 +28,8 @@ jobs:
       - name: Fetch institutional data
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: python fetch_institutional.py
 
       - name: Commit data

@@ -42,6 +42,26 @@ def fetch_watchlist():
         print(f'讀取自選股清單失敗（不影響全市場抓取）: {e}')
         return set()
 
+def notify_tg(message):
+    """資料異常時推 Telegram。沒設 TG Secret 就靜默跳過（本地測試不會發）。"""
+    token = os.environ.get('TG_BOT_TOKEN', '')
+    chat  = os.environ.get('TG_CHAT_ID', '')
+    if not token or not chat:
+        print(f'（未設 TG Secret，略過通知）{message}')
+        return
+    try:
+        r = requests.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            json={'chat_id': chat, 'text': message, 'parse_mode': 'HTML'},
+            timeout=10
+        )
+        if r.status_code == 200:
+            print('已推送 TG 異常通知')
+        else:
+            print(f'TG 通知失敗: {r.text}')
+    except Exception as e:
+        print(f'TG 通知失敗: {e}')
+
 def fetch_twse(date_str, retries=3):
     """抓上市股票當日三大法人（TWSE T86）
     回傳：list = 成功（空 list 為假日）；None = 連續失敗（被擋）"""
@@ -206,6 +226,9 @@ def main():
         for i in range(45)
     ]
 
+    today_str    = today.strftime('%Y-%m-%d')
+    today_status = 'ok' if today_str in healthy else 'unknown'
+
     valid_dates = []
 
     for date_str in dates_to_try:
@@ -218,6 +241,8 @@ def main():
             continue
 
         status = fetch_date_into(date_str, stocks)
+        if date_str == today_str:
+            today_status = status
         if status == 'blocked':
             # TWSE 被擋：寧缺勿錯，跳過此日，留給下個 cron / 明天補抓
             print(f'  {date_str}: TWSE 連續失敗，跳過此日')
@@ -237,6 +262,7 @@ def main():
 
     if not valid_dates:
         print('錯誤：沒有抓到任何資料，中止。')
+        notify_tg('🔴 <b>台股三大法人資料抓取失敗</b>\n\n今天完全沒抓到任何交易日資料，TWSE / TPEX API 可能異常或 GitHub Actions IP 被封鎖，請檢查。')
         return
 
     # ── 自選股保證檢查：自選股在某日 TWSE 全為 0 = 該日上市資料沒抓成功 ──
@@ -257,8 +283,12 @@ def main():
                     # 仍失敗 → 剔除該日，寧可少一天也不顯示錯誤資料
                     print(f'  ✗ {date_str} 重試後仍失敗，剔除此日')
                     valid_dates.remove(date_str)
+                    if date_str == today_str:
+                        today_status = 'dropped'
                 else:
                     print(f'  ✓ {date_str} 補抓成功')
+                    if date_str == today_str:
+                        today_status = 'ok'
                 time.sleep(1.5)
         if not retried:
             print(f'自選股保證檢查：全部 {len(valid_dates)} 日皆有資料 ✓')
@@ -282,6 +312,27 @@ def main():
 
     size_kb = os.path.getsize(OUTPUT) / 1024
     print(f'完成！{len(output["stocks"])} 檔 × {len(valid_dates)} 交易日，檔案 {size_kb:.0f} KB')
+
+    # ── 資料異常 → TG 通知 ──
+    # 今日是交易日（非假日）但資料沒進來（被擋 / 尚未發布 / 自選股驗證剔除）
+    # 只在「最後一班」cron（台灣 17:00 = UTC 09 時）才發，避免 16:00/16:30 還在重試就先報警洗版。
+    # 手動觸發（workflow_dispatch）不在此時段 → 不發，留給排程把關。
+    if today_status in ('blocked', 'pending', 'dropped'):
+        is_final_run = datetime.utcnow().hour == 9
+        if is_final_run:
+            reason = {
+                'blocked': 'TWSE 連續被擋（GitHub Actions IP 可能被封鎖）',
+                'pending': 'TWSE 今日資料尚未發布',
+                'dropped': '自選股今日資料驗證失敗已剔除',
+            }[today_status]
+            notify_tg(
+                f'⚠️ <b>台股三大法人：今日資料未更新</b>\n\n'
+                f'原因：{reason}\n'
+                f'目前資料顯示至 <b>{valid_dates[0]}</b>（{today_str} 尚未進來）\n\n'
+                f'明天開盤後的排程會自動補抓，儀表板也已標示延遲。'
+            )
+        else:
+            print(f'今日資料未更新（{today_status}），非最後一班 cron，暫不發 TG（等 17:00 把關）')
 
 if __name__ == '__main__':
     main()
