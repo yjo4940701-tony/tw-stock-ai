@@ -10,13 +10,13 @@
     "triggered": false
   },
   {
-    "id": 1781187257007,
+    "id": 1781187745659,
     "ticker": "3231",
     "name": "緯創",
     "price": 145,
     "type": "stop",
     "direction": "below",
-    "createdAt": "2026-06-11T14:14:17.007Z",
+    "createdAt": "2026-06-11T14:22:25.659Z",
     "triggered": false
   }
 ]
