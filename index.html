@@ -4670,7 +4670,7 @@ function loadFromBatch(ticker) {
 // ─────────────────────────────────
 // ⚠️ AI Key (tw_key1/tw_key2) 不同步 Gist（GitHub 會掃描並撤銷 key）
 // 手機的 AI Key 需手動填入設定頁
-var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions'];
+var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts'];
 var _gistSyncTimer = null;
 
 function getGistHeaders() {
@@ -4710,6 +4710,7 @@ function syncFromGist(silent) {
       GROUPS = loadGroups();
       renderTabs();
       renderGrid();
+      updateAlertBadge();
       if (!silent) toast('同步完成 ✓', 'ok');
       console.log('[Gist] 同步完成，來自:', data.updated_at);
     })
@@ -4751,7 +4752,7 @@ function pushToGist() {
 function loadAlerts() {
   try { return JSON.parse(localStorage.getItem('tw_alerts') || '[]'); } catch(e) { return []; }
 }
-function saveAlerts(arr) { localStorage.setItem('tw_alerts', JSON.stringify(arr)); }
+function saveAlerts(arr) { localStorage.setItem('tw_alerts', JSON.stringify(arr)); scheduleGistPush(); }
 
 function updateAlertBadge() {
   var n = loadAlerts().filter(function(a){ return !a.triggered; }).length;
