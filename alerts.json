@@ -1,15 +1,5 @@
 [
   {
-    "id": 1780668029636,
-    "ticker": "1785",
-    "name": "光洋科",
-    "price": 130,
-    "type": "stop",
-    "direction": "below",
-    "createdAt": "2026-06-05T14:00:29.636Z",
-    "triggered": false
-  },
-  {
     "id": 1781187745659,
     "ticker": "3231",
     "name": "緯創",
@@ -27,6 +17,16 @@
     "type": "stop",
     "direction": "below",
     "createdAt": "2026-06-11T14:24:34.043Z",
+    "triggered": false
+  },
+  {
+    "id": 1781187899504,
+    "ticker": "1785",
+    "name": "光洋科",
+    "price": 130,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-11T14:24:59.504Z",
     "triggered": false
   }
 ]
