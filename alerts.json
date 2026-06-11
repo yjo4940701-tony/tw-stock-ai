@@ -1,22 +1,52 @@
 [
   {
-    "id": 1780668029636,
-    "ticker": "1785",
-    "name": "光洋科",
-    "price": 130,
-    "type": "stop",
-    "direction": "below",
-    "createdAt": "2026-06-05T14:00:29.636Z",
+    "id": 1780579559108,
+    "ticker": "1514",
+    "name": "亞力",
+    "price": 160,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-06-04T13:25:59.108Z",
     "triggered": false
   },
   {
-    "id": 1781187745659,
+    "id": 1780984710160,
+    "ticker": "1785",
+    "name": "光洋科",
+    "price": 160,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-06-09T05:58:30.160Z",
+    "triggered": false
+  },
+  {
+    "id": 1781000060882,
     "ticker": "3231",
     "name": "緯創",
     "price": 145,
     "type": "stop",
     "direction": "below",
-    "createdAt": "2026-06-11T14:22:25.659Z",
+    "createdAt": "2026-06-09T10:14:20.882Z",
+    "triggered": false
+  },
+  {
+    "id": 1781177516585,
+    "ticker": "1514",
+    "name": "亞力",
+    "price": 110,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-11T11:31:56.585Z",
+    "triggered": false
+  },
+  {
+    "id": 1781187783668,
+    "ticker": "1785",
+    "name": "光洋科",
+    "price": 130,
+    "type": "stop",
+    "direction": "below",
+    "createdAt": "2026-06-11T14:23:03.668Z",
     "triggered": false
   }
 ]
