@@ -6,6 +6,12 @@
 - 現有檔案裡健康的日期直接沿用，每天只補抓缺少的日期（通常 1-2 天）
 - TWSE 會間歇性封鎖 GitHub Actions IP，失敗重試 3 次；連續失敗該日跳過，
   留給下一個 cron 或隔天補抓，絕不用空資料覆蓋歷史
+
+自選股保證機制（2026-06-11）：
+- T86/TPEX 都是「一次請求回整個市場某一天」，無法逐檔抓，只能逐日抓
+- 寫檔前針對使用者自選股（讀公開 Gist）做保證檢查：任何一天若自選股
+  在 TWSE 全為 0（代表那天上市資料沒抓成功），對該日加強重試（5 次）；
+  仍失敗就把該日整個剔除，寧可少一天也不讓自選股顯示錯誤的 0
 """
 import requests
 import json
@@ -14,6 +20,27 @@ import time
 from datetime import datetime, timedelta
 
 OUTPUT = 'data/institutional.json'
+WATCHLIST_GIST = '0b9966cb6fc32b5aeffe4ad7bdc07836'   # 跨裝置同步用的公開 Gist
+
+def fetch_watchlist():
+    """讀公開 Gist 取得使用者所有自選股代號（跨群組合併）。失敗回空集合。"""
+    try:
+        r = requests.get(f'https://api.github.com/gists/{WATCHLIST_GIST}', timeout=20)
+        files = r.json().get('files', {})
+        f = files.get('tw-stock-settings.json') or next(iter(files.values()), None)
+        if not f:
+            return set()
+        cfg = json.loads(f.get('content') or '{}')
+        groups = (cfg.get('tw_groups') or {}).get('list', [])
+        wl = set()
+        for g in groups:
+            for t in g.get('tickers', []):
+                wl.add(str(t).strip())
+        print(f'自選股清單：{len(wl)} 檔 {sorted(wl)}')
+        return wl
+    except Exception as e:
+        print(f'讀取自選股清單失敗（不影響全市場抓取）: {e}')
+        return set()
 
 def fetch_twse(date_str, retries=3):
     """抓上市股票當日三大法人（TWSE T86）
@@ -109,11 +136,66 @@ def already_updated_today():
         pass
     return False
 
+def fetch_date_into(date_str, stocks, twse_retries=3):
+    """抓某一天 TWSE + TPEX 並合併進 stocks。
+    回傳狀態：'ok' 成功 / 'holiday' 假日無資料 / 'pending' 尚未發布 / 'blocked' TWSE 被擋"""
+    twse_rows = fetch_twse(date_str, retries=twse_retries)
+    if twse_rows is None:
+        return 'blocked'
+
+    tpex_rows = fetch_tpex(date_str)
+
+    if not twse_rows and not tpex_rows:
+        return 'holiday'
+
+    # 若全市場加總都是 0，TWSE 資料尚未發布
+    total_abs = sum(abs(parse_num(r[4])) + abs(parse_num(r[10])) + abs(parse_num(r[11]))
+                    for r in twse_rows if len(r) >= 12)
+    if total_abs == 0 and len(twse_rows) > 100:
+        return 'pending'
+
+    count = 0
+    # TWSE 欄位：[代號, 名稱, 外陸資買進, 外陸資賣出, 外陸資買賣超, 投信買進, 投信賣出, 投信買賣超, 自營買賣超合計, ...]
+    for row in twse_rows:
+        if len(row) < 12:
+            continue
+        sid = str(row[0]).strip()
+        if not sid or len(sid) < 4 or len(sid) > 7:
+            continue
+        foreign = parse_num(row[4])    # 外陸資買賣超（不含外資自營商）
+        trust   = parse_num(row[10])   # 投信買賣超
+        dealer  = parse_num(row[11])   # 自營商買賣超合計
+        if sid not in stocks:
+            stocks[sid] = {}
+        stocks[sid][date_str] = [foreign, trust, dealer]
+        count += 1
+
+    # TPEX 欄位：[代號, 名稱, ..., 外資買賣超[4], ..., 投信買賣超[13], ..., 自營買賣超合計[22], ...]
+    for row in tpex_rows:
+        if len(row) < 23:
+            continue
+        sid = str(row[0]).strip()
+        if not sid or len(sid) < 4 or len(sid) > 7:
+            continue
+        foreign = parse_num(row[4])
+        trust   = parse_num(row[13])
+        dealer  = parse_num(row[22])
+        if sid not in stocks:
+            stocks[sid] = {}
+        stocks[sid][date_str] = [foreign, trust, dealer]
+        count += 1
+
+    print(f'  {date_str}: {count} 檔')
+    return 'ok'
+
 def main():
     if already_updated_today():
         print('今日有效資料已存在，跳過。')
         return
     print('開始抓取三大法人資料（TWSE + TPEX）...')
+
+    # 先讀自選股清單，稍後用來做「保證有資料」的優先驗證
+    watchlist = fetch_watchlist()
 
     stocks, healthy = load_existing()
 
@@ -135,69 +217,51 @@ def main():
             valid_dates.append(date_str)
             continue
 
-        # ── 上市（TWSE，含重試） ──
-        twse_rows = fetch_twse(date_str)
-        if twse_rows is None:
+        status = fetch_date_into(date_str, stocks)
+        if status == 'blocked':
             # TWSE 被擋：寧缺勿錯，跳過此日，留給下個 cron / 明天補抓
             print(f'  {date_str}: TWSE 連續失敗，跳過此日')
             time.sleep(1.5)
             continue
-
-        # ── 上櫃（TPEX） ──
-        tpex_rows = fetch_tpex(date_str)
-
-        if not twse_rows and not tpex_rows:
+        if status == 'holiday':
             print(f'  {date_str}: 無資料（假日）')
             time.sleep(0.5)
             continue
-
-        # 若全市場加總都是 0，TWSE 資料尚未發布，跳過此日
-        total_abs = sum(abs(parse_num(r[4])) + abs(parse_num(r[10])) + abs(parse_num(r[11]))
-                        for r in twse_rows if len(r) >= 12)
-        if total_abs == 0 and len(twse_rows) > 100:
+        if status == 'pending':
             print(f'  {date_str}: TWSE 資料尚未發布（全為 0），跳過')
             time.sleep(0.5)
             continue
 
         valid_dates.append(date_str)
-        count = 0
-
-        # TWSE 欄位：[代號, 名稱, 外陸資買進, 外陸資賣出, 外陸資買賣超, 投信買進, 投信賣出, 投信買賣超, 自營買賣超合計, ...]
-        for row in twse_rows:
-            if len(row) < 12:
-                continue
-            sid = str(row[0]).strip()
-            if not sid or len(sid) < 4 or len(sid) > 7:
-                continue
-            foreign = parse_num(row[4])    # 外陸資買賣超（不含外資自營商）
-            trust   = parse_num(row[10])   # 投信買賣超
-            dealer  = parse_num(row[11])   # 自營商買賣超合計
-            if sid not in stocks:
-                stocks[sid] = {}
-            stocks[sid][date_str] = [foreign, trust, dealer]
-            count += 1
-
-        # TPEX 欄位：[代號, 名稱, ..., 外資買賣超[4], ..., 投信買賣超[13], ..., 自營買賣超合計[22], ...]
-        for row in tpex_rows:
-            if len(row) < 23:
-                continue
-            sid = str(row[0]).strip()
-            if not sid or len(sid) < 4 or len(sid) > 7:
-                continue
-            foreign = parse_num(row[4])
-            trust   = parse_num(row[13])
-            dealer  = parse_num(row[22])
-            if sid not in stocks:
-                stocks[sid] = {}
-            stocks[sid][date_str] = [foreign, trust, dealer]
-            count += 1
-
-        print(f'  {date_str}: {count} 檔')
         time.sleep(1.5)   # 避免打太快
 
     if not valid_dates:
         print('錯誤：沒有抓到任何資料，中止。')
         return
+
+    # ── 自選股保證檢查：自選股在某日 TWSE 全為 0 = 該日上市資料沒抓成功 ──
+    # 對這些日期加強重試（5 次）；仍失敗就剔除該日，不讓自選股顯示錯誤的 0
+    if watchlist:
+        retried = set()
+        for date_str in list(valid_dates):
+            if date_str in healthy:
+                continue  # 沿用的舊資料已驗證過健康
+            present = [stocks.get(s, {}).get(date_str) for s in watchlist]
+            present = [v for v in present if v is not None]
+            # 自選股在該日全部 [0,0,0] → 視為該日 TWSE 沒成功
+            if present and all(v == [0, 0, 0] for v in present):
+                print(f'  ⚠️ 自選股在 {date_str} 全為 0，加強重試...')
+                status = fetch_date_into(date_str, stocks, twse_retries=5)
+                retried.add(date_str)
+                if status != 'ok':
+                    # 仍失敗 → 剔除該日，寧可少一天也不顯示錯誤資料
+                    print(f'  ✗ {date_str} 重試後仍失敗，剔除此日')
+                    valid_dates.remove(date_str)
+                else:
+                    print(f'  ✓ {date_str} 補抓成功')
+                time.sleep(1.5)
+        if not retried:
+            print(f'自選股保證檢查：全部 {len(valid_dates)} 日皆有資料 ✓')
 
     # 組成精簡格式：{ updated, dates: [...], stocks: { sid: [[外資,投信,自營], ...] } }
     # 30 日內全為 0 的代號（下市、無資料的權證）直接剔除，避免檔案膨脹
