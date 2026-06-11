@@ -1,15 +1,5 @@
 [
   {
-    "id": 1780579559108,
-    "ticker": "1514",
-    "name": "亞力",
-    "price": 160,
-    "type": "target",
-    "direction": "above",
-    "createdAt": "2026-06-04T13:25:59.108Z",
-    "triggered": false
-  },
-  {
     "id": 1781000060882,
     "ticker": "3231",
     "name": "緯創",
@@ -47,6 +37,16 @@
     "type": "stop",
     "direction": "below",
     "createdAt": "2026-06-11T14:23:26.153Z",
+    "triggered": false
+  },
+  {
+    "id": 1781187809190,
+    "ticker": "1514",
+    "name": "亞力",
+    "price": 160,
+    "type": "target",
+    "direction": "above",
+    "createdAt": "2026-06-11T14:23:29.190Z",
     "triggered": false
   }
 ]
