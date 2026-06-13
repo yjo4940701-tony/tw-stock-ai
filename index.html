@@ -3178,19 +3178,14 @@ function _runAllMarketScreener(hasInd, hasFund) {
   var serverFilter = [];   // 推 TV server 端縮小範圍（AND、subset-safe）
   var needHistory  = false;
 
-  // 財報勾選：率/EPS 走 TV 欄位；YoY 衍生走 fundamentals.json
+  // 財報勾選：全部走 fundamentals.json（三率=FinMind 單季、EPS=TTM、YoY），
+  // 與個股視窗/雷達圖同源，不用 TV（TV 三率是 TTM，定義不同會有落差）
   screenConds.filter(function(c){ return c.on; }).forEach(function(c){
-    if (TV_FUND_COL[c.key]) {
-      var col = TV_FUND_COL[c.key], op = c.op, val = c.val;
-      colTests.push(function(r){ return _cmp(op, r[col], val); });
-      serverFilter.push({ left: col, operation: op === '>' ? 'greater' : 'less', right: val });
-    } else {
-      var key = c.key, op2 = c.op, val2 = c.val;
-      fundTests.push(function(sid){
-        var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid];
-        return !!(f && f[key] != null && _cmp(op2, f[key], val2));
-      });
-    }
+    var key = c.key, op = c.op, val = c.val;
+    fundTests.push(function(sid){
+      var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid];
+      return !!(f && f[key] != null && _cmp(op, f[key], val));
+    });
   });
 
   // 快速篩選鈕
@@ -3244,12 +3239,11 @@ function _runAllMarketScreener(hasInd, hasFund) {
   resEl.innerHTML = '<p style="color:#60a5fa;padding:20px 0;text-align:center;">⚡ TradingView 全市場掃描中…</p>';
   if (sub) sub.textContent = 'TradingView 全市場掃描…';
 
-  var noFilter = serverFilter.length === 0;
   tvScan({
     columns: TV_COLUMNS,
     filter: serverFilter,
     sort: { sortBy: 'volume', sortOrder: 'desc' },
-    range: [0, noFilter ? 3000 : 2000]
+    range: [0, 5000]   // 全台股約 2700 檔，5000 涵蓋全市場無遺漏
   }, function(err, rows){
     if (err) {
       console.warn('[TV] 掃描失敗，回退 FinMind 流程:', err.message);
@@ -3266,13 +3260,9 @@ function _runAllMarketScreener(hasInd, hasFund) {
     window.lastScreenerResults = matches.map(function(r){
       var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[r.sid];
       var mf = {};
-      // 先帶入 fundamentals.json（月營收 YoY / 累計 YoY / 三率年增等台灣獨有欄位）
+      // 全部財報用 fundamentals.json（FinMind 單季三率、TTM EPS、YoY）→ 與篩選、個股視窗、雷達圖同源
       if (f) for (var k in f) mf[k] = f[k];
-      // TV 有的欄位以 TV 為準 → 與「篩選依據」同源，消除顯示落差
-      if (r['earnings_per_share_basic_ttm'] != null) mf.eps = r['earnings_per_share_basic_ttm'];
-      if (r['gross_margin']     != null) mf.gm = r['gross_margin'];
-      if (r['operating_margin'] != null) mf.om = r['operating_margin'];
-      if (r['net_margin']       != null) mf.nm = r['net_margin'];
+      // ROE / PE：fundamentals.json 沒有，用 TV 補（TTM）
       mf.roe = r['return_on_equity'];
       mf.pe  = r['price_earnings_ttm'];
       return { sid: r.sid, f: mf };
@@ -3280,7 +3270,7 @@ function _runAllMarketScreener(hasInd, hasFund) {
     renderScreenResults(window.lastScreenerResults);
     var n = matches.length;
     if (sub) sub.textContent = '⚡ TradingView 全市場　符合：' + n + ' 檔'
-      + (n > 200 ? '（顯示前 200，可點欄位排序）' : '') + (noFilter ? '（依成交量取前 3000 檔判斷）' : '');
+      + (n > 200 ? '（顯示前 200，可點欄位排序）' : '') + '　財報數據：FinMind 單季';
   });
 }
 
