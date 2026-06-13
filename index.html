@@ -607,6 +607,15 @@ select.bt-input{cursor:pointer;}
         <div id="iiContent"></div>
       </div>
 
+      <!-- 財報體質雷達圖 -->
+      <div id="radarBox" class="chart-box" style="display:none;">
+        <div class="chart-title">
+          <span>📊 財報體質</span>
+          <span id="radarSub" style="color:#64748b;font-size:11px;"></span>
+        </div>
+        <div id="radarContent" style="display:flex;justify-content:center;overflow-x:auto;"></div>
+      </div>
+
       <!-- 持倉記錄 -->
       <div class="chart-box" id="posBox">
         <div class="chart-title">
@@ -1907,6 +1916,8 @@ function openModal(ticker) {
   loadMonthlyRevenue(ticker);
   loadPER(ticker);
   loadInstitutional(ticker);
+  // 財報體質雷達圖（純前端，讀已載入的 fundamentalsCache）
+  renderRadar(ticker);
 }
 
 // ─────────────────────────────────
@@ -2134,6 +2145,77 @@ function renderII(dates, stockArr, updated) {
     dateEl.style.color = isStale ? '#f59e0b' : '#64748b';
   }
   if (box)     box.style.display = 'block';
+}
+
+// ─────────────────────────────────
+// 財報體質雷達圖（純 SVG，零依賴）
+// 六維各自正規化到 0–100；軸標籤顯示原始值
+// ─────────────────────────────────
+function renderRadar(ticker) {
+  var box = document.getElementById('radarBox');
+  var content = document.getElementById('radarContent');
+  var sub = document.getElementById('radarSub');
+  if (!box || !content) return;
+
+  var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[ticker];
+  if (!f || (f.gm == null && f.om == null && f.nm == null && f.eps == null)) {
+    box.style.display = 'none';   // 沒財報資料 → 整塊隱藏，不顯示空圖
+    return;
+  }
+
+  function clamp(x) { return Math.max(0, Math.min(100, x)); }
+  // 六軸：key / 標籤 / 正規化(原始值→0-100) / 原始值顯示
+  var axes = [
+    { key:'gm',      label:'毛利率',   norm:function(v){ return clamp(v / 60 * 100); },        fmt:function(v){ return v.toFixed(0) + '%'; } },
+    { key:'om',      label:'營益率',   norm:function(v){ return clamp(v / 60 * 100); },        fmt:function(v){ return v.toFixed(0) + '%'; } },
+    { key:'nm',      label:'淨利率',   norm:function(v){ return clamp(v / 60 * 100); },        fmt:function(v){ return v.toFixed(0) + '%'; } },
+    { key:'eps',     label:'EPS',     norm:function(v){ return clamp(v / 20 * 100); },        fmt:function(v){ return v.toFixed(1); } },
+    { key:'gm_yoy',  label:'毛利率增', norm:function(v){ return clamp((v + 30) / 60 * 100); }, fmt:function(v){ return (v>=0?'+':'') + v.toFixed(0) + 'pp'; } },
+    { key:'rev_yoy', label:'月營收增', norm:function(v){ return clamp((v + 30) / 60 * 100); }, fmt:function(v){ return (v>=0?'+':'') + v.toFixed(0) + '%'; } }
+  ];
+
+  var W = 300, H = 250, cx = 150, cy = 120, R = 78;
+  function pt(i, ratio) {                       // ratio 0..1
+    var a = -Math.PI / 2 + i * Math.PI / 3;     // 從正上方起，每 60°
+    return [cx + R * ratio * Math.cos(a), cy + R * ratio * Math.sin(a)];
+  }
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:320px;">';
+  // 背景格線環（25/50/75/100%）
+  [0.25, 0.5, 0.75, 1].forEach(function(r) {
+    var pts = axes.map(function(_, i){ var p = pt(i, r); return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    svg += '<polygon points="' + pts + '" fill="none" stroke="#1e293b" stroke-width="1"/>';
+  });
+  // 軸線 + 標籤
+  axes.forEach(function(ax, i) {
+    var edge = pt(i, 1);
+    svg += '<line x1="' + cx + '" y1="' + cy + '" x2="' + edge[0].toFixed(1) + '" y2="' + edge[1].toFixed(1) + '" stroke="#334155" stroke-width="1"/>';
+    var lp = pt(i, 1.28);
+    var raw = f[ax.key];
+    var anchor = Math.abs(lp[0] - cx) < 6 ? 'middle' : (lp[0] > cx ? 'start' : 'end');
+    svg += '<text x="' + lp[0].toFixed(1) + '" y="' + (lp[1] - 2).toFixed(1) + '" fill="#94a3b8" font-size="10" text-anchor="' + anchor + '">' + ax.label + '</text>';
+    svg += '<text x="' + lp[0].toFixed(1) + '" y="' + (lp[1] + 9).toFixed(1) + '" fill="#e2e8f0" font-size="10" font-weight="700" text-anchor="' + anchor + '">' + (raw != null ? ax.fmt(raw) : '-') + '</text>';
+  });
+  // 數據多邊形
+  var dataPts = axes.map(function(ax, i) {
+    var raw = f[ax.key];
+    var ratio = raw != null ? ax.norm(raw) / 100 : 0;
+    var p = pt(i, ratio);
+    return p[0].toFixed(1) + ',' + p[1].toFixed(1);
+  }).join(' ');
+  svg += '<polygon points="' + dataPts + '" fill="rgba(96,165,250,0.30)" stroke="#60a5fa" stroke-width="2"/>';
+  // 數據頂點
+  axes.forEach(function(ax, i) {
+    var raw = f[ax.key];
+    var ratio = raw != null ? ax.norm(raw) / 100 : 0;
+    var p = pt(i, ratio);
+    svg += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="2.5" fill="#60a5fa"/>';
+  });
+  svg += '</svg>';
+
+  content.innerHTML = svg;
+  if (sub) sub.textContent = '財報 ' + (f.d || fundamentalsCache.updated || '');
+  box.style.display = 'block';
 }
 
 // ─────────────────────────────────
