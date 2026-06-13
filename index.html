@@ -849,6 +849,10 @@ select.bt-input{cursor:pointer;}
           <span style="color:#64748b;font-size:12px;">篩選範圍：</span>
           <button class="bt-stab active" id="scope-watch" onclick="setScope('watchlist')" style="flex:none;padding:5px 16px;font-size:12px;">自選股</button>
           <button class="bt-stab" id="scope-all" onclick="setScope('all')" style="flex:none;padding:5px 16px;font-size:12px;">全市場</button>
+          <span style="color:#334155;margin:0 2px;">｜</span>
+          <span style="color:#64748b;font-size:12px;" title="單季=FinMind 最新一季；TTM=近四季滾動(TV)，僅全市場有效">三率</span>
+          <button class="bt-stab active" id="margin-single" onclick="setMarginMode(false)" style="flex:none;padding:5px 12px;font-size:12px;">單季</button>
+          <button class="bt-stab" id="margin-ttm" onclick="setMarginMode(true)" style="flex:none;padding:5px 12px;font-size:12px;">TTM</button>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <span id="filterCount" style="color:#94a3b8;font-size:12px;"></span>
@@ -3011,6 +3015,17 @@ var screenConds = [
 ];
 
 var _scope = 'watchlist'; // 'watchlist' | 'all'
+var _scrMarginTTM = false; // 三率顯示/篩選：false=FinMind 單季、true=TV TTM（僅全市場）
+
+function setMarginMode(ttm) {
+  _scrMarginTTM = ttm;
+  var s = document.getElementById('margin-single');
+  var t = document.getElementById('margin-ttm');
+  if (s) s.classList.toggle('active', !ttm);
+  if (t) t.classList.toggle('active', ttm);
+  // 全市場模式下若已有結果，立即用新口徑重跑
+  if (_scope === 'all' && window.lastScreenerResults) runUnifiedScreener();
+}
 
 function setScope(s) {
   _scope = s;
@@ -3178,14 +3193,19 @@ function _runAllMarketScreener(hasInd, hasFund) {
   var serverFilter = [];   // 推 TV server 端縮小範圍（AND、subset-safe）
   var needHistory  = false;
 
-  // 財報勾選：全部走 fundamentals.json（三率=FinMind 單季、EPS=TTM、YoY），
-  // 與個股視窗/雷達圖同源，不用 TV（TV 三率是 TTM，定義不同會有落差）
+  // 財報勾選：三率（gm/om/nm）TTM 模式走 TV 欄位、單季模式走 fundamentals.json；
+  // EPS（兩邊都 TTM）與 YoY 衍生一律走 fundamentals.json
   screenConds.filter(function(c){ return c.on; }).forEach(function(c){
     var key = c.key, op = c.op, val = c.val;
-    fundTests.push(function(sid){
-      var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid];
-      return !!(f && f[key] != null && _cmp(op, f[key], val));
-    });
+    if (_scrMarginTTM && TV_FUND_COL[key] && key !== 'eps') {
+      var col = TV_FUND_COL[key];                          // TV TTM 三率
+      colTests.push(function(r){ return _cmp(op, r[col], val); });
+    } else {
+      fundTests.push(function(sid){                        // FinMind 單季 / EPS / YoY
+        var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid];
+        return !!(f && f[key] != null && _cmp(op, f[key], val));
+      });
+    }
   });
 
   // 快速篩選鈕
@@ -3260,8 +3280,13 @@ function _runAllMarketScreener(hasInd, hasFund) {
     window.lastScreenerResults = matches.map(function(r){
       var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[r.sid];
       var mf = {};
-      // 全部財報用 fundamentals.json（FinMind 單季三率、TTM EPS、YoY）→ 與篩選、個股視窗、雷達圖同源
+      // 預設全部 fundamentals.json（FinMind 單季三率、TTM EPS、YoY）→ 與個股視窗、雷達圖同源
       if (f) for (var k in f) mf[k] = f[k];
+      if (_scrMarginTTM) {            // TTM 模式：三率改顯示 TV TTM（與該模式的篩選同源）
+        if (r['gross_margin']     != null) mf.gm = r['gross_margin'];
+        if (r['operating_margin'] != null) mf.om = r['operating_margin'];
+        if (r['net_margin']       != null) mf.nm = r['net_margin'];
+      }
       // ROE / PE：fundamentals.json 沒有，用 TV 補（TTM）
       mf.roe = r['return_on_equity'];
       mf.pe  = r['price_earnings_ttm'];
@@ -3270,7 +3295,7 @@ function _runAllMarketScreener(hasInd, hasFund) {
     renderScreenResults(window.lastScreenerResults);
     var n = matches.length;
     if (sub) sub.textContent = '⚡ TradingView 全市場　符合：' + n + ' 檔'
-      + (n > 200 ? '（顯示前 200，可點欄位排序）' : '') + '　財報數據：FinMind 單季';
+      + (n > 200 ? '（顯示前 200，可點欄位排序）' : '') + '　三率：' + (_scrMarginTTM ? 'TV TTM' : 'FinMind 單季');
   });
 }
 
