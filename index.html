@@ -2999,8 +2999,204 @@ function _runWatchlistScreener(hasInd, hasFund) {
   _applyWatchlistResult(matches, parts.join(' + '));
 }
 
-// 全市場篩選：財報立刻顯示 → 有技術指標則漸進驗證
+// ═══════════════════════════════════════════════════
+// TradingView Scanner 全市場掃描（2026-06-13）
+// 一次 POST 取全市場標準指標欄位，前端判斷，免逐股抓價
+// scanner.tradingview.com 免費免 key，CORS 放行 GitHub Pages
+// ═══════════════════════════════════════════════════
+var TV_SMA_PERIODS = [5, 10, 20, 30, 50, 60, 100, 120, 150, 200];
+var TV_COLUMNS = ['name', 'close', 'change', 'volume', 'average_volume_10d_calc',
+  'RSI', 'Stoch.K', 'Stoch.D', 'MACD.macd', 'MACD.signal', 'W.R', 'ADX', 'ADX+DI', 'ADX-DI',
+  'price_52_week_low', 'earnings_per_share_basic_ttm', 'gross_margin', 'operating_margin',
+  'net_margin', 'return_on_equity', 'price_earnings_ttm']
+  .concat(TV_SMA_PERIODS.map(function(p){ return 'SMA' + p; }));
+var TV_FUND_COL = { eps:'earnings_per_share_basic_ttm', gm:'gross_margin', om:'operating_margin', nm:'net_margin' };
+
+function _cmp(op, a, b) {
+  if (a == null || b == null) return false;
+  switch (op) {
+    case '>':  return a >  b;  case '>=': return a >= b;
+    case '<':  return a <  b;  case '<=': return a <= b;
+    case '==': return a === b; case '!=': return a !== b;
+  }
+  return false;
+}
+
+function tvScan(opts, cb) {
+  var cols = opts.columns || TV_COLUMNS;
+  var body = { columns: cols, range: opts.range || [0, 2000] };
+  if (opts.filter && opts.filter.length) body.filter = opts.filter;
+  if (opts.sort) body.sort = opts.sort;
+  fetch('https://scanner.tradingview.com/taiwan/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  .then(function(r){ if (!r.ok) throw new Error('TV scanner HTTP ' + r.status); return r.json(); })
+  .then(function(j){
+    var rows = (j.data || []).map(function(item){
+      var o = { _sym: item.s, sid: (item.s.split(':')[1] || item.s) };
+      cols.forEach(function(c, i){ o[c] = item.d[i]; });
+      return o;
+    });
+    cb(null, rows);
+  })
+  .catch(function(e){ cb(e); });
+}
+
+// 單一自訂指標條件 → TV 欄位判斷函式；需歷史則回 null
+function _tvCustomCondTest(c) {
+  var op = c.op || '>', v = c.value;
+  switch (c.indicator) {
+    case 'rsi':       return c.period == 14 ? function(r){ return _cmp(op, r['RSI'], v); } : null;
+    case 'kd_k':      return c.period == 9  ? function(r){ return _cmp(op, r['Stoch.K'], v); } : null;
+    case 'williams':  return c.period == 14 ? function(r){ return _cmp(op, r['W.R'], v); } : null;
+    case 'dmi_adx':   return c.period == 14 ? function(r){ return _cmp(op, r['ADX'], v); } : null;
+    case 'macd_hist': return function(r){ return _cmp(op, r['MACD.macd'] - r['MACD.signal'], v); };
+    case 'bullish':   return function(r){ return r.close > r['SMA5'] && r['SMA5'] > r['SMA20'] && r['SMA20'] > r['SMA60']; };
+    case 'dmi_cross':
+      if (c.dir === 'bull') return function(r){ return r['ADX+DI'] > r['ADX-DI']; };
+      if (c.dir === 'bear') return function(r){ return r['ADX-DI'] > r['ADX+DI']; };
+      return null; // 黃金/死亡交叉需歷史
+    case 'price_vs_ma':
+      if (c.op === 'above' || c.op === 'below') {
+        if (TV_SMA_PERIODS.indexOf(c.period) < 0) return null;
+        var key = 'SMA' + c.period;
+        return c.op === 'above'
+          ? function(r){ return r.close > r[key]; }
+          : function(r){ return r.close < r[key]; };
+      }
+      return null; // cross_up / cross_down 需歷史
+    case 'vol_avg':
+      if (c.period != 10) return null;   // TV 僅 10 日均量，其餘走歷史
+      return function(r){ return _cmp(op, (r['average_volume_10d_calc'] || 0) / 1000, v); };
+    default:
+      return null;  // kd_cross / macd_cross / ma_cross / pct_change → 需歷史
+  }
+}
+
+// 快速篩選鈕 → 'fund'（查 fundamentals.json）/ fn（TV 欄位）/ null（需歷史）
+function _tvFilterTest(name) {
+  switch (name) {
+    case 'oversold': return function(r){ return r['RSI'] != null && r['RSI'] < filterParams.rsi; };
+    case 'bullish':  return function(r){ return r.close > r['SMA5'] && r['SMA5'] > r['SMA20'] && r['SMA20'] > r['SMA60']; };
+    case 'near-low': return function(r){ var lo = r['price_52_week_low']; return lo > 0 && (r.close - lo) / lo * 100 < filterParams.nearLow; };
+    case 'eps-min':  return function(r){ return r['earnings_per_share_basic_ttm'] != null && r['earnings_per_share_basic_ttm'] >= filterParams.epsMin; };
+    case 'rev-yoy':  return 'fund';
+    default:         return null;  // breakout / pullback 需歷史
+  }
+}
+
+// 全市場篩選：先試 TV 欄位快路徑，需歷史或 TV 失敗則回退舊流程（逐股抓價）
 function _runAllMarketScreener(hasInd, hasFund) {
+  var colTests     = [];   // fn(row) -> bool（TV 欄位）
+  var fundTests    = [];   // fn(sid) -> bool（fundamentals.json）
+  var serverFilter = [];   // 推 TV server 端縮小範圍（AND、subset-safe）
+  var needHistory  = false;
+
+  // 財報勾選：率/EPS 走 TV 欄位；YoY 衍生走 fundamentals.json
+  screenConds.filter(function(c){ return c.on; }).forEach(function(c){
+    if (TV_FUND_COL[c.key]) {
+      var col = TV_FUND_COL[c.key], op = c.op, val = c.val;
+      colTests.push(function(r){ return _cmp(op, r[col], val); });
+      serverFilter.push({ left: col, operation: op === '>' ? 'greater' : 'less', right: val });
+    } else {
+      var key = c.key, op2 = c.op, val2 = c.val;
+      fundTests.push(function(sid){
+        var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid];
+        return !!(f && f[key] != null && _cmp(op2, f[key], val2));
+      });
+    }
+  });
+
+  // 快速篩選鈕
+  Object.keys(activeFilters).forEach(function(name){
+    var t = _tvFilterTest(name);
+    if (t === null) { needHistory = true; }                       // breakout / pullback
+    else if (t === 'fund') {
+      fundTests.push(function(sid){
+        var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid];
+        return !!(f && f.rev_yoy != null && f.rev_yoy >= filterParams.revYoy);
+      });
+    } else {
+      colTests.push(t);
+      // 僅推嚴格 < 的 oversold 到 server（與 JS 判斷一致，subset-safe）；eps-min 是 >= 不推
+      if (name === 'oversold') serverFilter.push({ left:'RSI', operation:'less', right: filterParams.rsi });
+    }
+  });
+
+  // 自訂指標條件（AND/OR 群組）：全部可用欄位判斷才走快路徑
+  var customGroups = [];
+  if (screenerCustomConds.length) {
+    var groups = [[]];
+    for (var i = 0; i < screenerCustomConds.length; i++) {
+      if (i > 0 && screenerCustomConds[i].logic === 'OR') groups.push([]);
+      groups[groups.length - 1].push(screenerCustomConds[i]);
+    }
+    var allCol = true;
+    groups.forEach(function(g){
+      var fns = g.map(function(c){ var fn = _tvCustomCondTest(c); if (!fn) allCol = false; return fn; });
+      customGroups.push(fns);
+    });
+    if (!allCol) { needHistory = true; }
+    else {
+      colTests.push(function(r){
+        return customGroups.some(function(g){ return g.every(function(fn){ return fn(r); }); });
+      });
+    }
+  }
+
+  // 有需歷史的條件 → 回退舊流程（逐股抓價驗證，完整保留）
+  if (needHistory) { _runAllMarketScreenerLegacy(hasInd, hasFund); return; }
+
+  // 有 YoY/月營收條件但財報快取未載入 → 交給舊流程顯示提示
+  if (fundTests.length && (!fundamentalsCache || !fundamentalsCache.stocks)) {
+    _runAllMarketScreenerLegacy(hasInd, hasFund); return;
+  }
+
+  // ── TV 欄位快路徑 ──
+  var resEl = document.getElementById('screenerResults');
+  var sub   = document.getElementById('screenerSub');
+  resEl.innerHTML = '<p style="color:#60a5fa;padding:20px 0;text-align:center;">⚡ TradingView 全市場掃描中…</p>';
+  if (sub) sub.textContent = 'TradingView 全市場掃描…';
+
+  var noFilter = serverFilter.length === 0;
+  tvScan({
+    columns: TV_COLUMNS,
+    filter: serverFilter,
+    sort: { sortBy: 'volume', sortOrder: 'desc' },
+    range: [0, noFilter ? 3000 : 2000]
+  }, function(err, rows){
+    if (err) {
+      console.warn('[TV] 掃描失敗，回退 FinMind 流程:', err.message);
+      toast('TradingView 連線失敗，改用原流程', 'err');
+      _runAllMarketScreenerLegacy(hasInd, hasFund);
+      return;
+    }
+    var matches = rows.filter(function(r){
+      for (var i = 0; i < colTests.length; i++)  if (!colTests[i](r))       return false;
+      for (var j = 0; j < fundTests.length; j++) if (!fundTests[j](r.sid))  return false;
+      return true;
+    });
+
+    window.lastScreenerResults = matches.map(function(r){
+      var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[r.sid];
+      var mf = {};
+      if (f) for (var k in f) mf[k] = f[k];
+      if (mf.eps == null && r['earnings_per_share_basic_ttm'] != null) mf.eps = r['earnings_per_share_basic_ttm'];
+      mf.roe = r['return_on_equity'];
+      mf.pe  = r['price_earnings_ttm'];
+      return { sid: r.sid, f: mf };
+    });
+    renderScreenResults(window.lastScreenerResults);
+    var n = matches.length;
+    if (sub) sub.textContent = '⚡ TradingView 全市場　符合：' + n + ' 檔'
+      + (n > 200 ? '（顯示前 200，可點欄位排序）' : '') + (noFilter ? '（依成交量取前 3000 檔判斷）' : '');
+  });
+}
+
+// 全市場篩選（舊流程）：財報立刻顯示 → 有技術指標則逐股抓價漸進驗證
+function _runAllMarketScreenerLegacy(hasInd, hasFund) {
   var resEl = document.getElementById('screenerResults');
   var sub   = document.getElementById('screenerSub');
   if (!fundamentalsCache || !fundamentalsCache.stocks) {
@@ -3322,6 +3518,8 @@ function renderScreenResults(matches) {
     { key:'sid',         label:'代號',    align:'left'  },
     { key:'name',        label:'名稱',    align:'left'  },
     { key:'eps',         label:'EPS',     align:'right' },
+    { key:'roe',         label:'ROE',     align:'right' },
+    { key:'pe',          label:'PE',      align:'right' },
     { key:'gm',          label:'毛利率',  align:'right' },
     { key:'gm_yoy',      label:'毛利率增',align:'right' },
     { key:'om',          label:'營益率',  align:'right' },
@@ -3345,7 +3543,7 @@ function renderScreenResults(matches) {
   });
   html += '<th style="' + thStyle + '"></th></tr></thead><tbody>';
 
-  sorted.forEach(function(m) {
+  sorted.slice(0, 200).forEach(function(m) {
     var name = STOCK_NAMES[m.sid] || m.sid;
     if (name.length > 8) name = name.slice(0,8) + '…';
     var inWl = GROUPS.list.some(function(g) { return g.tickers.indexOf(m.sid) !== -1; });
@@ -3360,6 +3558,8 @@ function renderScreenResults(matches) {
       + '<td style="padding:6px 6px;font-weight:700;color:#60a5fa;white-space:nowrap;">' + escapeHtml(m.sid) + '</td>'
       + '<td style="padding:6px 6px;color:#e2e8f0;white-space:nowrap;">' + escapeHtml(name) + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#a78bfa;">' + (f.roe!=null?f.roe.toFixed(1)+'%':'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.pe!=null?f.pe.toFixed(1):'-') + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.gm_yoy) + ';">' + pp(f.gm_yoy) + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.om!=null?f.om.toFixed(1)+'%':'-') + '</td>'
