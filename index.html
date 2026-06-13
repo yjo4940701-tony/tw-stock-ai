@@ -3027,9 +3027,11 @@ function tvScan(opts, cb) {
   var body = { columns: cols, range: opts.range || [0, 2000] };
   if (opts.filter && opts.filter.length) body.filter = opts.filter;
   if (opts.sort) body.sort = opts.sort;
+  // ⚠️ 用 text/plain：TV 的 CORS preflight 不允許 content-type 標頭，
+  // application/json 會觸發預檢被擋。text/plain 是簡單請求、免預檢，TV 仍正確解析 JSON body。
   fetch('https://scanner.tradingview.com/taiwan/scan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
     body: JSON.stringify(body)
   })
   .then(function(r){ if (!r.ok) throw new Error('TV scanner HTTP ' + r.status); return r.json(); })
