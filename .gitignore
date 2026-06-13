@@ -8,3 +8,11 @@ desktop.ini
 .env.*
 *.key
 secrets.json
+
+# 回測本地快取（FinMind 日K，當日重抓）
+backtest/cache/
+# Python / 暫存
+__pycache__/
+response.json
+# Wrangler 本地快取
+worker/.wrangler/
