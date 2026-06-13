@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="台股AI">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="lightweight-charts.min.js"></script>
+<script src="backtest/engine.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;}
@@ -516,6 +517,46 @@ select.bt-input{cursor:pointer;}
               <button onclick="runBatchBacktest('watchlist')" class="bt-batch-btn">用自選股<br><span style="color:#475569;font-size:11px;">目前群組</span></button>
             </div>
             <div id="bt-batch-info" style="color:#64748b;font-size:12px;line-height:1.6;"></div>
+          </div>
+        </div>
+
+        <!-- 進階回測（三刀流 + ATR 風控，共用 backtest/engine.js）-->
+        <div class="bt-panel">
+          <div class="bt-panel-title">🎯 進階回測 <span style="color:#475569;font-size:11px;font-weight:400;">三刀流 + ATR 風控</span></div>
+          <div class="bt-section">
+            <div class="bt-label">股票代號</div>
+            <div style="display:flex;gap:8px;">
+              <input class="bt-input" id="adv-ticker" type="text" autocomplete="off"
+                placeholder="代號 2330" style="flex:1;"
+                onkeydown="if(event.key==='Enter')runAdvBacktest()">
+              <button class="btn-add" onclick="runAdvBacktest()" style="padding:10px 14px;font-size:13px;white-space:nowrap;">執行</button>
+            </div>
+          </div>
+          <div class="bt-section">
+            <div class="bt-label">回測年數</div>
+            <select class="bt-input" id="adv-years">
+              <option value="1">1 年</option>
+              <option value="2" selected>2 年</option>
+              <option value="3">3 年</option>
+            </select>
+          </div>
+          <div class="bt-section">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div><div class="bt-label">ATR 停損×</div><input class="bt-input" id="adv-sl" type="number" value="2" min="0.5" max="6" step="0.5"></div>
+              <div><div class="bt-label">ATR 停利×</div><input class="bt-input" id="adv-tp" type="number" value="3" min="1" max="10" step="0.5"></div>
+              <div><div class="bt-label">追蹤止盈×</div><input class="bt-input" id="adv-trail" type="number" value="2.5" min="1" max="8" step="0.5"></div>
+              <div><div class="bt-label">回檔門檻 RSI</div><input class="bt-input" id="adv-rsiLow" type="number" value="50" min="30" max="60" step="5"></div>
+              <div><div class="bt-label">確認數（刀）</div>
+                <select class="bt-input" id="adv-confirms"><option value="3" selected>3 刀</option><option value="2">2 刀（弱）</option></select>
+              </div>
+              <div><div class="bt-label">本金</div><input class="bt-input" id="adv-capital" type="number" value="1000000" min="10000" step="10000"></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;color:#94a3b8;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="adv-trail-on" checked> 啟用追蹤止盈
+            </label>
+          </div>
+          <div style="background:#3a2a1e;border-radius:6px;padding:7px 10px;font-size:11px;color:#fcd34d;line-height:1.5;">
+            ⚠ FinMind 未還原價：分割/除權息股（如 0050）結果失真。出場用當根收盤近似。
           </div>
         </div>
       </div>
@@ -4857,6 +4898,135 @@ function renderBtChart(result, tradeIdx) {
         x: { ticks: { color: '#64748b', maxTicksLimit: 10, font: {size: 10},
                       maxRotation: 0, autoSkip: true }, grid: { color: '#1e293b' } },
         y: { ticks: { color: '#64748b', font: {size: 10} }, grid: { color: '#1e293b' } }
+      }
+    }
+  });
+}
+
+// ── 進階回測（三刀流 + ATR，共用 backtest/engine.js）──────────
+// 日期算法刻意與 CLI fetch_tw.js 一致（start.setFullYear(-years)），確保網頁/CLI 結果相同
+function fetchAdvCandles(ticker, years, cb) {
+  var key = 'adv_' + ticker + '_' + years;
+  var cached = getPriceCache(key);
+  if (cached) { cb(null, cached); return; }
+  var end = new Date();
+  var start = new Date();
+  start.setFullYear(start.getFullYear() - years);
+  function ymd(d) { return d.toISOString().slice(0,10); }
+  var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id='
+    + ticker + '&start_date=' + ymd(start) + '&end_date=' + ymd(end);
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(j) {
+      if (j.status !== 200 || !j.data || !j.data.length) { cb({msg: j.msg || '無資料'}); return; }
+      var candles = j.data
+        .filter(function(d) { return d.close > 0 && d.max > 0; })
+        .map(function(d) {
+          return { time: d.date, open: d.open, high: d.max, low: d.min, close: d.close, volume: d.Trading_Volume };
+        });
+      setPriceCache(key, candles);
+      cb(null, candles);
+    })
+    .catch(function(e) { cb({msg: e.message}); });
+}
+
+function runAdvBacktest() {
+  if (typeof BTEngine === 'undefined') { toast('進階引擎未載入（backtest/engine.js）', 'err'); return; }
+  var ticker = (document.getElementById('adv-ticker').value || '').trim().toUpperCase();
+  if (!ticker) { toast('請輸入股票代號', 'err'); return; }
+  var years = +document.getElementById('adv-years').value;
+  toast('抓取 ' + ticker + ' 日K（' + years + ' 年）⋯');
+  fetchAdvCandles(ticker, years, function(err, candles) {
+    if (err) { toast('資料取得失敗' + (err.msg ? '：' + err.msg : ''), 'err'); return; }
+    if (candles.length < 60) { toast('資料不足（' + candles.length + ' 根）', 'err'); return; }
+    var params = {
+      slMult: +document.getElementById('adv-sl').value,
+      tpMult: +document.getElementById('adv-tp').value,
+      trailMult: +document.getElementById('adv-trail').value,
+      rsiLow: +document.getElementById('adv-rsiLow').value,
+      confirmsNeeded: +document.getElementById('adv-confirms').value,
+      capital: +document.getElementById('adv-capital').value,
+      useTrailing: document.getElementById('adv-trail-on').checked
+    };
+    renderAdvResult(ticker, candles, params);
+  });
+}
+
+function renderAdvResult(ticker, candles, params) {
+  var res = BTEngine.run(candles, params);
+  var s = res.stats;
+  var name = STOCK_NAMES[ticker] || '';
+  var clr = function(v) { return v >= 0 ? '#22c55e' : '#ef4444'; };
+  var pct = function(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; };
+  var pf = s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2);
+
+  var metrics = [
+    ['總報酬', pct(s.totalReturn), clr(s.totalReturn), 'Buy&Hold ' + pct(s.buyHold)],
+    ['最大回撤', '-' + s.maxDrawdown.toFixed(2) + '%', '#ef4444', ''],
+    ['勝率', s.winRate.toFixed(1) + '%', s.winRate >= 50 ? '#22c55e' : '#ef4444', s.numTrades + ' 筆交易'],
+    ['盈虧比 PF', pf, s.profitFactor >= 1 ? '#22c55e' : '#ef4444', ''],
+    ['Sharpe', s.sharpe.toFixed(2), s.sharpe >= 0 ? '#22c55e' : '#ef4444', '年化'],
+    ['最長連勝/連敗', s.maxConsecWins + ' / ' + s.maxConsecLosses, '#94a3b8',
+      Object.keys(s.exitReasons).map(function(k){return k+':'+s.exitReasons[k];}).join(' ')]
+  ].map(function(r) {
+    return '<div class="bt-metric"><div class="bt-metric-label">' + r[0] + '</div>'
+      + '<div class="bt-metric-val" style="color:' + r[2] + '">' + r[1] + '</div>'
+      + '<div class="bt-metric-sub">' + r[3] + '</div></div>';
+  }).join('');
+
+  var tradesHtml;
+  if (!res.trades.length) {
+    tradesHtml = '<p style="color:#64748b;font-size:13px;padding:12px 0;">此期間內無交易訊號（三刀流門檻較高，可改 2 刀或調 RSI 門檻）</p>';
+  } else {
+    tradesHtml = '<table class="bt-table"><thead><tr><th>#</th><th>進場日</th><th>出場日</th><th>進場價</th><th>出場價</th><th>報酬</th><th>原因</th></tr></thead><tbody>';
+    res.trades.forEach(function(t, i) {
+      var cls = t.pnl >= 0 ? 'up' : 'down';
+      tradesHtml += '<tr><td>' + (i+1) + '</td><td>' + t.entryTime + '</td><td>' + t.exitTime + '</td>'
+        + '<td>' + t.entryPrice.toFixed(2) + '</td><td>' + t.exitPrice.toFixed(2) + '</td>'
+        + '<td class="' + cls + '">' + (t.retPct>=0?'+':'') + t.retPct.toFixed(2) + '%</td>'
+        + '<td>' + t.reason + '</td></tr>';
+    });
+    tradesHtml += '</tbody></table>';
+  }
+
+  document.getElementById('bt-single-result').innerHTML =
+    '<div class="bt-panel">'
+    + '<div class="bt-panel-title">' + ticker + (name?' '+name:'') + ' 進階回測 <span style="color:#475569;font-size:11px;font-weight:400;">' + s.period + '｜' + s.bars + ' 根</span></div>'
+    + '<div class="bt-metrics">' + metrics + '</div>'
+    + '<div class="chart-box" style="margin-top:14px;">'
+    +   '<div class="chart-title"><span>權益曲線</span>'
+    +     '<span style="color:#64748b;font-size:11px;">本金 ' + Math.round(params.capital).toLocaleString() + ' → ' + Math.round(s.finalEquity).toLocaleString() + '</span></div>'
+    +   '<div style="height:240px;"><canvas id="advChart"></canvas></div>'
+    + '</div>'
+    + '<div style="margin-top:14px;"><div style="font-weight:600;font-size:13px;color:#94a3b8;margin-bottom:8px;">交易明細</div>'
+    +   '<div style="overflow-x:auto;">' + tradesHtml + '</div></div>'
+    + '</div>';
+
+  renderAdvChart(res);
+}
+
+function renderAdvChart(res) {
+  var ctx = document.getElementById('advChart');
+  if (!ctx) return;
+  if (window._advChartInst) window._advChartInst.destroy();
+  var labels = res.equity.map(function(e) { return fmtDateLabel(e.time); });
+  var data = res.equity.map(function(e) { return Math.round(e.equity); });
+  var cap = res.params.capital;
+  window._advChartInst = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: { labels: labels, datasets: [
+      { label: '權益', data: data, borderColor: '#3b82f6', borderWidth: 1.5,
+        pointRadius: 0, fill: true, backgroundColor: 'rgba(59,130,246,0.08)', tension: 0 }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: function(c){ return c.parsed.y.toLocaleString() + ' 元'; } } } },
+      scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 10, font:{size:10}, maxRotation:0, autoSkip:true }, grid: { color:'#1e293b' } },
+        y: { ticks: { color: '#64748b', font:{size:10}, callback:function(v){return (v/10000).toFixed(0)+'萬';} },
+             grid: { color:'#1e293b' },
+             afterBuildTicks: function(a){ return a; } }
       }
     }
   });
