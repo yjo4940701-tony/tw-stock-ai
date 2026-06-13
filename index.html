@@ -3266,8 +3266,13 @@ function _runAllMarketScreener(hasInd, hasFund) {
     window.lastScreenerResults = matches.map(function(r){
       var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[r.sid];
       var mf = {};
+      // 先帶入 fundamentals.json（月營收 YoY / 累計 YoY / 三率年增等台灣獨有欄位）
       if (f) for (var k in f) mf[k] = f[k];
-      if (mf.eps == null && r['earnings_per_share_basic_ttm'] != null) mf.eps = r['earnings_per_share_basic_ttm'];
+      // TV 有的欄位以 TV 為準 → 與「篩選依據」同源，消除顯示落差
+      if (r['earnings_per_share_basic_ttm'] != null) mf.eps = r['earnings_per_share_basic_ttm'];
+      if (r['gross_margin']     != null) mf.gm = r['gross_margin'];
+      if (r['operating_margin'] != null) mf.om = r['operating_margin'];
+      if (r['net_margin']       != null) mf.nm = r['net_margin'];
       mf.roe = r['return_on_equity'];
       mf.pe  = r['price_earnings_ttm'];
       return { sid: r.sid, f: mf };
