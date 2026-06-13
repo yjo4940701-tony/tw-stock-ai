@@ -3508,14 +3508,15 @@ function renderScreenResults(matches) {
   // 排序：無值（null）一律排最後，不論升降序
   var col = _scrSort.col, dir = _scrSort.dir;
   var sorted = matches.slice().sort(function(a, b) {
-    if (col === 'sid') return a.sid < b.sid ? dir : a.sid > b.sid ? -dir : 0;
+    if (col === 'sid') return a.sid < b.sid ? -dir : a.sid > b.sid ? dir : 0;
     var av = a.f && a.f[col] != null ? a.f[col] : null;
     var bv = b.f && b.f[col] != null ? b.f[col] : null;
     if (av == null && bv == null) return 0;
     if (av == null) return 1;   // a 無值 → 排後面
     if (bv == null) return -1;  // b 無值 → 排後面
-    if (av < bv) return dir;
-    if (av > bv) return -dir;
+    // dir = -1 降序（大→小，與表頭 ▼ 一致）、dir = 1 升序
+    if (av < bv) return -dir;
+    if (av > bv) return dir;
     return 0;
   });
 
