@@ -1,0 +1,28 @@
+name: Weekly Report（自選股週報）
+
+on:
+  schedule:
+    - cron: '0 8 * * 5'    # 台灣時間 週五 16:00（收盤後）
+  workflow_dispatch:        # 手動觸發（測試用）
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Send weekly report
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python weekly_report.py
