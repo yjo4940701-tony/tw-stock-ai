@@ -99,18 +99,41 @@
     return out;
   }
 
+  // SMA：簡單移動平均（三國策略用 240/60/20MA）
+  function sma(values, period) {
+    const out = new Array(values.length).fill(null);
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      sum += values[i];
+      if (i >= period) sum -= values[i - period];
+      if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+  }
+
   // ---------- 預設參數 ----------
   const DEFAULTS = {
+    strategy: 'threeBlade', // 'threeBlade'（三刀流）| 'threeKingdoms'（三國 240/60/20MA）
+    // --- 三刀流（threeBlade）---
     rsiPeriod: 14, rsiLow: 50, rsiHigh: 65,  // rsiLow = 回檔門檻（多頭中 RSI 回落到此之下再回升視為買點）
     emaFast: 9, emaSlow: 21,
     macdFast: 12, macdSlow: 26, macdSignal: 9,
+    confirmsNeeded: 3,  // 三刀流=3、兩刀（弱信號）=2
+    setupLookback: 5,   // RSI 須在近 N 根內曾低於 rsiLow
+    // --- 三國（threeKingdoms）---
+    lbPeriod: 240,      // 劉備：方向（牛熊分水嶺）
+    gyPeriod: 60,       // 關羽：進出場節奏
+    zfPeriod: 20,       // 張飛：收兵/風控
+    slopeBars: 3,       // 張飛斜率計算根數（保留，原版收兵出場停用）
+    allowBounce: true,  // 是否做熊市反彈（跌破240MA但站上60MA → 短多）
+    // --- 風控（兩策略共用，ATR 動態停損停利 + 追蹤止盈）---
     atrPeriod: 14,
     slMult: 2.0,        // 停損 = 進場價 - slMult * ATR
     tpMult: 3.0,        // 停利 = 進場價 + tpMult * ATR
     trailMult: 2.5,     // 追蹤止盈 = 最高價 - trailMult * ATR
     useTrailing: true,
-    confirmsNeeded: 3,  // 三刀流=3、兩刀（弱信號）=2
-    setupLookback: 5,   // RSI 須在近 N 根內曾低於 rsiLow
+    useAtrRisk: true,   // 是否啟用 ATR 停損停利層（三國預設改 false 走純均線，見 run()）
+    // --- 共用 ---
     capital: 1000000,   // 本金
     feeRate: 0.001425,  // 手續費（買賣各一次）
     taxRate: 0.003      // 證交稅（賣出）
@@ -119,34 +142,70 @@
   // ---------- 回測主體 ----------
   function run(candles, userParams) {
     const p = Object.assign({}, DEFAULTS, userParams || {});
+    // 三國預設走純均線（不啟用 ATR 風控層），除非使用者明確指定 useAtrRisk
+    if (p.strategy === 'threeKingdoms' &&
+        (userParams == null || userParams.useAtrRisk === undefined)) {
+      p.useAtrRisk = false;
+    }
     const n = candles.length;
     const closes = candles.map(c => c.close);
     const highs = candles.map(c => c.high);
     const lows = candles.map(c => c.low);
 
-    const rsiArr = rsi(closes, p.rsiPeriod);
-    const emaF = ema(closes, p.emaFast);
-    const emaS = ema(closes, p.emaSlow);
-    const hist = macdHist(closes, p.macdFast, p.macdSlow, p.macdSignal);
     const atrArr = atr(highs, lows, closes, p.atrPeriod);
 
-    // 進場信號（rising edge）
-    function score(i) {
-      if (i < 1) return 0;
-      if (emaF[i] == null || emaS[i] == null || rsiArr[i] == null ||
-          rsiArr[i - 1] == null || hist[i] == null || hist[i - 1] == null) return 0;
-      const emaBull = emaF[i] > emaS[i] ? 1 : 0;
-      // RSI：近 setupLookback 根曾跌破 rsiLow 且當前回升
-      let dipped = false;
-      for (let j = Math.max(1, i - p.setupLookback); j <= i; j++) {
-        if (rsiArr[j] != null && rsiArr[j] < p.rsiLow) { dipped = true; break; }
-      }
-      const rsiConf = (dipped && rsiArr[i] > rsiArr[i - 1]) ? 1 : 0;
-      const macdConf = hist[i] > hist[i - 1] ? 1 : 0;
-      return emaBull + rsiConf + macdConf;
-    }
+    // ── 各策略的進場/出場訊號（只做多，台股現股不開槓桿）──
+    let entrySignal, exitSignal, warmup;
 
-    const warmup = Math.max(p.emaSlow, p.rsiPeriod, p.atrPeriod, p.macdSlow + p.macdSignal) + 1;
+    if (p.strategy === 'threeKingdoms') {
+      // 三國：劉備240方向 / 關羽60進出 / 張飛20收兵
+      const lb = sma(closes, p.lbPeriod);
+      const gy = sma(closes, p.gyPeriod);
+      const zf = sma(closes, p.zfPeriod);
+      function tkSig(i) {
+        const pr = closes[i], L = lb[i], G = gy[i], Z = zf[i];
+        if (L == null || G == null || Z == null) return 'HOLD';
+        const bull = pr > L, bear = pr < L, aboveGy = pr > G, belowGy = pr < G;
+        if (bull && aboveGy && pr > Z) return 'MAIN_LONG';        // 全軍做多
+        if (bear && belowGy && pr < Z) return 'MAIN_SHORT';       // 全軍做空
+        if (bear && aboveGy) return 'BOUNCE_LONG';                // 熊市反彈（短多）
+        if (bull && belowGy) return 'CORRECTION_SHORT';           // 牛市修正
+        return 'HOLD';
+      }
+      const openLong = i => {
+        const s = tkSig(i);
+        return s === 'MAIN_LONG' || (p.allowBounce && s === 'BOUNCE_LONG');
+      };
+      const closeLong = i => {
+        const s = tkSig(i);
+        return s === 'MAIN_SHORT' || s === 'CORRECTION_SHORT';    // 轉空 / 牛市修正 → 收兵
+      };
+      entrySignal = i => openLong(i) && !openLong(i - 1);         // rising edge
+      exitSignal = i => closeLong(i);
+      warmup = Math.max(p.lbPeriod + 1, p.atrPeriod) + 1;
+    } else {
+      // 三刀流：EMA交叉 + RSI回檔回升 + MACD柱轉向（三重確認）
+      const rsiArr = rsi(closes, p.rsiPeriod);
+      const emaF = ema(closes, p.emaFast);
+      const emaS = ema(closes, p.emaSlow);
+      const hist = macdHist(closes, p.macdFast, p.macdSlow, p.macdSignal);
+      function score(i) {
+        if (i < 1) return 0;
+        if (emaF[i] == null || emaS[i] == null || rsiArr[i] == null ||
+            rsiArr[i - 1] == null || hist[i] == null || hist[i - 1] == null) return 0;
+        const emaBull = emaF[i] > emaS[i] ? 1 : 0;
+        let dipped = false;
+        for (let j = Math.max(1, i - p.setupLookback); j <= i; j++) {
+          if (rsiArr[j] != null && rsiArr[j] < p.rsiLow) { dipped = true; break; }
+        }
+        const rsiConf = (dipped && rsiArr[i] > rsiArr[i - 1]) ? 1 : 0;
+        const macdConf = hist[i] > hist[i - 1] ? 1 : 0;
+        return emaBull + rsiConf + macdConf;
+      }
+      entrySignal = i => score(i) >= p.confirmsNeeded && score(i - 1) < p.confirmsNeeded;
+      exitSignal = i => emaF[i] != null && emaS[i] != null && emaF[i] < emaS[i];
+      warmup = Math.max(p.emaSlow, p.rsiPeriod, p.atrPeriod, p.macdSlow + p.macdSignal) + 1;
+    }
 
     const trades = [];
     const equity = []; // [{time, equity}]
@@ -155,10 +214,9 @@
 
     for (let i = 0; i < n; i++) {
       const c = candles[i];
-      if (i >= warmup && atrArr[i] != null) {
+      if (i >= warmup) {
         if (!pos) {
-          // 進場：rising edge + 達確認門檻 + ATR 有效
-          if (score(i) >= p.confirmsNeeded && score(i - 1) < p.confirmsNeeded) {
+          if (entrySignal(i)) {
             const price = c.close;
             // 以股計價（含零股）：任何股價都能回測，跨檔報酬率比較才公平
             const shares = Math.floor(cash / (price * (1 + p.feeRate)));
@@ -167,21 +225,23 @@
               cash -= cost;
               pos = {
                 shares, entryPrice: price, entryTime: c.time,
-                entryATR: atrArr[i], trailHigh: price, cost
+                entryATR: atrArr[i] || 0, trailHigh: price, cost
               };
             }
           }
         } else {
-          // 持倉中：更新追蹤高點、判斷出場
+          // 持倉中：先看 ATR 風控層（若啟用），再看策略出場訊號
           if (c.close > pos.trailHigh) pos.trailHigh = c.close;
-          const slPrice = pos.entryPrice - p.slMult * pos.entryATR;
-          const tpPrice = pos.entryPrice + p.tpMult * pos.entryATR;
-          const trailPrice = p.useTrailing ? pos.trailHigh - p.trailMult * atrArr[i] : -Infinity;
           let exit = null;
-          if (c.close <= slPrice) exit = 'SL';
-          else if (c.close >= tpPrice) exit = 'TP';
-          else if (p.useTrailing && c.close <= trailPrice && trailPrice > slPrice) exit = 'TRAIL';
-          else if (emaF[i] != null && emaS[i] != null && emaF[i] < emaS[i]) exit = 'SIGNAL';
+          if (p.useAtrRisk && pos.entryATR > 0 && atrArr[i] != null) {
+            const slPrice = pos.entryPrice - p.slMult * pos.entryATR;
+            const tpPrice = pos.entryPrice + p.tpMult * pos.entryATR;
+            const trailPrice = p.useTrailing ? pos.trailHigh - p.trailMult * atrArr[i] : -Infinity;
+            if (c.close <= slPrice) exit = 'SL';
+            else if (c.close >= tpPrice) exit = 'TP';
+            else if (p.useTrailing && c.close <= trailPrice && trailPrice > slPrice) exit = 'TRAIL';
+          }
+          if (!exit && exitSignal(i)) exit = 'SIGNAL';
           if (exit) closePosition(c.close, c.time, exit);
         }
       }
@@ -273,5 +333,5 @@
     };
   }
 
-  return { run, DEFAULTS, ema, rsi, macdHist, atr };
+  return { run, DEFAULTS, ema, rsi, macdHist, atr, sma };
 });

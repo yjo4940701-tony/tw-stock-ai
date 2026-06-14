@@ -1,9 +1,22 @@
 # 台股進階回測引擎（backtest/）
 
-共用核心引擎 + Node 命令列工具，本地一次回測大量台股。
-策略：**三刀流**（EMA 交叉 + RSI 回檔回升 + MACD 柱狀轉向，三重確認）／風控：**ATR 動態停損停利 + 追蹤止盈**。
+共用核心引擎 + Node 命令列工具，本地一次回測大量台股。**兩種策略可切換**：
 
+| 策略 | `--strategy` | 均線 | 邏輯 | 出場 |
+|:--|:--|:--|:--|:--|
+| **三刀流** threeBlade（預設）| `blade` | EMA 9/21 | RSI 回檔回升 + EMA 交叉 + MACD 柱轉向（三重確認）| ATR 停損停利 + 追蹤止盈 |
+| **三國** threeKingdoms | `3k` | SMA 240/60/20 | 劉備240定多空 + 關羽60抓進出 + 張飛20收兵 | 均線轉空訊號（可選加 ATR 保護層）|
+
+> 兩策略移植自 autobots 教學套件（`threeBlade.js` / `strategy_three_kingdoms.py`），改為台股日K、只做多、以股計價。
 > 對應計劃書：`100_Todo/plans/2026-06-09-台股進階回測引擎.md`
+
+### 三國策略細節（純均線趨勢，只做多）
+- **劉備 240MA**＝多空分水嶺：股價 > 240MA 為牛市
+- **關羽 60MA**＝進出節奏；**張飛 20MA**＝收兵
+- 進場：**全軍做多**（站上 240+60+20）或 **熊市反彈**（跌破 240 但站上 60，`allowBounce`，可關）
+- 出場：轉空（跌破三線）或牛市修正（站上 240 但跌破 60）
+- 風控：原版純均線，台股版可加 `--atr-risk` 開 ATR 停損保護層（空頭股建議開）
+- ⚠ 需 **240MA 暖機**，至少用 2-3 年資料，否則前段全在暖機沒交易
 
 ---
 
@@ -29,6 +42,12 @@ node bt.js --id 2330 --years 2 --trades
 node optimize.js --id 2330 --by totalReturn --top 10
 node optimize.js --id 2330 --fast              # 粗網格（快）
 node optimize.js --id 2330 --by sharpe         # 依 Sharpe 排序
+
+# 三國策略（240/60/20MA 趨勢）
+node bt.js --id 2330 --strategy 3k --years 2 --trades
+node bt.js --id 2330 --strategy 3k --atr-risk           # 加 ATR 停損保護層
+node bt.js --id 2330 --strategy 3k --lb 200 --gy 50 --zf 20   # 自訂均線
+node batch.js --gist --strategy 3k --years 3 --by sharpe      # 三國掃自選股
 
 # 批次回測多檔
 node batch.js --ids 2330,2317,2454 --years 2 --by sharpe

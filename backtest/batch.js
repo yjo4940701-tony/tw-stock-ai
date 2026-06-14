@@ -28,6 +28,7 @@ function parseArgs(argv) {
     const k = argv[i];
     if (k === '--gist') { a.gist = true; continue; }
     if (k === '--optimize') { a.optimize = true; continue; }
+    if (k === '--atr-risk') { a.atrRisk = true; continue; }
     if (k === '--fast') { a.fast = true; continue; }
     if (k.startsWith('--')) a[k.slice(2)] = argv[++i];
   }
@@ -36,6 +37,11 @@ function parseArgs(argv) {
 
 function buildParams(a) {
   const p = {};
+  if (a.strategy) {
+    var s = String(a.strategy).toLowerCase();
+    p.strategy = (s === '3k' || s === 'kingdoms' || s === 'threekingdoms' || s === '三國') ? 'threeKingdoms' : 'threeBlade';
+  }
+  if (a.atrRisk === true) p.useAtrRisk = true;
   if (a.sl != null) p.slMult = +a.sl;
   if (a.tp != null) p.tpMult = +a.tp;
   if (a.trail != null) p.trailMult = +a.trail;

@@ -522,7 +522,14 @@ select.bt-input{cursor:pointer;}
 
         <!-- 進階回測（三刀流 + ATR 風控，共用 backtest/engine.js）-->
         <div class="bt-panel">
-          <div class="bt-panel-title">🎯 進階回測 <span style="color:#475569;font-size:11px;font-weight:400;">三刀流 + ATR 風控</span></div>
+          <div class="bt-panel-title">🎯 進階回測</div>
+          <div class="bt-section">
+            <div class="bt-label">策略</div>
+            <div class="bt-strategy-tabs">
+              <button class="bt-stab active" id="adv-strat-tb" onclick="setAdvStrategy('threeBlade')">三刀流<br><span style="font-size:10px;color:#64748b;">EMA+RSI+MACD</span></button>
+              <button class="bt-stab" id="adv-strat-tk" onclick="setAdvStrategy('threeKingdoms')">三國<br><span style="font-size:10px;color:#64748b;">240/60/20MA</span></button>
+            </div>
+          </div>
           <div class="bt-section">
             <div class="bt-label">股票代號</div>
             <div style="display:flex;gap:8px;">
@@ -533,14 +540,16 @@ select.bt-input{cursor:pointer;}
             </div>
           </div>
           <div class="bt-section">
-            <div class="bt-label">回測年數</div>
+            <div class="bt-label">回測年數 <span id="adv-years-hint" style="color:#475569;font-size:11px;font-weight:400;"></span></div>
             <select class="bt-input" id="adv-years">
               <option value="1">1 年</option>
               <option value="2" selected>2 年</option>
               <option value="3">3 年</option>
             </select>
           </div>
-          <div class="bt-section">
+
+          <!-- 三刀流參數 -->
+          <div class="bt-section" id="adv-tb-params">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
               <div><div class="bt-label">ATR 停損×</div><input class="bt-input" id="adv-sl" type="number" value="2" min="0.5" max="6" step="0.5"></div>
               <div><div class="bt-label">ATR 停利×</div><input class="bt-input" id="adv-tp" type="number" value="3" min="1" max="10" step="0.5"></div>
@@ -555,6 +564,23 @@ select.bt-input{cursor:pointer;}
               <input type="checkbox" id="adv-trail-on" checked> 啟用追蹤止盈
             </label>
           </div>
+
+          <!-- 三國參數 -->
+          <div class="bt-section" id="adv-tk-params" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+              <div><div class="bt-label">劉備 方向</div><input class="bt-input" id="adv-lb" type="number" value="240" min="60" max="300" step="10"></div>
+              <div><div class="bt-label">關羽 進出</div><input class="bt-input" id="adv-gy" type="number" value="60" min="20" max="120" step="5"></div>
+              <div><div class="bt-label">張飛 收兵</div><input class="bt-input" id="adv-zf" type="number" value="20" min="5" max="60" step="5"></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;color:#94a3b8;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="adv-bounce" checked> 做熊市反彈（跌破劉備但站上關羽 → 短多）
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;color:#94a3b8;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="adv-atrrisk"> 加 ATR 停損保護層（原版純均線，建議空頭股可開）
+            </label>
+            <div style="margin-top:8px;color:#64748b;font-size:11px;line-height:1.5;">劉備240MA 定多空 · 關羽60MA 抓進出 · 張飛20MA 收兵。需 240MA 暖機，建議用 2-3 年。</div>
+          </div>
+
           <div style="background:#3a2a1e;border-radius:6px;padding:7px 10px;font-size:11px;color:#fcd34d;line-height:1.5;">
             ⚠ FinMind 未還原價：分割/除權息股（如 0050）結果失真。出場用當根收盤近似。
           </div>
@@ -4930,6 +4956,17 @@ function fetchAdvCandles(ticker, years, cb) {
     .catch(function(e) { cb({msg: e.message}); });
 }
 
+var advStrategy = 'threeBlade';
+function setAdvStrategy(s) {
+  advStrategy = s;
+  document.getElementById('adv-strat-tb').classList.toggle('active', s === 'threeBlade');
+  document.getElementById('adv-strat-tk').classList.toggle('active', s === 'threeKingdoms');
+  document.getElementById('adv-tb-params').style.display = s === 'threeBlade' ? '' : 'none';
+  document.getElementById('adv-tk-params').style.display = s === 'threeKingdoms' ? '' : 'none';
+  // 三國吃 240MA 暖機，提示用長一點的期間
+  document.getElementById('adv-years-hint').textContent = s === 'threeKingdoms' ? '（三國建議 2-3 年）' : '';
+}
+
 function runAdvBacktest() {
   if (typeof BTEngine === 'undefined') { toast('進階引擎未載入（backtest/engine.js）', 'err'); return; }
   var ticker = (document.getElementById('adv-ticker').value || '').trim().toUpperCase();
@@ -4939,15 +4976,32 @@ function runAdvBacktest() {
   fetchAdvCandles(ticker, years, function(err, candles) {
     if (err) { toast('資料取得失敗' + (err.msg ? '：' + err.msg : ''), 'err'); return; }
     if (candles.length < 60) { toast('資料不足（' + candles.length + ' 根）', 'err'); return; }
-    var params = {
-      slMult: +document.getElementById('adv-sl').value,
-      tpMult: +document.getElementById('adv-tp').value,
-      trailMult: +document.getElementById('adv-trail').value,
-      rsiLow: +document.getElementById('adv-rsiLow').value,
-      confirmsNeeded: +document.getElementById('adv-confirms').value,
-      capital: +document.getElementById('adv-capital').value,
-      useTrailing: document.getElementById('adv-trail-on').checked
-    };
+    var params;
+    if (advStrategy === 'threeKingdoms') {
+      params = {
+        strategy: 'threeKingdoms',
+        lbPeriod: +document.getElementById('adv-lb').value,
+        gyPeriod: +document.getElementById('adv-gy').value,
+        zfPeriod: +document.getElementById('adv-zf').value,
+        allowBounce: document.getElementById('adv-bounce').checked,
+        useAtrRisk: document.getElementById('adv-atrrisk').checked
+      };
+      if (candles.length < params.lbPeriod + 30) {
+        toast('資料不足以暖機 ' + params.lbPeriod + 'MA（僅 ' + candles.length + ' 根），請拉長年數', 'err');
+        return;
+      }
+    } else {
+      params = {
+        strategy: 'threeBlade',
+        slMult: +document.getElementById('adv-sl').value,
+        tpMult: +document.getElementById('adv-tp').value,
+        trailMult: +document.getElementById('adv-trail').value,
+        rsiLow: +document.getElementById('adv-rsiLow').value,
+        confirmsNeeded: +document.getElementById('adv-confirms').value,
+        capital: +document.getElementById('adv-capital').value,
+        useTrailing: document.getElementById('adv-trail-on').checked
+      };
+    }
     renderAdvResult(ticker, candles, params);
   });
 }
@@ -4956,6 +5010,9 @@ function renderAdvResult(ticker, candles, params) {
   var res = BTEngine.run(candles, params);
   var s = res.stats;
   var name = STOCK_NAMES[ticker] || '';
+  var stratLabel = res.params.strategy === 'threeKingdoms'
+    ? '三國 ' + res.params.lbPeriod + '/' + res.params.gyPeriod + '/' + res.params.zfPeriod + 'MA' + (res.params.useAtrRisk ? '+ATR' : '')
+    : '三刀流';
   var clr = function(v) { return v >= 0 ? '#22c55e' : '#ef4444'; };
   var pct = function(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; };
   var pf = s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2);
@@ -4991,7 +5048,7 @@ function renderAdvResult(ticker, candles, params) {
 
   document.getElementById('bt-single-result').innerHTML =
     '<div class="bt-panel">'
-    + '<div class="bt-panel-title">' + ticker + (name?' '+name:'') + ' 進階回測 <span style="color:#475569;font-size:11px;font-weight:400;">' + s.period + '｜' + s.bars + ' 根</span></div>'
+    + '<div class="bt-panel-title">' + ticker + (name?' '+name:'') + ' · ' + stratLabel + ' <span style="color:#475569;font-size:11px;font-weight:400;">' + s.period + '｜' + s.bars + ' 根</span></div>'
     + '<div class="bt-metrics">' + metrics + '</div>'
     + '<div class="chart-box" style="margin-top:14px;">'
     +   '<div class="chart-title"><span>權益曲線</span>'

@@ -24,6 +24,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--no-trail') { a.useTrailing = false; continue; }
+    if (k === '--atr-risk') { a.atrRisk = true; continue; }
     if (k === '--trades') { a.showTrades = true; continue; }
     if (k === '--json') { a.json = true; continue; }
     if (k.startsWith('--')) { a[k.slice(2)] = argv[++i]; }
@@ -33,10 +34,20 @@ function parseArgs(argv) {
 
 function buildParams(a) {
   const p = {};
+  // 策略：3k / kingdoms / threeKingdoms → 三國；其餘預設三刀流
+  if (a.strategy) {
+    var s = String(a.strategy).toLowerCase();
+    p.strategy = (s === '3k' || s === 'kingdoms' || s === 'threekingdoms' || s === '三國') ? 'threeKingdoms' : 'threeBlade';
+  }
   if (a.sl != null) p.slMult = +a.sl;
   if (a.tp != null) p.tpMult = +a.tp;
   if (a.trail != null) p.trailMult = +a.trail;
   if (a.confirms != null) p.confirmsNeeded = +a.confirms;
+  if (a.rsiLow != null) p.rsiLow = +a.rsiLow;
+  if (a.lb != null) p.lbPeriod = +a.lb;
+  if (a.gy != null) p.gyPeriod = +a.gy;
+  if (a.zf != null) p.zfPeriod = +a.zf;
+  if (a.atrRisk === true) p.useAtrRisk = true;   // 三國可選擇加 ATR 風控層
   if (a.capital != null) p.capital = +a.capital;
   if (a.useTrailing === false) p.useTrailing = false;
   return p;
@@ -47,7 +58,10 @@ function num(x) { return x.toLocaleString('en-US', { maximumFractionDigits: 0 })
 
 function printReport(id, res) {
   const s = res.stats;
-  console.log(`\n===== ${id} 進階回測（三刀流 + ATR 風控）=====`);
+  const stratName = res.params.strategy === 'threeKingdoms'
+    ? `三國 ${res.params.lbPeriod}/${res.params.gyPeriod}/${res.params.zfPeriod}MA` + (res.params.useAtrRisk ? ' + ATR風控' : '（純均線）')
+    : '三刀流 + ATR 風控';
+  console.log(`\n===== ${id} 進階回測（${stratName}）=====`);
   console.log(`期間          ${s.period}（${s.bars} 根日K）`);
   console.log(`本金          ${num(res.params.capital)}`);
   console.log(`最終權益      ${num(s.finalEquity)}`);
