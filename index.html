@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="台股AI">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="lightweight-charts.min.js"></script>
-<script src="backtest/engine.js"></script>
+<script src="backtest/engine.js?v=20260614"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;}
@@ -652,6 +652,31 @@ select.bt-input{cursor:pointer;}
       </div>
       <div id="crypto-chart-leg" style="font-size:11px;margin-top:6px;"></div>
       <div style="margin-top:6px;"><div id="cryptoChart" style="width:100%;height:360px;"></div></div>
+    </div>
+
+    <!-- 進階回測（crypto，共用 engine.js）-->
+    <div id="crypto-bt-box" class="bt-panel" style="display:none;margin-top:16px;">
+      <div class="bt-panel-title" style="margin-bottom:10px;">🎯 進階回測 <span id="crypto-bt-sym" style="color:#475569;font-size:12px;font-weight:400;"></span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div>
+          <div class="bt-label">策略</div>
+          <div class="bt-strategy-tabs">
+            <button class="bt-stab active" id="cbt-strat-tb" onclick="setCryptoBtStrat('threeBlade')">三刀流</button>
+            <button class="bt-stab" id="cbt-strat-tk" onclick="setCryptoBtStrat('threeKingdoms')">三國</button>
+          </div>
+        </div>
+        <div><div class="bt-label">週期</div>
+          <select class="bt-input" id="cbt-tf" style="width:100px;">
+            <option value="1D">日K</option><option value="4H">4H</option><option value="60M">1H</option><option value="15M">15分</option>
+          </select>
+        </div>
+        <div><div class="bt-label">根數</div><input class="bt-input" id="cbt-bars" type="number" value="300" min="120" max="500" step="50" style="width:90px;"></div>
+        <button class="btn-add" onclick="runCryptoBacktest()" style="padding:10px 16px;font-size:13px;white-space:nowrap;">執行回測</button>
+      </div>
+      <div style="background:#3a2a1e;border-radius:6px;padding:7px 10px;font-size:11px;color:#fcd34d;line-height:1.5;margin-top:10px;">
+        ⚠ crypto 成本：taker 0.05%、無證交稅。三國需 240 根暖機（日K 限 300 根 → 僅約 60 根可交易，建議改短週期或加根數）。出場用當根收盤近似。
+      </div>
+      <div id="crypto-bt-result" style="margin-top:12px;"></div>
     </div>
   </div>
 </div>
@@ -3970,6 +3995,8 @@ function openCryptoChart(symbol) {
   cryptoSym = symbol;
   document.getElementById('crypto-chart-box').style.display = 'block';
   document.getElementById('crypto-chart-title').textContent = symbol.replace('_USDT','/USDT') + ' K 線';
+  var btBox = document.getElementById('crypto-bt-box');
+  if (btBox) { btBox.style.display = 'block'; document.getElementById('crypto-bt-sym').textContent = symbol.replace('_USDT','/USDT'); }
   cryptoApi('market/klines', {symbol:symbol, interval:cryptoTf, limit:300}).then(function(j){
     if (!j.result || !j.data || !j.data.klines) { toast('K 線載入失敗','err'); return; }
     var ks = j.data.klines.slice().reverse(); // 派網新到舊 → 反轉成舊到新
@@ -4003,6 +4030,45 @@ function renderCryptoChart(ohlc, closes, intraday) {
   maData(5,'#f59e0b'); maData(20,'#8b5cf6'); maData(60,'#3b82f6');
   _cryptoChart.timeScale().fitContent();
   document.getElementById('crypto-chart-leg').innerHTML = '<span style="color:#f59e0b;">● MA5</span>  <span style="color:#8b5cf6;">● MA20</span>  <span style="color:#3b82f6;">● MA60</span>';
+}
+
+// ── crypto 進階回測（共用 engine.js + renderAdvResult）──────────
+var cryptoBtStrat = 'threeBlade';
+function setCryptoBtStrat(s) {
+  cryptoBtStrat = s;
+  document.getElementById('cbt-strat-tb').classList.toggle('active', s === 'threeBlade');
+  document.getElementById('cbt-strat-tk').classList.toggle('active', s === 'threeKingdoms');
+}
+// 時間一律用 UTC ISO，確保網頁/CLI 結果一致
+function cryptoCandleTime(ms, intraday) {
+  var iso = new Date(ms).toISOString();
+  return intraday ? iso.slice(0,16).replace('T',' ') : iso.slice(0,10);
+}
+function cryptoPriceFmt(v) { return v >= 100 ? v.toFixed(2) : (v >= 1 ? v.toFixed(4) : v.toFixed(6)); }
+
+function runCryptoBacktest() {
+  if (!cryptoSym) { toast('請先選一個幣種', 'err'); return; }
+  if (typeof BTEngine === 'undefined') { toast('進階引擎未載入', 'err'); return; }
+  var tf = document.getElementById('cbt-tf').value;
+  var bars = Math.max(120, Math.min(500, +document.getElementById('cbt-bars').value || 300));
+  var intraday = tf !== '1D';
+  toast('抓取 ' + cryptoSym.replace('_USDT','/USDT') + ' K 線回測中⋯');
+  cryptoApi('market/klines', { symbol: cryptoSym, interval: tf, limit: bars }).then(function(j){
+    if (!j.result || !j.data || !j.data.klines) { toast('K 線載入失敗', 'err'); return; }
+    var ks = j.data.klines.slice().reverse(); // 新到舊 → 舊到新
+    var candles = ks.map(function(k){
+      return { time: cryptoCandleTime(k.time, intraday),
+        open:+k.open, high:+k.high, low:+k.low, close:+k.close, volume:+k.volume };
+    });
+    if (candles.length < 60) { toast('資料不足（' + candles.length + ' 根）', 'err'); return; }
+    var params = { strategy: cryptoBtStrat, capital: 10000, feeRate: 0.0005, taxRate: 0, fractional: true }; // crypto：taker 0.05%、無證交稅、可買小數
+    if (cryptoBtStrat === 'threeKingdoms' && candles.length < 270) {
+      toast('三國需 240 根暖機，目前僅 ' + candles.length + ' 根，建議加根數或改短週期', 'err');
+      return;
+    }
+    renderAdvResult(cryptoSym.replace('_USDT','/USDT'), candles, params,
+      { container: 'crypto-bt-result', chartId: 'cryptoBtChart', unit: 'USDT', name: '', fmtPrice: cryptoPriceFmt });
+  }).catch(function(e){ toast('回測失敗：' + e.message, 'err'); });
 }
 
 // ═══════════════════════════════════════════════════
@@ -5126,10 +5192,15 @@ function runAdvBacktest() {
   });
 }
 
-function renderAdvResult(ticker, candles, params) {
+function renderAdvResult(ticker, candles, params, opts) {
+  opts = opts || {};
+  var container = opts.container || 'bt-single-result';
+  var chartId = opts.chartId || 'advChart';
+  var unit = opts.unit || '元';
+  var fmtPrice = opts.fmtPrice || function(v){ return v.toFixed(2); };
   var res = BTEngine.run(candles, params);
   var s = res.stats;
-  var name = STOCK_NAMES[ticker] || '';
+  var name = opts.name != null ? opts.name : (STOCK_NAMES[ticker] || '');
   var stratLabel = res.params.strategy === 'threeKingdoms'
     ? '三國 ' + res.params.lbPeriod + '/' + res.params.gyPeriod + '/' + res.params.zfPeriod + 'MA' + (res.params.useAtrRisk ? '+ATR' : '')
     : '三刀流';
@@ -5159,37 +5230,40 @@ function renderAdvResult(ticker, candles, params) {
     res.trades.forEach(function(t, i) {
       var cls = t.pnl >= 0 ? 'up' : 'down';
       tradesHtml += '<tr><td>' + (i+1) + '</td><td>' + t.entryTime + '</td><td>' + t.exitTime + '</td>'
-        + '<td>' + t.entryPrice.toFixed(2) + '</td><td>' + t.exitPrice.toFixed(2) + '</td>'
+        + '<td>' + fmtPrice(t.entryPrice) + '</td><td>' + fmtPrice(t.exitPrice) + '</td>'
         + '<td class="' + cls + '">' + (t.retPct>=0?'+':'') + t.retPct.toFixed(2) + '%</td>'
         + '<td>' + t.reason + '</td></tr>';
     });
     tradesHtml += '</tbody></table>';
   }
 
-  document.getElementById('bt-single-result').innerHTML =
+  document.getElementById(container).innerHTML =
     '<div class="bt-panel">'
     + '<div class="bt-panel-title">' + ticker + (name?' '+name:'') + ' · ' + stratLabel + ' <span style="color:#475569;font-size:11px;font-weight:400;">' + s.period + '｜' + s.bars + ' 根</span></div>'
     + '<div class="bt-metrics">' + metrics + '</div>'
     + '<div class="chart-box" style="margin-top:14px;">'
     +   '<div class="chart-title"><span>權益曲線</span>'
-    +     '<span style="color:#64748b;font-size:11px;">本金 ' + Math.round(params.capital).toLocaleString() + ' → ' + Math.round(s.finalEquity).toLocaleString() + '</span></div>'
-    +   '<div style="height:240px;"><canvas id="advChart"></canvas></div>'
+    +     '<span style="color:#64748b;font-size:11px;">本金 ' + Math.round(params.capital).toLocaleString() + ' → ' + Math.round(s.finalEquity).toLocaleString() + ' ' + unit + '</span></div>'
+    +   '<div style="height:240px;"><canvas id="' + chartId + '"></canvas></div>'
     + '</div>'
     + '<div style="margin-top:14px;"><div style="font-weight:600;font-size:13px;color:#94a3b8;margin-bottom:8px;">交易明細</div>'
     +   '<div style="overflow-x:auto;">' + tradesHtml + '</div></div>'
     + '</div>';
 
-  renderAdvChart(res);
+  renderAdvChart(res, chartId, unit);
 }
 
-function renderAdvChart(res) {
-  var ctx = document.getElementById('advChart');
+function renderAdvChart(res, chartId, unit) {
+  chartId = chartId || 'advChart';
+  unit = unit || '元';
+  var ctx = document.getElementById(chartId);
   if (!ctx) return;
-  if (window._advChartInst) window._advChartInst.destroy();
+  if (!window._advChartInsts) window._advChartInsts = {};
+  if (window._advChartInsts[chartId]) window._advChartInsts[chartId].destroy();
   var labels = res.equity.map(function(e) { return fmtDateLabel(e.time); });
   var data = res.equity.map(function(e) { return Math.round(e.equity); });
-  var cap = res.params.capital;
-  window._advChartInst = new Chart(ctx.getContext('2d'), {
+  var useWan = unit === '元';
+  window._advChartInsts[chartId] = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: { labels: labels, datasets: [
       { label: '權益', data: data, borderColor: '#3b82f6', borderWidth: 1.5,
@@ -5198,12 +5272,11 @@ function renderAdvChart(res) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false },
-        tooltip: { callbacks: { label: function(c){ return c.parsed.y.toLocaleString() + ' 元'; } } } },
+        tooltip: { callbacks: { label: function(c){ return c.parsed.y.toLocaleString() + ' ' + unit; } } } },
       scales: {
         x: { ticks: { color: '#64748b', maxTicksLimit: 10, font:{size:10}, maxRotation:0, autoSkip:true }, grid: { color:'#1e293b' } },
-        y: { ticks: { color: '#64748b', font:{size:10}, callback:function(v){return (v/10000).toFixed(0)+'萬';} },
-             grid: { color:'#1e293b' },
-             afterBuildTicks: function(a){ return a; } }
+        y: { ticks: { color: '#64748b', font:{size:10}, callback:function(v){return useWan ? (v/10000).toFixed(0)+'萬' : v.toLocaleString();} },
+             grid: { color:'#1e293b' } }
       }
     }
   });

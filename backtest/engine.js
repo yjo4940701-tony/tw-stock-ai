@@ -136,7 +136,8 @@
     // --- 共用 ---
     capital: 1000000,   // 本金
     feeRate: 0.001425,  // 手續費（買賣各一次）
-    taxRate: 0.003      // 證交稅（賣出）
+    taxRate: 0.003,     // 證交稅（賣出）
+    fractional: false   // 是否允許小數單位（台股整股=false；crypto=true，可買 0.001 顆）
   };
 
   // ---------- 回測主體 ----------
@@ -218,9 +219,10 @@
         if (!pos) {
           if (entrySignal(i)) {
             const price = c.close;
-            // 以股計價（含零股）：任何股價都能回測，跨檔報酬率比較才公平
-            const shares = Math.floor(cash / (price * (1 + p.feeRate)));
-            if (shares >= 1) {
+            // 以股計價：台股整股 floor、crypto 允許小數單位
+            const raw = cash / (price * (1 + p.feeRate));
+            const shares = p.fractional ? raw : Math.floor(raw);
+            if (shares > 0) {
               const cost = price * shares * (1 + p.feeRate);
               cash -= cost;
               pos = {
@@ -314,8 +316,9 @@
     let buyHold = 0;
     if (candles.length > 1) {
       const p0 = candles[0].close, pN = candles[candles.length - 1].close;
-      const shares = Math.floor(p.capital / (p0 * (1 + p.feeRate)));
-      if (shares >= 1) {
+      const rawBH = p.capital / (p0 * (1 + p.feeRate));
+      const shares = p.fractional ? rawBH : Math.floor(rawBH);
+      if (shares > 0) {
         const cost = p0 * shares * (1 + p.feeRate);
         const proceeds = pN * shares * (1 - p.feeRate - p.taxRate);
         buyHold = (p.capital - cost + proceeds) / p.capital * 100 - 100;

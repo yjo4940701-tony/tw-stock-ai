@@ -90,7 +90,28 @@ function printTrades(res) {
 
 async function main() {
   const a = parseArgs(process.argv);
-  if (!a.id) { console.error('用法：node bt.js --id 2330 [--years 2] [--trades]'); process.exit(1); }
+
+  // ── crypto 模式：node bt.js --crypto BTC_USDT [--tf 1D] [--bars 300] [--strategy 3k] ──
+  if (a.crypto) {
+    const { getCryptoCandles } = require('./fetch_pionex');
+    const tf = a.tf || '1D';
+    const bars = a.bars ? +a.bars : 300;
+    const candles = await getCryptoCandles(a.crypto, tf, bars);
+    if (candles.length < 60) { console.error(`資料不足（${candles.length} 根）`); process.exit(1); }
+    const p = buildParams(a);
+    // crypto 成本模型：taker 0.05%、無證交稅（可被 --capital 等覆寫）
+    if (a.capital == null) p.capital = 10000;
+    p.feeRate = a.fee != null ? +a.fee : 0.0005;
+    p.taxRate = 0;
+    p.fractional = true;  // crypto 可買小數單位
+    const res = BT.run(candles, p);
+    if (a.json) { console.log(JSON.stringify(res.stats)); return; }
+    printReport(`${a.crypto} ${tf}`, res);
+    if (a.showTrades) printTrades(res);
+    return;
+  }
+
+  if (!a.id) { console.error('用法：node bt.js --id 2330 [--years 2] [--trades]　或　--crypto BTC_USDT [--tf 1D]'); process.exit(1); }
   const years = a.years ? +a.years : 2;
   const candles = await getCandles(a.id, { years });
   if (candles.length < 60) { console.error(`資料不足（${candles.length} 根），無法回測`); process.exit(1); }
