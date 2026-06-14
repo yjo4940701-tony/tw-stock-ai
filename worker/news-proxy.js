@@ -55,7 +55,8 @@ async function handleRequest(request, env) {
     // ── 路由：派網 Pionex 公開行情（type=crypto） ──────────
     // 例：?type=crypto&ep=market/klines&symbol=BTC_USDT&interval=1D&limit=200
     //     ?type=crypto&ep=market/tickers
-    //     ?type=crypto&ep=common/symbols
+    //     ?type=crypto&ep=common/symbols                （現貨商品）
+    //     ?type=crypto&ep=common/symbols&pxtype=PERP    （永續合約商品；pxtype 會轉成派網的 type）
     if (type === 'crypto') {
       const ep = url.searchParams.get('ep') || '';
       // 白名單：只放公開行情端點，絕不轉發簽名/交易端點
@@ -63,11 +64,13 @@ async function handleRequest(request, env) {
       if (!ALLOWED.includes(ep)) {
         return json({ ok: false, message: '不允許的端點: ' + ep }, 400);
       }
-      // 透傳除 type/ep 外的所有參數
+      // 透傳除 type/ep/pxtype 外的所有參數；pxtype → 派網的 type（避免與 worker 的 type=crypto 撞名）
       const fwd = new URLSearchParams();
       for (const [k, v] of url.searchParams) {
-        if (k !== 'type' && k !== 'ep') fwd.set(k, v);
+        if (k !== 'type' && k !== 'ep' && k !== 'pxtype') fwd.set(k, v);
       }
+      const pxtype = url.searchParams.get('pxtype');
+      if (pxtype) fwd.set('type', pxtype);
       const pxUrl = `https://api.pionex.com/api/v1/${ep}?${fwd.toString()}`;
       try {
         const resp = await fetch(pxUrl, {

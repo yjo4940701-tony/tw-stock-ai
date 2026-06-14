@@ -636,6 +636,19 @@ select.bt-input{cursor:pointer;}
       </div>
       <button onclick="loadCryptoTickers()" class="btn-settings" style="white-space:nowrap;">↻ 刷新報價</button>
     </div>
+    <!-- 搜尋商品（現貨 + 永續）-->
+    <div class="bt-panel" style="margin-bottom:16px;">
+      <div class="bt-label">🔎 搜尋商品 <span style="color:#475569;font-size:11px;font-weight:400;">現貨 + 永續合約，可搜 MUX(美光) / TSMX(台積電) / NVDAX(輝達) / BTC⋯</span></div>
+      <div style="position:relative;">
+        <input class="bt-input" id="crypto-search" type="text" autocomplete="off"
+          placeholder="輸入代號，如 MUX、TSMX、NVDA、BTC"
+          oninput="onCryptoSearch()"
+          onkeydown="if(event.key==='Escape')hideCryptoSuggest()"
+          onblur="setTimeout(hideCryptoSuggest,200)">
+        <div id="crypto-suggest" class="suggest-list" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;z-index:50;max-height:320px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
     <div class="bt-panel">
       <div id="crypto-ticker-table" style="overflow-x:auto;color:#64748b;font-size:13px;">載入中⋯</div>
     </div>
@@ -4007,6 +4020,70 @@ function loadCryptoTickers() {
   }).catch(function(e){ box.innerHTML = '<span style="color:#ef4444;">報價載入失敗：'+e.message+'</span>'; });
 }
 
+// 顯示標籤：現貨 BTC_USDT→BTC/USDT；永續 MUX_USDT_PERP→MUX/USDT 永續
+function cryptoLabel(symbol){
+  if (/_PERP$/.test(symbol)) return symbol.replace('_USDT_PERP','/USDT') + ' 永續';
+  return symbol.replace('_USDT','/USDT');
+}
+
+// ── 商品搜尋（現貨 + 永續）──────────
+var ALL_CRYPTO_SYMBOLS = null, _cryptoSymLoading = false;
+function loadCryptoSymbols(cb) {
+  if (ALL_CRYPTO_SYMBOLS) { cb && cb(); return; }
+  if (_cryptoSymLoading) return;
+  _cryptoSymLoading = true;
+  var got = { spot: null, perp: null };
+  function done(){
+    if (got.spot === null || got.perp === null) return;
+    ALL_CRYPTO_SYMBOLS = got.spot.concat(got.perp);
+    _cryptoSymLoading = false;
+    cb && cb();
+  }
+  cryptoApi('common/symbols', {}).then(function(j){
+    got.spot = (((j.data||{}).symbols)||[]).map(function(s){ return { symbol:s.symbol, base:s.baseCurrency, market:'spot' }; });
+    done();
+  }).catch(function(){ got.spot = []; done(); });
+  cryptoApi('common/symbols', { pxtype:'PERP' }).then(function(j){
+    got.perp = (((j.data||{}).symbols)||[]).map(function(s){ return { symbol:s.symbol, base:s.baseCurrency, market:'perp' }; });
+    done();
+  }).catch(function(){ got.perp = []; done(); });
+}
+
+function onCryptoSearch() {
+  var q = (document.getElementById('crypto-search').value || '').trim().toUpperCase();
+  if (!q) { hideCryptoSuggest(); return; }
+  if (!ALL_CRYPTO_SYMBOLS) { loadCryptoSymbols(onCryptoSearch); return; }
+  var matches = ALL_CRYPTO_SYMBOLS.filter(function(s){
+    return (s.base||'').toUpperCase().indexOf(q) === 0 || (s.symbol||'').toUpperCase().indexOf(q) === 0;
+  });
+  // base 完全相等的排前面，再依代號
+  matches.sort(function(a,b){
+    var ae=(a.base||'').toUpperCase()===q?0:1, be=(b.base||'').toUpperCase()===q?0:1;
+    if (ae!==be) return ae-be;
+    return a.symbol.localeCompare(b.symbol);
+  });
+  var box = document.getElementById('crypto-suggest');
+  if (!matches.length) { box.innerHTML = '<div style="padding:10px 12px;color:#64748b;font-size:13px;">查無此商品</div>'; box.style.display='block'; return; }
+  box.innerHTML = matches.slice(0, 20).map(function(s){
+    var tag = s.market==='perp'
+      ? '<span style="color:#f59e0b;font-size:11px;">永續</span>'
+      : '<span style="color:#22c55e;font-size:11px;">現貨</span>';
+    return '<div onmousedown="selectCryptoSymbol(\''+s.symbol+'\')" style="padding:9px 12px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid #1e293b;">'
+      + '<span style="font-weight:600;">'+s.base+'<span style="color:#475569;font-weight:400;font-size:12px;"> '+cryptoLabel(s.symbol)+'</span></span>' + tag + '</div>';
+  }).join('');
+  box.style.display = 'block';
+}
+
+function selectCryptoSymbol(symbol) {
+  hideCryptoSuggest();
+  document.getElementById('crypto-search').value = '';
+  openCryptoChart(symbol);
+  var t = document.getElementById('crypto-chart-box');
+  if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function hideCryptoSuggest(){ var b=document.getElementById('crypto-suggest'); if(b) b.style.display='none'; }
+
 function setCryptoTf(tf){
   cryptoTf = tf;
   ['1D','4H','60M','15M'].forEach(function(x){ var b=document.getElementById('ctf-'+x); if(b) b.classList.toggle('active', x===tf); });
@@ -4016,9 +4093,9 @@ function setCryptoTf(tf){
 function openCryptoChart(symbol) {
   cryptoSym = symbol;
   document.getElementById('crypto-chart-box').style.display = 'block';
-  document.getElementById('crypto-chart-title').textContent = symbol.replace('_USDT','/USDT') + ' K 線';
+  document.getElementById('crypto-chart-title').textContent = cryptoLabel(symbol) + ' K 線';
   var btBox = document.getElementById('crypto-bt-box');
-  if (btBox) { btBox.style.display = 'block'; document.getElementById('crypto-bt-sym').textContent = symbol.replace('_USDT','/USDT'); }
+  if (btBox) { btBox.style.display = 'block'; document.getElementById('crypto-bt-sym').textContent = cryptoLabel(symbol); }
   cryptoApi('market/klines', {symbol:symbol, interval:cryptoTf, limit:300}).then(function(j){
     if (!j.result || !j.data || !j.data.klines) { toast('K 線載入失敗','err'); return; }
     var ks = j.data.klines.slice().reverse(); // 派網新到舊 → 反轉成舊到新
@@ -4074,7 +4151,7 @@ function runCryptoBacktest() {
   var tf = document.getElementById('cbt-tf').value;
   var bars = Math.max(120, Math.min(500, +document.getElementById('cbt-bars').value || 300));
   var intraday = tf !== '1D';
-  toast('抓取 ' + cryptoSym.replace('_USDT','/USDT') + ' K 線回測中⋯');
+  toast('抓取 ' + cryptoLabel(cryptoSym) + ' K 線回測中⋯');
   cryptoApi('market/klines', { symbol: cryptoSym, interval: tf, limit: bars }).then(function(j){
     if (!j.result || !j.data || !j.data.klines) { toast('K 線載入失敗', 'err'); return; }
     var ks = j.data.klines.slice().reverse(); // 新到舊 → 舊到新
@@ -4088,7 +4165,7 @@ function runCryptoBacktest() {
       toast('三國需 240 根暖機，目前僅 ' + candles.length + ' 根，建議加根數或改短週期', 'err');
       return;
     }
-    renderAdvResult(cryptoSym.replace('_USDT','/USDT'), candles, params,
+    renderAdvResult(cryptoLabel(cryptoSym), candles, params,
       { container: 'crypto-bt-result', chartId: 'cryptoBtChart', unit: 'USDT', name: '', fmtPrice: cryptoPriceFmt });
   }).catch(function(e){ toast('回測失敗：' + e.message, 'err'); });
 }
