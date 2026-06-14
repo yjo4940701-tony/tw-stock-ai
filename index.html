@@ -343,6 +343,7 @@ select.bt-input{cursor:pointer;}
   <div style="display:flex;gap:8px;align-items:center;">
     <button class="nav-btn active" id="nav-dashboard" onclick="showPage('dashboard')">📊 <span class="btn-text">儀表板</span></button>
     <button class="nav-btn" id="nav-backtest" onclick="showPage('backtest')">📈 <span class="btn-text">回測</span></button>
+    <button class="nav-btn" id="nav-crypto" onclick="showPage('crypto')">🪙 <span class="btn-text">虛擬貨幣</span></button>
     <button class="btn-settings" onclick="openScreener()" style="border-color:rgba(124,58,237,.5);color:#a78bfa;">🔍 <span class="btn-text">選股</span></button>
     <button class="btn-settings" onclick="openAlertList()" style="position:relative;">🔔 <span class="btn-text">提醒</span><span class="alert-badge" id="alertBadge" style="display:none;">0</span></button>
     <button class="btn-settings" onclick="openSettings()">⚙ <span class="btn-text">設定</span></button>
@@ -622,6 +623,36 @@ select.bt-input{cursor:pointer;}
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- 虛擬貨幣分頁（派網 Pionex 公開行情）-->
+<div id="cryptoPage" style="display:none;">
+  <div style="max-width:1200px;margin:0 auto;padding:20px 16px 60px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      <div>
+        <div class="bt-panel-title" style="margin:0;">🪙 虛擬貨幣 <span style="color:#475569;font-size:12px;font-weight:400;">派網 Pionex 公開行情</span></div>
+        <div style="color:#64748b;font-size:12px;">免金鑰 · 點幣種看 K 線（之後加回測與訊號掃描）</div>
+      </div>
+      <button onclick="loadCryptoTickers()" class="btn-settings" style="white-space:nowrap;">↻ 刷新報價</button>
+    </div>
+    <div class="bt-panel">
+      <div id="crypto-ticker-table" style="overflow-x:auto;color:#64748b;font-size:13px;">載入中⋯</div>
+    </div>
+    <!-- K 線圖 -->
+    <div id="crypto-chart-box" class="bt-panel" style="display:none;margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div class="bt-panel-title" id="crypto-chart-title" style="margin:0;"></div>
+        <div class="bt-strategy-tabs" id="crypto-tf-tabs" style="flex-wrap:nowrap;">
+          <button class="bt-stab active" id="ctf-1D" onclick="setCryptoTf('1D')">日K</button>
+          <button class="bt-stab" id="ctf-4H" onclick="setCryptoTf('4H')">4H</button>
+          <button class="bt-stab" id="ctf-60M" onclick="setCryptoTf('60M')">1H</button>
+          <button class="bt-stab" id="ctf-15M" onclick="setCryptoTf('15M')">15分</button>
+        </div>
+      </div>
+      <div id="crypto-chart-leg" style="font-size:11px;margin-top:6px;"></div>
+      <div style="margin-top:6px;"><div id="cryptoChart" style="width:100%;height:360px;"></div></div>
+    </div>
   </div>
 </div>
 
@@ -3892,6 +3923,89 @@ function fvol(v)  { if(v==null) return 'N/A'; if(v>=1e9) return (v/1e9).toFixed(
 function fcap(v)  { if(v==null) return 'N/A'; if(v>=1e12) return (v/1e12).toFixed(1)+' 兆'; if(v>=1e8) return (v/1e8).toFixed(0)+' 億'; return fvol(v); }
 
 // ═══════════════════════════════════════════════════
+// 虛擬貨幣（派網 Pionex 公開行情，經 CF Worker proxy 繞 CORS）
+// ═══════════════════════════════════════════════════
+var CRYPTO_PROXY = 'https://tw-stock-news.yjo4940701.workers.dev';
+var CRYPTO_BASKET = ['BTC_USDT','ETH_USDT','SOL_USDT','BNB_USDT','XRP_USDT','DOGE_USDT','ADA_USDT','AVAX_USDT'];
+var cryptoSym = null, cryptoTf = '1D', _cryptoChart = null;
+
+function cryptoApi(ep, params) {
+  var qs = Object.keys(params||{}).map(function(k){return k+'='+encodeURIComponent(params[k]);}).join('&');
+  return fetch(CRYPTO_PROXY + '?type=crypto&ep=' + ep + (qs?'&'+qs:'')).then(function(r){return r.json();});
+}
+
+function fmtCryptoPrice(v){ if(v>=100) return v.toLocaleString('en-US',{maximumFractionDigits:2}); if(v>=1) return v.toFixed(3); return v.toFixed(5); }
+
+function loadCryptoTickers() {
+  var box = document.getElementById('crypto-ticker-table');
+  box.innerHTML = '載入中⋯';
+  cryptoApi('market/tickers', {}).then(function(j){
+    if (!j.result || !j.data || !j.data.tickers) { box.innerHTML = '<span style="color:#ef4444;">報價載入失敗</span>'; return; }
+    var map = {};
+    j.data.tickers.forEach(function(t){ map[t.symbol] = t; });
+    var rows = CRYPTO_BASKET.map(function(sym){ return map[sym]; }).filter(Boolean);
+    if (!rows.length) { box.innerHTML = '<span style="color:#ef4444;">無資料</span>'; return; }
+    var html = '<table class="bt-table"><thead><tr><th>幣種</th><th>價格(USDT)</th><th>24h漲跌</th><th>24h量</th></tr></thead><tbody>';
+    rows.forEach(function(t){
+      var open=+t.open, close=+t.close, chg = open? (close-open)/open*100 : 0;
+      var cls = chg>=0?'up':'down';
+      html += '<tr style="cursor:pointer;" onclick="openCryptoChart(\''+t.symbol+'\')">'
+        + '<td style="font-weight:600;">'+t.symbol.replace('_USDT','')+'<span style="color:#475569;">/USDT</span></td>'
+        + '<td>'+fmtCryptoPrice(close)+'</td>'
+        + '<td class="'+cls+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</td>'
+        + '<td style="color:#94a3b8;">'+fvol(+t.volume)+'</td></tr>';
+    });
+    html += '</tbody></table><div style="color:#475569;font-size:11px;margin-top:6px;">點任一列看 K 線　·　報價為 24h</div>';
+    box.innerHTML = html;
+  }).catch(function(e){ box.innerHTML = '<span style="color:#ef4444;">報價載入失敗：'+e.message+'</span>'; });
+}
+
+function setCryptoTf(tf){
+  cryptoTf = tf;
+  ['1D','4H','60M','15M'].forEach(function(x){ var b=document.getElementById('ctf-'+x); if(b) b.classList.toggle('active', x===tf); });
+  if (cryptoSym) openCryptoChart(cryptoSym);
+}
+
+function openCryptoChart(symbol) {
+  cryptoSym = symbol;
+  document.getElementById('crypto-chart-box').style.display = 'block';
+  document.getElementById('crypto-chart-title').textContent = symbol.replace('_USDT','/USDT') + ' K 線';
+  cryptoApi('market/klines', {symbol:symbol, interval:cryptoTf, limit:300}).then(function(j){
+    if (!j.result || !j.data || !j.data.klines) { toast('K 線載入失敗','err'); return; }
+    var ks = j.data.klines.slice().reverse(); // 派網新到舊 → 反轉成舊到新
+    var intraday = cryptoTf !== '1D';
+    var ohlc = ks.map(function(k){ return { time: Math.floor(k.time/1000), open:+k.open, high:+k.high, low:+k.low, close:+k.close }; });
+    var closes = ks.map(function(k){ return +k.close; });
+    renderCryptoChart(ohlc, closes, intraday);
+  }).catch(function(e){ toast('K 線載入失敗：'+e.message,'err'); });
+}
+
+function renderCryptoChart(ohlc, closes, intraday) {
+  var cont = document.getElementById('cryptoChart');
+  if (_cryptoChart) { _cryptoChart.remove(); _cryptoChart = null; }
+  cont.innerHTML = '';
+  _cryptoChart = LightweightCharts.createChart(cont, {
+    autoSize: true, height: 360,
+    layout: { background:{color:'#1e293b'}, textColor:'#94a3b8', fontSize:12 },
+    grid: { horzLines:{color:'rgba(51,65,85,.3)'}, vertLines:{color:'rgba(51,65,85,.3)'} },
+    timeScale: { timeVisible: intraday, secondsVisible:false },
+    rightPriceScale: { textColor:'#94a3b8' }
+  });
+  var cs = _cryptoChart.addCandlestickSeries({ upColor:'#22c55e', downColor:'#ef4444', borderVisible:false, wickUpColor:'#22c55e', wickDownColor:'#ef4444', priceLineVisible:false });
+  cs.setData(ohlc);
+  function maData(period, color){
+    if (typeof BTEngine==='undefined') return;
+    var ma = BTEngine.sma(closes, period), data = [];
+    for (var i=0;i<ma.length;i++){ if(ma[i]!=null) data.push({time:ohlc[i].time, value:ma[i]}); }
+    var s = _cryptoChart.addLineSeries({ color:color, lineWidth:1, priceLineVisible:false, lastValueVisible:true });
+    s.setData(data);
+  }
+  maData(5,'#f59e0b'); maData(20,'#8b5cf6'); maData(60,'#3b82f6');
+  _cryptoChart.timeScale().fitContent();
+  document.getElementById('crypto-chart-leg').innerHTML = '<span style="color:#f59e0b;">● MA5</span>  <span style="color:#8b5cf6;">● MA20</span>  <span style="color:#3b82f6;">● MA60</span>';
+}
+
+// ═══════════════════════════════════════════════════
 // 回測系統 PUSH3
 // ═══════════════════════════════════════════════════
 
@@ -3912,9 +4026,15 @@ function showPage(page) {
   } else {
     renderGrid(); // 重新渲染讓 filterBar/grid/empty 恢復正確狀態
   }
-  document.getElementById('backtestPage').style.display = isDash ? 'none' : 'block';
+  document.getElementById('backtestPage').style.display = page === 'backtest' ? 'block' : 'none';
+  var cp = document.getElementById('cryptoPage');
+  if (cp) cp.style.display = page === 'crypto' ? 'block' : 'none';
   document.getElementById('nav-dashboard').classList.toggle('active', isDash);
-  document.getElementById('nav-backtest').classList.toggle('active', !isDash);
+  document.getElementById('nav-backtest').classList.toggle('active', page === 'backtest');
+  var ncb = document.getElementById('nav-crypto');
+  if (ncb) ncb.classList.toggle('active', page === 'crypto');
+  // 首次進虛擬貨幣分頁 → 載入報價
+  if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; loadCryptoTickers(); }
 }
 
 // ── 價格快取（sessionStorage，24 小時 TTL） ────────
