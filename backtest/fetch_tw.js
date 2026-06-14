@@ -68,13 +68,16 @@ async function getCandles(id, opt = {}) {
   start.setFullYear(start.getFullYear() - years);
   const startStr = ymd(start), endStr = ymd(end);
 
-  if (!opt.force) {
-    const cached = readCache(id, startStr);
-    if (cached) return cached;
+  let candles;
+  const cached = !opt.force ? readCache(id, startStr) : null;
+  if (cached) {
+    candles = cached;
+  } else {
+    candles = await fetchFinMind(id, startStr, endStr);
+    if (candles.length) writeCache(id, startStr, candles);
   }
-  const candles = await fetchFinMind(id, startStr, endStr);
-  if (candles.length) writeCache(id, startStr, candles);
-  return candles;
+  // 快取可能涵蓋比要求更長的區間 → 一律切到要求的起始日，確保 --years 精準
+  return candles.filter(c => c.time >= startStr);
 }
 
 module.exports = { getCandles, fetchFinMind };

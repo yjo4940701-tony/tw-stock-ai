@@ -47,6 +47,7 @@ node optimize.js --id 2330 --by sharpe         # 依 Sharpe 排序
 node bt.js --id 2330 --strategy 3k --years 2 --trades
 node bt.js --id 2330 --strategy 3k --atr-risk           # 加 ATR 停損保護層
 node bt.js --id 2330 --strategy 3k --lb 200 --gy 50 --zf 20   # 自訂均線
+node optimize.js --id 2330 --strategy 3k --years 3 --by sharpe  # 三國最佳化(掃240/60/20MA+ATR保護)
 node batch.js --gist --strategy 3k --years 3 --by sharpe      # 三國掃自選股
 
 # 批次回測多檔
