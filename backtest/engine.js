@@ -140,24 +140,20 @@
     fractional: false   // 是否允許小數單位（台股整股=false；crypto=true，可買 0.001 顆）
   };
 
-  // ---------- 回測主體 ----------
-  function run(candles, userParams) {
+  // 合併使用者參數與預設（含三國純均線預設）
+  function resolveParams(userParams) {
     const p = Object.assign({}, DEFAULTS, userParams || {});
     // 三國預設走純均線（不啟用 ATR 風控層），除非使用者明確指定 useAtrRisk
     if (p.strategy === 'threeKingdoms' &&
         (userParams == null || userParams.useAtrRisk === undefined)) {
       p.useAtrRisk = false;
     }
-    const n = candles.length;
-    const closes = candles.map(c => c.close);
-    const highs = candles.map(c => c.high);
-    const lows = candles.map(c => c.low);
+    return p;
+  }
 
-    const atrArr = atr(highs, lows, closes, p.atrPeriod);
-
-    // ── 各策略的進場/出場訊號（只做多，台股現股不開槓桿）──
-    let entrySignal, exitSignal, warmup;
-
+  // 建立各策略的進場/出場/狀態訊號（只做多，台股現股不開槓桿）；run() 與 lastSignal() 共用
+  // 回傳 entrySignal(i)=新進場(rising edge)、exitSignal(i)=出場、activeSignal(i)=目前處於做多條件、warmup
+  function buildSignals(closes, p) {
     if (p.strategy === 'threeKingdoms') {
       // 三國：劉備240方向 / 關羽60進出 / 張飛20收兵
       const lb = sma(closes, p.lbPeriod);
@@ -181,32 +177,67 @@
         const s = tkSig(i);
         return s === 'MAIN_SHORT' || s === 'CORRECTION_SHORT';    // 轉空 / 牛市修正 → 收兵
       };
-      entrySignal = i => openLong(i) && !openLong(i - 1);         // rising edge
-      exitSignal = i => closeLong(i);
-      warmup = Math.max(p.lbPeriod + 1, p.atrPeriod) + 1;
-    } else {
-      // 三刀流：EMA交叉 + RSI回檔回升 + MACD柱轉向（三重確認）
-      const rsiArr = rsi(closes, p.rsiPeriod);
-      const emaF = ema(closes, p.emaFast);
-      const emaS = ema(closes, p.emaSlow);
-      const hist = macdHist(closes, p.macdFast, p.macdSlow, p.macdSignal);
-      function score(i) {
-        if (i < 1) return 0;
-        if (emaF[i] == null || emaS[i] == null || rsiArr[i] == null ||
-            rsiArr[i - 1] == null || hist[i] == null || hist[i - 1] == null) return 0;
-        const emaBull = emaF[i] > emaS[i] ? 1 : 0;
-        let dipped = false;
-        for (let j = Math.max(1, i - p.setupLookback); j <= i; j++) {
-          if (rsiArr[j] != null && rsiArr[j] < p.rsiLow) { dipped = true; break; }
-        }
-        const rsiConf = (dipped && rsiArr[i] > rsiArr[i - 1]) ? 1 : 0;
-        const macdConf = hist[i] > hist[i - 1] ? 1 : 0;
-        return emaBull + rsiConf + macdConf;
-      }
-      entrySignal = i => score(i) >= p.confirmsNeeded && score(i - 1) < p.confirmsNeeded;
-      exitSignal = i => emaF[i] != null && emaS[i] != null && emaF[i] < emaS[i];
-      warmup = Math.max(p.emaSlow, p.rsiPeriod, p.atrPeriod, p.macdSlow + p.macdSignal) + 1;
+      return {
+        entrySignal: i => openLong(i) && !openLong(i - 1),         // rising edge
+        exitSignal: i => closeLong(i),
+        activeSignal: i => openLong(i),                            // 目前處於做多區
+        warmup: Math.max(p.lbPeriod + 1, p.atrPeriod) + 1
+      };
     }
+    // 三刀流：EMA交叉 + RSI回檔回升 + MACD柱轉向（三重確認）
+    const rsiArr = rsi(closes, p.rsiPeriod);
+    const emaF = ema(closes, p.emaFast);
+    const emaS = ema(closes, p.emaSlow);
+    const hist = macdHist(closes, p.macdFast, p.macdSlow, p.macdSignal);
+    function score(i) {
+      if (i < 1) return 0;
+      if (emaF[i] == null || emaS[i] == null || rsiArr[i] == null ||
+          rsiArr[i - 1] == null || hist[i] == null || hist[i - 1] == null) return 0;
+      const emaBull = emaF[i] > emaS[i] ? 1 : 0;
+      let dipped = false;
+      for (let j = Math.max(1, i - p.setupLookback); j <= i; j++) {
+        if (rsiArr[j] != null && rsiArr[j] < p.rsiLow) { dipped = true; break; }
+      }
+      const rsiConf = (dipped && rsiArr[i] > rsiArr[i - 1]) ? 1 : 0;
+      const macdConf = hist[i] > hist[i - 1] ? 1 : 0;
+      return emaBull + rsiConf + macdConf;
+    }
+    return {
+      entrySignal: i => score(i) >= p.confirmsNeeded && score(i - 1) < p.confirmsNeeded,
+      exitSignal: i => emaF[i] != null && emaS[i] != null && emaF[i] < emaS[i],
+      activeSignal: i => score(i) >= p.confirmsNeeded,             // 目前達確認門檻
+      warmup: Math.max(p.emaSlow, p.rsiPeriod, p.atrPeriod, p.macdSlow + p.macdSignal) + 1
+    };
+  }
+
+  // 最新一根的訊號狀態（給訊號掃描用）
+  function lastSignal(candles, userParams) {
+    const p = resolveParams(userParams);
+    const closes = candles.map(c => c.close);
+    const sig = buildSignals(closes, p);
+    const i = closes.length - 1;
+    if (i < sig.warmup) return { strategy: p.strategy, ready: false, fresh: false, active: false, price: closes[i] };
+    return {
+      strategy: p.strategy, ready: true,
+      fresh: sig.entrySignal(i),     // 最新一根剛出現買進訊號
+      active: sig.activeSignal(i),   // 最新一根處於做多條件
+      price: closes[i], time: candles[i].time
+    };
+  }
+
+  // ---------- 回測主體 ----------
+  function run(candles, userParams) {
+    const p = resolveParams(userParams);
+    const n = candles.length;
+    const closes = candles.map(c => c.close);
+    const highs = candles.map(c => c.high);
+    const lows = candles.map(c => c.low);
+
+    const atrArr = atr(highs, lows, closes, p.atrPeriod);
+
+    // 進出場訊號（run 與 lastSignal 共用同一套）
+    const sig = buildSignals(closes, p);
+    const entrySignal = sig.entrySignal, exitSignal = sig.exitSignal, warmup = sig.warmup;
 
     const trades = [];
     const equity = []; // [{time, equity}]
@@ -336,5 +367,5 @@
     };
   }
 
-  return { run, DEFAULTS, ema, rsi, macdHist, atr, sma };
+  return { run, lastSignal, DEFAULTS, ema, rsi, macdHist, atr, sma };
 });

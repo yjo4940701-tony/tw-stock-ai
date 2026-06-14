@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="台股AI">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="lightweight-charts.min.js"></script>
-<script src="backtest/engine.js?v=20260614"></script>
+<script src="backtest/engine.js?v=20260614b"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh;}
@@ -639,6 +639,28 @@ select.bt-input{cursor:pointer;}
     <div class="bt-panel">
       <div id="crypto-ticker-table" style="overflow-x:auto;color:#64748b;font-size:13px;">載入中⋯</div>
     </div>
+
+    <!-- 訊號掃描 -->
+    <div class="bt-panel" style="margin-top:16px;">
+      <div class="bt-panel-title" style="margin-bottom:10px;">📡 訊號掃描 <span style="color:#475569;font-size:12px;font-weight:400;">掃一籃子幣，找出現在有買訊的</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div>
+          <div class="bt-label">策略</div>
+          <div class="bt-strategy-tabs">
+            <button class="bt-stab active" id="cscan-tb" onclick="setScanStrat('threeBlade')">三刀流</button>
+            <button class="bt-stab" id="cscan-tk" onclick="setScanStrat('threeKingdoms')">三國</button>
+          </div>
+        </div>
+        <div><div class="bt-label">週期</div>
+          <select class="bt-input" id="cscan-tf" style="width:100px;">
+            <option value="1D">日K</option><option value="4H">4H</option><option value="60M">1H</option><option value="15M">15分</option>
+          </select>
+        </div>
+        <button class="btn-add" onclick="runCryptoScan()" style="padding:10px 16px;font-size:13px;white-space:nowrap;">開始掃描</button>
+      </div>
+      <div id="crypto-scan-result" style="margin-top:12px;color:#64748b;font-size:13px;">選好策略與週期，按「開始掃描」（掃描 8 檔主流幣的最新訊號）</div>
+    </div>
+
     <!-- K 線圖 -->
     <div id="crypto-chart-box" class="bt-panel" style="display:none;margin-top:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -4069,6 +4091,64 @@ function runCryptoBacktest() {
     renderAdvResult(cryptoSym.replace('_USDT','/USDT'), candles, params,
       { container: 'crypto-bt-result', chartId: 'cryptoBtChart', unit: 'USDT', name: '', fmtPrice: cryptoPriceFmt });
   }).catch(function(e){ toast('回測失敗：' + e.message, 'err'); });
+}
+
+// ── 訊號掃描（逐幣抓 K 線跑 lastSignal）──────────
+var scanStrat = 'threeBlade';
+function setScanStrat(s) {
+  scanStrat = s;
+  document.getElementById('cscan-tb').classList.toggle('active', s === 'threeBlade');
+  document.getElementById('cscan-tk').classList.toggle('active', s === 'threeKingdoms');
+}
+
+function runCryptoScan() {
+  if (typeof BTEngine === 'undefined') { toast('引擎未載入', 'err'); return; }
+  var tf = document.getElementById('cscan-tf').value;
+  var strat = scanStrat;
+  var intraday = tf !== '1D';
+  var bars = strat === 'threeKingdoms' ? (tf === '1D' ? 300 : 400) : 200;
+  var box = document.getElementById('crypto-scan-result');
+  var results = [], i = 0;
+  function next() {
+    if (i >= CRYPTO_BASKET.length) { renderScan(results, strat, tf); return; }
+    var sym = CRYPTO_BASKET[i++];
+    box.innerHTML = '掃描中⋯ ' + i + '/' + CRYPTO_BASKET.length + '　' + sym.replace('_USDT','');
+    cryptoApi('market/klines', { symbol: sym, interval: tf, limit: bars }).then(function(j){
+      if (j.result && j.data && j.data.klines) {
+        var ks = j.data.klines.slice().reverse();
+        var candles = ks.map(function(k){ return { time: cryptoCandleTime(k.time, intraday), open:+k.open, high:+k.high, low:+k.low, close:+k.close }; });
+        var sig = BTEngine.lastSignal(candles, { strategy: strat });
+        results.push({ sym: sym, fresh: sig.fresh, active: sig.active, price: sig.price, ready: sig.ready });
+      } else { results.push({ sym: sym, err: true }); }
+      setTimeout(next, 150); // 節流，對 API 客氣
+    }).catch(function(){ results.push({ sym: sym, err: true }); setTimeout(next, 150); });
+  }
+  next();
+}
+
+function renderScan(results, strat, tf) {
+  var box = document.getElementById('crypto-scan-result');
+  // 排序：今日買訊 > 做多區 > 其他 > 錯誤
+  function rank(r){ return r.err?3 : r.fresh?0 : r.active?1 : 2; }
+  results.sort(function(a,b){ return rank(a)-rank(b); });
+  var stratName = strat === 'threeKingdoms' ? '三國' : '三刀流';
+  var freshN = results.filter(function(r){return r.fresh;}).length;
+  var html = '<div style="margin-bottom:8px;color:#94a3b8;">' + stratName + '｜' + tf + '　最新訊號（' + freshN + ' 檔出現買訊）</div>';
+  html += '<table class="bt-table"><thead><tr><th>幣種</th><th>價格</th><th>訊號</th></tr></thead><tbody>';
+  results.forEach(function(r){
+    var label, color;
+    if (r.err) { label = '資料失敗'; color = '#64748b'; }
+    else if (r.fresh) { label = '🟢 今日買訊'; color = '#22c55e'; }
+    else if (r.active) { label = '🟡 做多區'; color = '#eab308'; }
+    else { label = '— 無訊號'; color = '#64748b'; }
+    html += '<tr style="cursor:pointer;" onclick="openCryptoChart(\''+r.sym+'\')">'
+      + '<td style="font-weight:600;">'+r.sym.replace('_USDT','')+'</td>'
+      + '<td>'+(r.price!=null?cryptoPriceFmt(r.price):'-')+'</td>'
+      + '<td style="color:'+color+';font-weight:600;">'+label+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="color:#475569;font-size:11px;margin-top:6px;">🟢 最新一根剛出現進場訊號　🟡 目前處於做多條件（未必是新訊號）　點列看 K 線</div>';
+  box.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════
