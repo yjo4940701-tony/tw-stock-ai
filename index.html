@@ -649,6 +649,15 @@ select.bt-input{cursor:pointer;}
       </div>
     </div>
 
+    <!-- 我的幣清單 -->
+    <div class="bt-panel" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div class="bt-label" style="margin:0;">⭐ 我的幣清單 <span style="color:#475569;font-size:11px;font-weight:400;">報價與訊號掃描都跟著這份清單；用上方搜尋找幣→「＋加入」，跨裝置同步</span></div>
+        <button onclick="resetCoins()" class="btn-settings" style="white-space:nowrap;font-size:12px;">↺ 回復預設 8 檔</button>
+      </div>
+      <div id="crypto-mycoins" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+
     <div class="bt-panel">
       <div id="crypto-ticker-table" style="overflow-x:auto;color:#64748b;font-size:13px;">載入中⋯</div>
     </div>
@@ -671,7 +680,7 @@ select.bt-input{cursor:pointer;}
         </div>
         <button class="btn-add" onclick="runCryptoScan()" style="padding:10px 16px;font-size:13px;white-space:nowrap;">開始掃描</button>
       </div>
-      <div id="crypto-scan-result" style="margin-top:12px;color:#64748b;font-size:13px;">選好策略與週期，按「開始掃描」（掃描 8 檔主流幣的最新訊號）</div>
+      <div id="crypto-scan-result" style="margin-top:12px;color:#64748b;font-size:13px;">選好策略與週期，按「開始掃描」（掃描「我的幣清單」裡所有幣的最新訊號）</div>
     </div>
 
     <!-- K 線圖 -->
@@ -707,6 +716,42 @@ select.bt-input{cursor:pointer;}
         </div>
         <div><div class="bt-label">根數</div><input class="bt-input" id="cbt-bars" type="number" value="300" min="120" max="500" step="50" style="width:90px;"></div>
         <button class="btn-add" onclick="runCryptoBacktest()" style="padding:10px 16px;font-size:13px;white-space:nowrap;">執行回測</button>
+      </div>
+
+      <!-- 細項設定 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+        <div class="bt-label" style="margin:0;">⚙ 細項設定</div>
+        <button onclick="resetCryptoBtParams()" class="btn-settings" style="font-size:11px;white-space:nowrap;">↺ 回復預設</button>
+      </div>
+      <!-- 三刀流參數 -->
+      <div class="bt-section" id="cbt-tb-params" style="margin-top:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div><div class="bt-label">ATR 停損×</div><input class="bt-input" id="cbt-sl" type="number" value="2" min="0.5" max="6" step="0.5"></div>
+          <div><div class="bt-label">ATR 停利×</div><input class="bt-input" id="cbt-tp" type="number" value="3" min="1" max="10" step="0.5"></div>
+          <div><div class="bt-label">追蹤止盈×</div><input class="bt-input" id="cbt-trail" type="number" value="2.5" min="1" max="8" step="0.5"></div>
+          <div><div class="bt-label">回檔門檻 RSI</div><input class="bt-input" id="cbt-rsiLow" type="number" value="50" min="30" max="60" step="5"></div>
+          <div><div class="bt-label">確認數（刀）</div>
+            <select class="bt-input" id="cbt-confirms"><option value="3" selected>3 刀</option><option value="2">2 刀（弱）</option></select>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;color:#94a3b8;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="cbt-trail-on" checked> 啟用追蹤止盈
+        </label>
+      </div>
+      <!-- 三國參數 -->
+      <div class="bt-section" id="cbt-tk-params" style="display:none;margin-top:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div><div class="bt-label">劉備 方向</div><input class="bt-input" id="cbt-lb" type="number" value="240" min="60" max="300" step="10"></div>
+          <div><div class="bt-label">關羽 進出</div><input class="bt-input" id="cbt-gy" type="number" value="60" min="20" max="120" step="5"></div>
+          <div><div class="bt-label">張飛 收兵</div><input class="bt-input" id="cbt-zf" type="number" value="20" min="5" max="60" step="5"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;color:#94a3b8;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="cbt-bounce" checked> 做熊市反彈（跌破劉備但站上關羽 → 短多）
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;color:#94a3b8;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="cbt-atrrisk"> 加 ATR 停損保護層（原版純均線）
+        </label>
+        <div style="margin-top:8px;color:#64748b;font-size:11px;line-height:1.5;">劉備240MA 定多空 · 關羽60MA 抓進出 · 張飛20MA 收兵。需 240MA 暖機（日K 限 300 根 → 建議改短週期或減小均線）。</div>
       </div>
       <div style="background:#3a2a1e;border-radius:6px;padding:7px 10px;font-size:11px;color:#fcd34d;line-height:1.5;margin-top:10px;">
         ⚠ crypto 成本：taker 0.05%、無證交稅。三國需 240 根暖機（日K 限 300 根 → 僅約 60 根可交易，建議改短週期或加根數）。出場用當根收盤近似。
@@ -3986,7 +4031,36 @@ function fcap(v)  { if(v==null) return 'N/A'; if(v>=1e12) return (v/1e12).toFixe
 // 虛擬貨幣（派網 Pionex 公開行情，經 CF Worker proxy 繞 CORS）
 // ═══════════════════════════════════════════════════
 var CRYPTO_PROXY = 'https://tw-stock-news.yjo4940701.workers.dev';
-var CRYPTO_BASKET = ['BTC_USDT','ETH_USDT','SOL_USDT','BNB_USDT','XRP_USDT','DOGE_USDT','ADA_USDT','AVAX_USDT'];
+var CRYPTO_DEFAULTS = ['BTC_USDT','ETH_USDT','SOL_USDT','BNB_USDT','XRP_USDT','DOGE_USDT','ADA_USDT','AVAX_USDT'];
+function loadCryptoBasket(){
+  try { var raw = localStorage.getItem('tw_crypto_basket'); if(raw){ var a = JSON.parse(raw); if(Array.isArray(a)) return a; } } catch(e){}
+  return CRYPTO_DEFAULTS.slice();
+}
+var CRYPTO_BASKET = loadCryptoBasket();
+function saveCryptoBasket(){ localStorage.setItem('tw_crypto_basket', JSON.stringify(CRYPTO_BASKET)); if(typeof scheduleGistPush==='function') scheduleGistPush(); }
+function addCoinFromSearch(sym){
+  if (CRYPTO_BASKET.indexOf(sym) >= 0){ toast(cryptoLabel(sym)+' 已在清單中'); return; }
+  if (CRYPTO_BASKET.length >= 40){ toast('清單最多 40 檔，請先移除一些','err'); return; }
+  CRYPTO_BASKET.push(sym); saveCryptoBasket(); renderMyCoins(); loadCryptoTickers();
+  toast('已加入 '+cryptoLabel(sym));
+}
+function removeCoin(sym){
+  var i = CRYPTO_BASKET.indexOf(sym); if (i < 0) return;
+  CRYPTO_BASKET.splice(i,1); saveCryptoBasket(); renderMyCoins(); loadCryptoTickers();
+}
+function resetCoins(){
+  CRYPTO_BASKET = CRYPTO_DEFAULTS.slice(); saveCryptoBasket(); renderMyCoins(); loadCryptoTickers();
+  toast('已回復預設 8 檔');
+}
+function renderMyCoins(){
+  var box = document.getElementById('crypto-mycoins'); if(!box) return;
+  if(!CRYPTO_BASKET.length){ box.innerHTML = '<span style="color:#64748b;font-size:12px;">清單是空的，用上方搜尋找幣後按「＋加入」</span>'; return; }
+  box.innerHTML = CRYPTO_BASKET.map(function(sym){
+    return '<span style="display:inline-flex;align-items:center;gap:5px;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:4px 6px 4px 11px;font-size:12px;">'
+      + '<span style="cursor:pointer;font-weight:600;" onclick="openCryptoChart(\''+sym+'\')">'+cryptoLabel(sym)+'</span>'
+      + '<span onclick="removeCoin(\''+sym+'\')" style="cursor:pointer;color:#64748b;font-size:14px;line-height:1;padding:0 2px;" title="移除">✕</span></span>';
+  }).join('');
+}
 var cryptoSym = null, cryptoTf = '1D', _cryptoChart = null;
 
 function cryptoApi(ep, params) {
@@ -4068,8 +4142,13 @@ function onCryptoSearch() {
     var tag = s.market==='perp'
       ? '<span style="color:#f59e0b;font-size:11px;">永續</span>'
       : '<span style="color:#22c55e;font-size:11px;">現貨</span>';
-    return '<div onmousedown="selectCryptoSymbol(\''+s.symbol+'\')" style="padding:9px 12px;cursor:pointer;display:flex;justify-content:space-between;border-bottom:1px solid #1e293b;">'
-      + '<span style="font-weight:600;">'+s.base+'<span style="color:#475569;font-weight:400;font-size:12px;"> '+cryptoLabel(s.symbol)+'</span></span>' + tag + '</div>';
+    var inList = CRYPTO_BASKET.indexOf(s.symbol) >= 0;
+    var addBtn = inList
+      ? '<span style="color:#22c55e;font-size:11px;white-space:nowrap;">✓ 已加入</span>'
+      : '<span onmousedown="event.stopPropagation();addCoinFromSearch(\''+s.symbol+'\')" style="cursor:pointer;color:#3b82f6;font-size:12px;white-space:nowrap;padding:2px 6px;border:1px solid #1d4ed8;border-radius:10px;">＋加入</span>';
+    return '<div style="padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #1e293b;">'
+      + '<span onmousedown="selectCryptoSymbol(\''+s.symbol+'\')" style="cursor:pointer;font-weight:600;flex:1;">'+s.base+'<span style="color:#475569;font-weight:400;font-size:12px;"> '+cryptoLabel(s.symbol)+'</span></span>'
+      + tag + addBtn + '</div>';
   }).join('');
   box.style.display = 'block';
 }
@@ -4137,6 +4216,16 @@ function setCryptoBtStrat(s) {
   cryptoBtStrat = s;
   document.getElementById('cbt-strat-tb').classList.toggle('active', s === 'threeBlade');
   document.getElementById('cbt-strat-tk').classList.toggle('active', s === 'threeKingdoms');
+  document.getElementById('cbt-tb-params').style.display = s === 'threeBlade' ? 'block' : 'none';
+  document.getElementById('cbt-tk-params').style.display = s === 'threeKingdoms' ? 'block' : 'none';
+}
+function resetCryptoBtParams() {
+  var d = { 'cbt-sl':2,'cbt-tp':3,'cbt-trail':2.5,'cbt-rsiLow':50,'cbt-confirms':'3','cbt-lb':240,'cbt-gy':60,'cbt-zf':20 };
+  Object.keys(d).forEach(function(id){ var el=document.getElementById(id); if(el) el.value=d[id]; });
+  document.getElementById('cbt-trail-on').checked = true;
+  document.getElementById('cbt-bounce').checked = true;
+  document.getElementById('cbt-atrrisk').checked = false;
+  toast('已回復預設參數');
 }
 // 時間一律用 UTC ISO，確保網頁/CLI 結果一致
 function cryptoCandleTime(ms, intraday) {
@@ -4160,10 +4249,25 @@ function runCryptoBacktest() {
         open:+k.open, high:+k.high, low:+k.low, close:+k.close, volume:+k.volume };
     });
     if (candles.length < 60) { toast('資料不足（' + candles.length + ' 根）', 'err'); return; }
-    var params = { strategy: cryptoBtStrat, capital: 10000, feeRate: 0.0005, taxRate: 0, fractional: true }; // crypto：taker 0.05%、無證交稅、可買小數
-    if (cryptoBtStrat === 'threeKingdoms' && candles.length < 270) {
-      toast('三國需 240 根暖機，目前僅 ' + candles.length + ' 根，建議加根數或改短週期', 'err');
-      return;
+    // crypto：taker 0.05%、無證交稅、可買小數
+    var params = { strategy: cryptoBtStrat, capital: 10000, feeRate: 0.0005, taxRate: 0, fractional: true };
+    if (cryptoBtStrat === 'threeKingdoms') {
+      params.lbPeriod = +document.getElementById('cbt-lb').value;
+      params.gyPeriod = +document.getElementById('cbt-gy').value;
+      params.zfPeriod = +document.getElementById('cbt-zf').value;
+      params.allowBounce = document.getElementById('cbt-bounce').checked;
+      params.useAtrRisk = document.getElementById('cbt-atrrisk').checked;
+      if (candles.length < params.lbPeriod + 30) {
+        toast('資料不足以暖機 ' + params.lbPeriod + 'MA（僅 ' + candles.length + ' 根），請加根數、改短週期或減小劉備均線', 'err');
+        return;
+      }
+    } else {
+      params.slMult = +document.getElementById('cbt-sl').value;
+      params.tpMult = +document.getElementById('cbt-tp').value;
+      params.trailMult = +document.getElementById('cbt-trail').value;
+      params.rsiLow = +document.getElementById('cbt-rsiLow').value;
+      params.confirmsNeeded = +document.getElementById('cbt-confirms').value;
+      params.useTrailing = document.getElementById('cbt-trail-on').checked;
     }
     renderAdvResult(cryptoLabel(cryptoSym), candles, params,
       { container: 'crypto-bt-result', chartId: 'cryptoBtChart', unit: 'USDT', name: '', fmtPrice: cryptoPriceFmt });
@@ -4180,6 +4284,7 @@ function setScanStrat(s) {
 
 function runCryptoScan() {
   if (typeof BTEngine === 'undefined') { toast('引擎未載入', 'err'); return; }
+  if (!CRYPTO_BASKET.length) { document.getElementById('crypto-scan-result').innerHTML = '<span style="color:#f59e0b;">「我的幣清單」是空的，請先用上方搜尋加入幣種</span>'; return; }
   var tf = document.getElementById('cscan-tf').value;
   var strat = scanStrat;
   var intraday = tf !== '1D';
@@ -4257,7 +4362,7 @@ function showPage(page) {
   var ncb = document.getElementById('nav-crypto');
   if (ncb) ncb.classList.toggle('active', page === 'crypto');
   // 首次進虛擬貨幣分頁 → 載入報價
-  if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; loadCryptoTickers(); }
+  if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; renderMyCoins(); loadCryptoTickers(); }
 }
 
 // ── 價格快取（sessionStorage，24 小時 TTL） ────────
@@ -5563,7 +5668,7 @@ function loadFromBatch(ticker) {
 // ─────────────────────────────────
 // ⚠️ AI Key (tw_key1/tw_key2) 不同步 Gist（GitHub 會掃描並撤銷 key）
 // 手機的 AI Key 需手動填入設定頁
-var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts'];
+var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts','tw_crypto_basket'];
 var _gistSyncTimer = null;
 
 function getGistHeaders() {
@@ -5601,6 +5706,7 @@ function syncFromGist(silent) {
       });
       // 重新載入 GROUPS 和畫面
       GROUPS = loadGroups();
+      if (typeof loadCryptoBasket === 'function') { CRYPTO_BASKET = loadCryptoBasket(); if (typeof renderMyCoins === 'function') renderMyCoins(); }
       renderTabs();
       renderGrid();
       updateAlertBadge();
