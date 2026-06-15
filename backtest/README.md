@@ -27,7 +27,7 @@
 | `engine.js` | 共用回測核心（純 JS、零依賴、UMD：Node + 瀏覽器共用）。內建 RSI/EMA/MACD/ATR 指標 |
 | `fetch_tw.js` | FinMind 日K 抓取 + `cache/` 當日 JSON 快取（省 API 限額） |
 | `bt.js` | 單股回測 CLI |
-| `optimize.js` | 單股參數網格最佳化 |
+| `optimize.js` | 單股/幣參數網格最佳化（`--wf` 樣本外驗證、`--crypto` 派網行情）|
 | `batch.js` | 一次回測多檔，彙總排行（本地大量回測） |
 
 ---
@@ -49,6 +49,17 @@ node bt.js --id 2330 --strategy 3k --atr-risk           # 加 ATR 停損保護�
 node bt.js --id 2330 --strategy 3k --lb 200 --gy 50 --zf 20   # 自訂均線
 node optimize.js --id 2330 --strategy 3k --years 3 --by sharpe  # 三國最佳化(掃240/60/20MA+ATR保護)
 node batch.js --gist --strategy 3k --years 3 --by sharpe      # 三國掃自選股
+
+# 樣本外驗證（Walk-forward / Out-of-Sample）— 戳破「參數調得漂亮、換段就失靈」
+node optimize.js --id 2330 --years 3 --wf            # 前70%訓練→後30%沒看過的實測，並列前後段績效
+node optimize.js --id 2330 --years 3 --wf --split 0.6  # 改 60/40 切分
+node optimize.js --crypto BTC_USDT --tf 4H --wf       # 幣也適用（派網單次上限 500 根）
+node optimize.js --id 2330 --strategy 3k --years 3 --wf  # 三國（前段需 ≥280 根暖機 240MA）
+# 看「後段報酬」：與前段差不多→穩健；大幅縮水/轉負→過度配適的僥倖，別採用
+
+# 幣參數最佳化（派網公開行情）
+node optimize.js --crypto BTC_USDT --tf 1D            # 細網格
+node optimize.js --crypto ETH_USDT --tf 4H --strategy 3k --fast
 
 # 批次回測多檔
 node batch.js --ids 2330,2317,2454 --years 2 --by sharpe
@@ -82,8 +93,8 @@ node batch.js --gist --csv out.csv              # 輸出 CSV
    **結論**：有大額配息或做過分割的標的（ETF、金融、傳產），回測結果不可信。
    還原價需 FinMind 付費 dataset（`TaiwanStockPriceAdj`），暫不接。
 
-2. **`--optimize` 是樣本內最佳化（in-sample）**：在同一段資料找最佳參數會高估實際表現，
-   這是 overfitting。真要信，需 Out-of-Sample / Walk-forward 驗證（之後另做）。
+2. **`optimize.js` 預設是樣本內最佳化（in-sample）**：在同一段資料找最佳參數會高估實際表現（overfitting）。
+   **已補 `--wf` 樣本外驗證**：前段挑參數、後段（沒看過）實測並列，後段才是真考驗。
 
 3. **出場用當根收盤近似**：停損/停利/追蹤都以收盤價判斷觸發、收盤價成交，
    不模擬盤中觸價或跳空穿價（台股漲跌停 + 缺口下，盤中觸價回測易過度樂觀）。
@@ -101,4 +112,4 @@ node batch.js --gist --csv out.csv              # 輸出 CSV
 ## 待補（不在本次範圍）
 
 - 網頁端「進階回測」分頁（計劃書 Step 4）+ 網頁/CLI 一致性驗證（Step 5）
-- 還原價資料源、Out-of-Sample 驗證、分K 回測
+- 還原價資料源、台股分K 回測（需 Fugle）。Out-of-Sample 驗證已完成（`--wf`）
