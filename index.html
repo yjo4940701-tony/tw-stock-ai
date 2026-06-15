@@ -696,6 +696,11 @@ select.bt-input{cursor:pointer;}
       </div>
       <div id="crypto-chart-leg" style="font-size:11px;margin-top:6px;"></div>
       <div style="margin-top:6px;"><div id="cryptoChart" style="width:100%;height:360px;"></div></div>
+      <div style="margin-top:10px;">
+        <button id="cryptoAiBtn" class="btn-add" onclick="runCryptoAI()" style="padding:9px 16px;font-size:13px;">🤖 AI 分析（純技術面）</button>
+        <span style="color:#475569;font-size:11px;margin-left:8px;">按一次花一次 AI 額度 · 依目前週期</span>
+      </div>
+      <div id="crypto-ai-result" style="margin-top:12px;"></div>
     </div>
 
     <!-- 進階回測（crypto，共用 engine.js）-->
@@ -4272,6 +4277,108 @@ function runCryptoBacktest() {
     renderAdvResult(cryptoLabel(cryptoSym), candles, params,
       { container: 'crypto-bt-result', chartId: 'cryptoBtChart', unit: 'USDT', name: '', fmtPrice: cryptoPriceFmt });
   }).catch(function(e){ toast('回測失敗：' + e.message, 'err'); });
+}
+
+// ── crypto AI 分析（純技術面，沿用台股 AI 流程）──────────
+// KD（9 RSV，K/D 各 3 平滑，用真實高低），engine 沒有故在此就地算。命名避開既有 calcKD(closes,n)
+function cryptoKD(highs, lows, closes, n) {
+  n = n || 9;
+  var k = 50, d = 50, ks = [], ds = [];
+  for (var i = 0; i < closes.length; i++) {
+    if (i < n - 1) { ks.push(null); ds.push(null); continue; }
+    var hh = -Infinity, ll = Infinity;
+    for (var j = i - n + 1; j <= i; j++) { if (highs[j] > hh) hh = highs[j]; if (lows[j] < ll) ll = lows[j]; }
+    var rsv = hh === ll ? 50 : (closes[i] - ll) / (hh - ll) * 100;
+    k = k * 2 / 3 + rsv / 3; d = d * 2 / 3 + k / 3;
+    ks.push(k); ds.push(d);
+  }
+  return { k: ks, d: ds };
+}
+
+function cryptoAICall(prompt, resEl, btn, onText) {
+  var apiKey = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  var apiKey2 = localStorage.getItem('tw_key2');
+  if (!apiKey) { openSettings(); toast('請先設定 AI API Key', 'err'); btn.disabled = false; btn.textContent = '🤖 AI 分析（純技術面）'; return; }
+  function buildReq(key) {
+    var isG = key.indexOf('AIza') === 0;
+    if (isG) return { u: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + key,
+      h: { 'Content-Type': 'application/json' }, b: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.7,maxOutputTokens:2048} }), isG:true };
+    return { u: 'https://api.groq.com/openai/v1/chat/completions',
+      h: { 'Content-Type':'application/json', 'Authorization':'Bearer '+key }, b: JSON.stringify({ model:'llama-3.3-70b-versatile', messages:[{role:'user',content:prompt}], temperature:0.7, max_tokens:2048 }), isG:false };
+  }
+  function callKey(key, label) {
+    var req = buildReq(key);
+    console.log('[crypto AI] 使用：' + label);
+    return fetch(req.u, { method:'POST', headers:req.h, body:req.b })
+      .then(function(r){ if(!r.ok) return r.json().then(function(e){ throw new Error((e.error&&e.error.message)||'HTTP '+r.status); }); return r.json(); })
+      .then(function(data){
+        var text = req.isG
+          ? (data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text)
+          : (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content);
+        if (!text) throw new Error('回應格式異常');
+        onText(text);
+      });
+  }
+  function isQuota(m){ return m.indexOf('quota')!==-1||m.indexOf('high demand')!==-1||m.indexOf('rate limit')!==-1||m.indexOf('429')!==-1; }
+  callKey(apiKey, '主要 Key').catch(function(e){
+    if (apiKey2 && isQuota(e.message)) { resEl.innerHTML = '<p style="color:#f59e0b;">⚡ 主要 Key 用盡，切換備用 Key...</p>'; return callKey(apiKey2, '備用 Key'); }
+    throw e;
+  }).catch(function(e){
+    resEl.innerHTML = '<p style="color:#f87171;">分析失敗：'+e.message+'</p>';
+    btn.disabled = false; btn.textContent = '🔄 重新分析';
+  });
+}
+
+function runCryptoAI() {
+  if (!cryptoSym) { toast('請先選一個幣種', 'err'); return; }
+  if (typeof BTEngine === 'undefined') { toast('引擎未載入', 'err'); return; }
+  var btn = document.getElementById('cryptoAiBtn');
+  var resEl = document.getElementById('crypto-ai-result');
+  btn.disabled = true; btn.innerHTML = '<div class="spin" style="width:12px;height:12px;"></div> 分析中...';
+  resEl.innerHTML = '<p style="color:#60a5fa;">📊 抓 K 線、計算指標中...</p>';
+  var tf = cryptoTf, intraday = tf !== '1D';
+  cryptoApi('market/klines', { symbol: cryptoSym, interval: tf, limit: 200 }).then(function(j){
+    if (!j.result || !j.data || !j.data.klines) throw new Error('K 線載入失敗');
+    var ks = j.data.klines.slice().reverse();
+    var closes = ks.map(function(k){ return +k.close; });
+    var highs = ks.map(function(k){ return +k.high; });
+    var lows = ks.map(function(k){ return +k.low; });
+    if (closes.length < 60) throw new Error('資料不足（'+closes.length+' 根）');
+    var i = closes.length - 1, price = closes[i];
+    var ma5 = BTEngine.sma(closes,5), ma20 = BTEngine.sma(closes,20), ma60 = BTEngine.sma(closes,60);
+    var rsiArr = BTEngine.rsi(closes,14), hist = BTEngine.macdHist(closes,12,26,9);
+    var kd = cryptoKD(highs, lows, closes, 9);
+    function last(a){ for(var x=a.length-1;x>=0;x--) if(a[x]!=null) return a[x]; return null; }
+    function fp(v){ return v==null?'-':cryptoPriceFmt(v); }
+    var rsiNow = last(rsiArr), kNow = last(kd.k), dNow = last(kd.d);
+    var histNow = hist[i], histPrev = hist[i-1];
+    var maOrder = (last(ma5)>last(ma20) && last(ma20)>last(ma60)) ? '多頭排列（MA5>20>60）'
+      : (last(ma5)<last(ma20) && last(ma20)<last(ma60)) ? '空頭排列（MA5<20<60）' : '均線糾結';
+    var label = cryptoLabel(cryptoSym), tfName = ({ '1D':'日K','4H':'4小時','60M':'1小時','15M':'15分' })[tf] || tf;
+    // 近 30 根高低當參考區間
+    var seg = closes.slice(-30), segH = Math.max.apply(null, highs.slice(-30)), segL = Math.min.apply(null, lows.slice(-30));
+    var prompt = '你是專業的加密貨幣技術分析師。以下是「'+label+'」'+tfName+'的最新技術指標（僅技術面，無基本面/新聞）：\n\n'
+      + '- 現價：'+fp(price)+' USDT\n'
+      + '- 均線：MA5='+fp(last(ma5))+'、MA20='+fp(last(ma20))+'、MA60='+fp(last(ma60))+'　→ '+maOrder+'\n'
+      + '- RSI(14)：'+(rsiNow!=null?rsiNow.toFixed(1):'-')+'\n'
+      + '- KD：K='+(kNow!=null?kNow.toFixed(1):'-')+'、D='+(dNow!=null?dNow.toFixed(1):'-')+'（K'+(kNow>dNow?'>':'<')+'D）\n'
+      + '- MACD 柱：'+(histNow!=null?histNow.toFixed(4):'-')+'（'+(histNow>histPrev?'動能轉強':'動能轉弱')+'）\n'
+      + '- 近 30 根區間：'+fp(segL)+' ~ '+fp(segH)+'\n\n'
+      + '請用繁體中文，務必依下列 Markdown 結構回答（簡潔、條列、給具體數字）：\n\n'
+      + '## 📊 技術面解讀\n（解讀均線排列、RSI/KD 位置、MACD 動能，判斷目前偏多或偏空）\n\n'
+      + '## 🎯 操作建議\n（給「進場價區間、停損價、目標價」三個具體數字，基於上面指標位置；'+tfName+'週期對應的短線操作）\n\n'
+      + '## 💡 一句話結論\n（現在偏多可進場 / 等回測 / 偏空觀望，擇一明確結論）\n\n'
+      + '只做技術面、只做多方向思考即可，不要免責聲明（系統會自動附上）。';
+    cryptoAICall(prompt, resEl, btn, function(text){
+      resEl.innerHTML = md2html(text);
+      resEl.innerHTML += '<div style="margin-top:14px;padding:6px 10px;background:rgba(15,23,42,0.7);border:1px solid #1e293b;border-radius:6px;font-size:11px;color:#64748b;">'
+        + '📡 來源：純技術面（'+tfName+'，無新聞/基本面）　·　⚠ 僅供參考、非投資建議，加密貨幣波動劇烈請自行判斷</div>';
+      btn.disabled = false; btn.textContent = '🔄 重新分析';
+    });
+  }).catch(function(e){
+    resEl.innerHTML = '<p style="color:#f87171;">分析失敗：'+e.message+'</p>';
+    btn.disabled = false; btn.textContent = '🤖 AI 分析（純技術面）';
+  });
 }
 
 // ── 訊號掃描（逐幣抓 K 線跑 lastSignal）──────────
