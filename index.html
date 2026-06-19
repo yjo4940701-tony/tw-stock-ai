@@ -4134,10 +4134,17 @@ function fmtCryptoPrice(v){ if(v>=100) return v.toLocaleString('en-US',{maximumF
 function loadCryptoTickers() {
   var box = document.getElementById('crypto-ticker-table');
   box.innerHTML = '載入中⋯';
-  cryptoApi('market/tickers', {}).then(function(j){
-    if (!j.result || !j.data || !j.data.tickers) { box.innerHTML = '<span style="color:#ef4444;">報價載入失敗</span>'; return; }
+  // 現貨與永續是兩個端點：清單含永續（_PERP，如代幣化美股 MUX/NVDAX）時要多抓 pxtype=PERP，否則報價表會漏掉它們
+  var needPerp = CRYPTO_BASKET.some(function(s){ return /_PERP$/.test(s); });
+  var calls = [ cryptoApi('market/tickers', {}).catch(function(){ return null; }) ];
+  if (needPerp) calls.push(cryptoApi('market/tickers', { pxtype:'PERP' }).catch(function(){ return null; }));
+  Promise.all(calls).then(function(results){
     var map = {};
-    j.data.tickers.forEach(function(t){ map[t.symbol] = t; });
+    results.forEach(function(j){
+      var ts = j && j.data && j.data.tickers;
+      if (ts) ts.forEach(function(t){ map[t.symbol] = t; });
+    });
+    if (!Object.keys(map).length) { box.innerHTML = '<span style="color:#ef4444;">報價載入失敗</span>'; return; }
     var rows = CRYPTO_BASKET.map(function(sym){ return map[sym]; }).filter(Boolean);
     if (!rows.length) { box.innerHTML = '<span style="color:#ef4444;">無資料</span>'; return; }
     var html = '<table class="bt-table"><thead><tr><th>幣種</th><th>價格(USDT)</th><th>24h漲跌</th><th>24h量</th></tr></thead><tbody>';
@@ -4145,7 +4152,7 @@ function loadCryptoTickers() {
       var open=+t.open, close=+t.close, chg = open? (close-open)/open*100 : 0;
       var cls = chg>=0?'up':'down';
       html += '<tr style="cursor:pointer;" onclick="openCryptoChart(\''+t.symbol+'\')">'
-        + '<td style="font-weight:600;">'+t.symbol.replace('_USDT','')+'<span style="color:#475569;">/USDT</span></td>'
+        + '<td style="font-weight:600;">'+cryptoLabel(t.symbol)+'</td>'
         + '<td>'+fmtCryptoPrice(close)+'</td>'
         + '<td class="'+cls+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</td>'
         + '<td style="color:#94a3b8;">'+fvol(+t.volume)+'</td></tr>';
