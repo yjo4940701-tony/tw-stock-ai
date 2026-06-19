@@ -128,6 +128,54 @@ def get_eps(watchlist):
             if t in stocks and stocks[t].get('eps') is not None}
 
 
+def ai_summary(data_text):
+    """把週報三段數據丟給 AI，回 1-2 句『本週持股重點』。
+    Key 從環境變數 AI_API_KEY（備用 AI_API_KEY2）讀，自動判斷 Groq(gsk_)/Gemini(AIza)。
+    無 Key 或失敗 → 回 None，週報照常出（AI 只是加值，不可拖垮主流程）。"""
+    key  = os.environ.get('AI_API_KEY', '').strip()
+    key2 = os.environ.get('AI_API_KEY2', '').strip()
+    if not key:
+        print('未設 AI_API_KEY，略過 AI 總結')
+        return None
+    if not data_text.strip():
+        return None
+
+    prompt = (
+        '你是台股助理。以下是某使用者自選股「本週數據摘要」（漲跌排行 / 法人連買 / 高 EPS）。\n'
+        '請用繁體中文寫「本週持股重點」，最多 2 句、80 字內，客觀點出值得留意的方向（誰強誰弱、'
+        '哪檔有法人或基本面撐腰）。不要喊買賣、不要給目標價、不要逐檔複述數字。直接給結論句，不要前綴。\n\n'
+        + data_text
+    )
+
+    def call(k):
+        is_g = k.startswith('AIza')
+        if is_g:
+            u = ('https://generativelanguage.googleapis.com/v1beta/models/'
+                 'gemini-2.5-flash-lite:generateContent?key=' + k)
+            r = requests.post(u, json={'contents': [{'parts': [{'text': prompt}]}],
+                              'generationConfig': {'temperature': 0.6, 'maxOutputTokens': 256}}, timeout=30)
+            r.raise_for_status()
+            return r.json()['candidates'][0]['content']['parts'][0]['text']
+        r = requests.post('https://api.groq.com/openai/v1/chat/completions',
+                          headers={'Authorization': 'Bearer ' + k},
+                          json={'model': 'llama-3.3-70b-versatile',
+                                'messages': [{'role': 'user', 'content': prompt}],
+                                'temperature': 0.6, 'max_tokens': 256}, timeout=30)
+        r.raise_for_status()
+        return r.json()['choices'][0]['message']['content']
+
+    for k, label in [(key, '主要'), (key2, '備用')]:
+        if not k:
+            continue
+        try:
+            txt = call(k).strip().replace('\n', ' ')
+            print(f'AI 總結（{label} Key）完成')
+            return txt
+        except Exception as e:
+            print(f'AI 總結（{label} Key）失敗: {e}')
+    return None
+
+
 def send_telegram(token, chat_id, message):
     r = requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
                       json={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
@@ -193,6 +241,12 @@ def main():
         lines.append('⭐ <b>高 EPS（TTM）</b>')
         for sid, e in top_eps:
             lines.append(f'　{label(sid)}　{e:.1f} 元')
+
+    # ④ AI 一句話總結 → 插在最上方當開場（用前三段數據生成；無 AI_API_KEY 則略過）
+    data_text = re.sub(r'</?b>', '', '\n'.join(lines[3:]).strip())
+    summary = ai_summary(data_text)
+    if summary:
+        lines[3:3] = ['🤖 <b>本週重點</b>', f'　{summary}', '']
 
     message = '\n'.join(lines).rstrip()
 
