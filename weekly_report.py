@@ -11,6 +11,7 @@ import requests
 import json
 import os
 import re
+import time
 from datetime import datetime
 
 GIST_ID   = '0b9966cb6fc32b5aeffe4ad7bdc07836'
@@ -168,12 +169,15 @@ def ai_summary(data_text):
     for k, label in [(key, '主要'), (key2, '備用')]:
         if not k:
             continue
-        try:
-            txt = call(k).strip().replace('\n', ' ')
-            print(f'AI 總結（{label} Key）完成')
-            return txt
-        except Exception as e:
-            print(f'AI 總結（{label} Key）失敗: {e}')
+        for attempt in range(1, 4):   # 同一把 key 最多試 3 次（吸收 5xx/逾時瞬間錯誤）
+            try:
+                txt = call(k).strip().replace('\n', ' ')
+                print(f'AI 總結（{label} Key，第 {attempt} 次）完成')
+                return txt
+            except Exception as e:
+                print(f'AI 總結（{label} Key，第 {attempt} 次）失敗: {e}')
+                if attempt < 3:
+                    time.sleep(3)
     return None
 
 
