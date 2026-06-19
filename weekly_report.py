@@ -148,16 +148,25 @@ def ai_summary(data_text):
         + data_text
     )
 
+    # Gemini 模型依序嘗試：flash-lite 偶發 503 → 退 flash → 退 1.5-flash
+    gemini_models = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+
     def call(k):
         # Groq key 開頭 gsk_；其餘一律當 Gemini（含舊 AIza 與新 AQ. 格式）
         is_g = not k.startswith('gsk_')
         if is_g:
-            u = ('https://generativelanguage.googleapis.com/v1beta/models/'
-                 'gemini-2.5-flash-lite:generateContent?key=' + k)
-            r = requests.post(u, json={'contents': [{'parts': [{'text': prompt}]}],
-                              'generationConfig': {'temperature': 0.6, 'maxOutputTokens': 256}}, timeout=30)
-            r.raise_for_status()
-            return r.json()['candidates'][0]['content']['parts'][0]['text']
+            last = None
+            for model in gemini_models:
+                u = (f'https://generativelanguage.googleapis.com/v1beta/models/'
+                     f'{model}:generateContent?key=' + k)
+                r = requests.post(u, json={'contents': [{'parts': [{'text': prompt}]}],
+                                  'generationConfig': {'temperature': 0.6, 'maxOutputTokens': 256}}, timeout=30)
+                if r.status_code in (404, 429, 500, 503):   # 該模型不可用/過載 → 換下一個
+                    last = f'{model}→HTTP {r.status_code}'
+                    continue
+                r.raise_for_status()
+                return r.json()['candidates'][0]['content']['parts'][0]['text']
+            raise RuntimeError(f'所有 Gemini 模型皆不可用（{last}）')
         r = requests.post('https://api.groq.com/openai/v1/chat/completions',
                           headers={'Authorization': 'Bearer ' + k},
                           json={'model': 'llama-3.3-70b-versatile',
