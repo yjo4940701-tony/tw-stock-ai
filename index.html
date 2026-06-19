@@ -996,9 +996,9 @@ select.bt-input{cursor:pointer;}
       <span style="color:#475569;">Key 僅存於你的瀏覽器，不會上傳。</span>
     </div>
     <label class="form-label">主要 AI Key（Gemini 或 Groq）</label>
-    <input id="apiKeyInput" class="form-input" type="text" placeholder="AIza... 或 gsk_...">
+    <input id="apiKeyInput" class="form-input" type="text" placeholder="AIza.../AQ.... 或 gsk_...">
     <label class="form-label" style="margin-top:10px;">備用 AI Key <span style="color:#64748b;font-size:11px;">（主要用完自動切換）</span></label>
-    <input id="apiKeyInput2" class="form-input" type="text" placeholder="另一個 gsk_... 或 AIza...">
+    <input id="apiKeyInput2" class="form-input" type="text" placeholder="另一個 gsk_... 或 AIza.../AQ....">
 
     <!-- FinMind Token（選填，提高股票資料查詢配額） -->
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
@@ -2838,7 +2838,7 @@ function runBatchAnalysis() {
     + '## ⚠️ 暫時觀望：\n'
     + '（不建議現在進場的，說明原因）';
 
-  var isGemini = apiKey.indexOf('AIza') === 0;
+  var isGemini = apiKey.indexOf('gsk_') !== 0; // gsk_=Groq，其餘一律 Gemini（含舊 AIza 與新 AQ. 格式）
   var url, headers, body;
 
   if (isGemini) {
@@ -3144,8 +3144,8 @@ function runAnalysis() {
       : '## 🎯 進場建議\n（進場價區間、停損價、1-2個月目標價，基於 KD/MACD 位置給建議）\n\n'
         + '## 💡 操作策略\n（現在買進/等待回測/觀望，一句話結論）');
 
-  // 自動判斷 API：AIza... → Gemini，gsk_... → Groq
-  var isGemini = apiKey.indexOf('AIza') === 0;
+  // 自動判斷 API：gsk_... → Groq，其餘（AIza.../AQ....）→ Gemini
+  var isGemini = apiKey.indexOf('gsk_') !== 0; // gsk_=Groq，其餘一律 Gemini（含舊 AIza 與新 AQ. 格式）
   var url, headers, body;
 
   if (isGemini) {
@@ -3170,7 +3170,7 @@ function runAnalysis() {
   }
 
   function buildReqForKey(key) {
-    var isG = key.indexOf('AIza') === 0;
+    var isG = key.indexOf('gsk_') !== 0; // gsk_=Groq，其餘一律 Gemini（含舊 AIza 與新 AQ. 格式）
     var u, h, b;
     if (isG) {
       u = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + key;
@@ -4355,7 +4355,7 @@ function cryptoAICall(prompt, resEl, btn, onText) {
   var apiKey2 = localStorage.getItem('tw_key2');
   if (!apiKey) { openSettings(); toast('請先設定 AI API Key', 'err'); btn.disabled = false; btn.textContent = '🤖 AI 分析（純技術面）'; return; }
   function buildReq(key) {
-    var isG = key.indexOf('AIza') === 0;
+    var isG = key.indexOf('gsk_') !== 0; // gsk_=Groq，其餘一律 Gemini（含舊 AIza 與新 AQ. 格式）
     if (isG) return { u: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + key,
       h: { 'Content-Type': 'application/json' }, b: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.7,maxOutputTokens:2048} }), isG:true };
     return { u: 'https://api.groq.com/openai/v1/chat/completions',
@@ -4599,7 +4599,7 @@ function fireAICall(prompt, resEl, btn, onText) {
   function reset(){ btn.disabled = false; btn.textContent = '🔄 重新分析'; }
   if (!apiKey) { openSettings(); toast('請先設定 AI API Key', 'err'); btn.disabled = false; btn.textContent = '🔥 FIRE 分析'; return; }
   function buildReq(key) {
-    var isG = key.indexOf('AIza') === 0;
+    var isG = key.indexOf('gsk_') !== 0; // gsk_=Groq，其餘一律 Gemini（含舊 AIza 與新 AQ. 格式）
     if (isG) return { u:'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + key,
       h:{ 'Content-Type':'application/json' }, b:JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.6,maxOutputTokens:2048} }), isG:true };
     return { u:'https://api.groq.com/openai/v1/chat/completions',
