@@ -2342,11 +2342,11 @@ function loadInstitutional(ticker) {
 
   loadInstitutionalCache(function(cache) {
     if (!cache || !cache.stocks || !cache.stocks[ticker]) return;
-    renderII(cache.dates, cache.stocks[ticker], cache.updated);
+    renderII(cache.dates, cache.stocks[ticker], cache.updated, cache.pending);
   });
 }
 
-function renderII(dates, stockArr, updated) {
+function renderII(dates, stockArr, updated, pending) {
   // stockArr = [[外資,投信,自營商], ...] 依 dates 索引排列，index 0 = 最新
   var INST = ['外資', '投信', '自營商'];
 
@@ -2397,8 +2397,9 @@ function renderII(dates, stockArr, updated) {
       + '</tr>';
   });
 
-  // 最新交易日（dates[0]）落後於系統更新日 = 今日資料還沒抓到（TWSE 被擋或尚未發布），下次自動補上
-  var isStale = updated && dates[0] !== updated;
+  // 是否真的延遲：優先用後端 pending 旗標（已排除假日）；舊檔無此欄位才退回「最新交易日 ≠ 更新日」判斷
+  // pending=true 才是「今天是交易日但資料還沒進來」；假日（如端午節）pending=false，不誤報
+  var isStale = (pending === true) || (pending === undefined && updated && dates[0] !== updated);
   var foot = '單位：張　資料日期：' + dates[0];
   if (isStale) foot += '<br><span style="color:#f59e0b;">⚠ 最新交易日資料尚未進來（系統更新 ' + updated + '），下次抓取自動補上</span>';
   html += '</tbody></table><div style="color:#334155;font-size:10px;margin-top:6px;text-align:right;line-height:1.6;">' + foot + '</div>';

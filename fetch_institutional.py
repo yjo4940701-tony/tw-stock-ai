@@ -295,8 +295,11 @@ def main():
 
     # 組成精簡格式：{ updated, dates: [...], stocks: { sid: [[外資,投信,自營], ...] } }
     # 30 日內全為 0 的代號（下市、無資料的權證）直接剔除，避免檔案膨脹
+    # pending = 今天確實是交易日、但最新交易日資料還沒進來（被擋/未發布/驗證剔除）。
+    # 假日（holiday）或資料已最新（ok）→ pending=False，前端就不會誤亮「資料尚未進來」琥珀警告。
     output = {
         'updated': today.strftime('%Y-%m-%d'),
+        'pending': today_status in ('blocked', 'pending', 'dropped'),
         'dates':   valid_dates,
         'stocks':  {}
     }
