@@ -148,7 +148,8 @@ def ai_summary(data_text):
     )
 
     def call(k):
-        is_g = k.startswith('AIza')
+        # Groq key 開頭 gsk_；其餘一律當 Gemini（含舊 AIza 與新 AQ. 格式）
+        is_g = not k.startswith('gsk_')
         if is_g:
             u = ('https://generativelanguage.googleapis.com/v1beta/models/'
                  'gemini-2.5-flash-lite:generateContent?key=' + k)
