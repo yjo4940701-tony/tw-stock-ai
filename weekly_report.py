@@ -39,8 +39,10 @@ def get_watchlist():
 
 
 def load_names():
-    """從 index.html 解析 STOCK_NAMES 中文股名對照"""
+    """中文股名對照：優先抓 FinMind TaiwanStockInfo（全市場、匿名免費），
+    再以 index.html 的 STOCK_NAMES 補強 / 當 FinMind 失敗時的後備。"""
     names = {}
+    # 1) index.html STOCK_NAMES 為主（人工維護、名稱乾淨，如 2327→國巨 不帶星號）
     try:
         with open(HTML_FILE, encoding='utf-8') as f:
             html = f.read()
@@ -49,7 +51,22 @@ def load_names():
             for sid, name in re.findall(r"'([0-9A-Za-z]{4,6})'\s*:\s*'([^']+)'", m.group(1)):
                 names[sid] = name
     except Exception as e:
-        print(f'解析股名失敗（改用代號）: {e}')
+        print(f'解析 STOCK_NAMES 失敗: {e}')
+    # 2) FinMind TaiwanStockInfo 補上 STOCK_NAMES 沒有的冷門股（前端 ensureStockInfo 同一 dataset，匿名 GET）
+    #    FinMind 名稱偶有尾綴 *（特殊交易註記），去掉避免出現「群創*」這種雜訊
+    try:
+        r = requests.get('https://api.finmindtrade.com/api/v4/data',
+                         params={'dataset': 'TaiwanStockInfo'}, timeout=30)
+        added = 0
+        for row in (r.json().get('data') or []):
+            sid = str(row.get('stock_id') or '').strip()
+            nm  = str(row.get('stock_name') or '').strip().rstrip('*').strip()
+            if sid and nm and sid not in names:
+                names[sid] = nm
+                added += 1
+        print(f'FinMind 補股名：+{added} 檔（總 {len(names)}）')
+    except Exception as e:
+        print(f'FinMind 股名載入失敗（僅用 STOCK_NAMES）: {e}')
     return names
 
 
