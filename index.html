@@ -663,7 +663,6 @@ select.bt-input{cursor:pointer;}
     <div class="bt-panel" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
         <div class="bt-label" style="margin:0;">⭐ 我的幣清單 <span style="color:#475569;font-size:11px;font-weight:400;">報價與訊號掃描都跟著這份清單；用上方搜尋找幣→「＋加入」，跨裝置同步</span></div>
-        <button onclick="resetCoins()" class="btn-settings" style="white-space:nowrap;font-size:12px;">↺ 回復預設 8 檔</button>
       </div>
       <div id="crypto-mycoins" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
     </div>
@@ -4108,10 +4107,6 @@ function addCoinFromSearch(sym){
 function removeCoin(sym){
   var i = CRYPTO_BASKET.indexOf(sym); if (i < 0) return;
   CRYPTO_BASKET.splice(i,1); saveCryptoBasket(); renderMyCoins(); loadCryptoTickers();
-}
-function resetCoins(){
-  CRYPTO_BASKET = CRYPTO_DEFAULTS.slice(); saveCryptoBasket(); renderMyCoins(); loadCryptoTickers();
-  toast('已回復預設 8 檔');
 }
 function renderMyCoins(){
   var box = document.getElementById('crypto-mycoins'); if(!box) return;
