@@ -72,10 +72,12 @@ async function handleRequest(request, env) {
       const pxtype = url.searchParams.get('pxtype');
       if (pxtype) fwd.set('type', pxtype);
       const pxUrl = `https://api.pionex.com/api/v1/${ep}?${fwd.toString()}`;
+      // 商品清單（common/symbols）幾乎不變 → 快取 1 小時；報價/K線即時 → 維持 30 秒
+      const ttl = ep === 'common/symbols' ? 3600 : 30;
       try {
         const resp = await fetch(pxUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0' },
-          cf: { cacheTtl: 30, cacheEverything: true }
+          cf: { cacheTtl: ttl, cacheEverything: true }
         });
         const text = await resp.text();
         return new Response(text, {
@@ -83,6 +85,7 @@ async function handleRequest(request, env) {
           headers: {
             'Content-Type': 'application/json;charset=utf-8',
             'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=' + ttl,
             'X-PX-Status': String(resp.status)
           }
         });
