@@ -269,9 +269,6 @@ select.bt-input{cursor:pointer;}
 .nav-btn{background:none;border:1px solid #334155;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;transition:all .15s;}
 .nav-btn:hover{background:#1e293b;color:#fff;}
 .nav-btn.active{border-color:#2563eb;color:#60a5fa;background:rgba(37,99,235,.1);}
-.pc-chk{display:flex;align-items:flex-start;gap:8px;color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:7px;cursor:pointer;}
-.pc-chk input{margin-top:2px;flex-shrink:0;}
-.pc-chk strong{color:#cbd5e1;}
 .pc-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
 .pc-card h4{margin:0 0 6px;font-size:13px;color:#60a5fa;display:flex;align-items:center;gap:6px;}
 .pc-card p{margin:0;color:#cbd5e1;font-size:13px;line-height:1.65;white-space:pre-wrap;}
@@ -353,7 +350,6 @@ select.bt-input{cursor:pointer;}
     <button class="nav-btn active" id="nav-dashboard" onclick="showPage('dashboard')">📊 <span class="btn-text">儀表板</span></button>
     <button class="nav-btn" id="nav-backtest" onclick="showPage('backtest')">📈 <span class="btn-text">回測</span></button>
     <button class="nav-btn" id="nav-crypto" onclick="showPage('crypto')">🪙 <span class="btn-text">虛擬貨幣</span></button>
-    <button class="nav-btn" id="nav-calc" onclick="showPage('calc')">🧮 <span class="btn-text">交易計算</span></button>
     <button class="btn-settings" onclick="openScreener()" style="border-color:rgba(124,58,237,.5);color:#a78bfa;">🔍 <span class="btn-text">選股</span></button>
     <button class="btn-settings" onclick="openAlertList()" style="position:relative;">🔔 <span class="btn-text">提醒</span><span class="alert-badge" id="alertBadge" style="display:none;">0</span></button>
     <button class="btn-settings" onclick="openSettings()">⚙ <span class="btn-text">設定</span></button>
@@ -784,51 +780,6 @@ select.bt-input{cursor:pointer;}
   </div>
 </div>
 
-<!-- 交易計算分頁（試用沙盒）────────────────────────── -->
-<div id="calcPage" style="display:none;">
-  <div style="max-width:920px;margin:0 auto;">
-
-    <!-- 部位試算器 -->
-    <div class="bt-panel">
-      <div class="bt-panel-title">🧮 部位試算器 <span style="color:#475569;font-size:12px;font-weight:400;">先定好「最多願意虧多少」，反推該買幾張</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
-        <div><div class="bt-label">股票代號（選填）</div><input class="bt-input" id="pc-ticker" type="text" placeholder="如 2330" autocomplete="off"></div>
-        <div><div class="bt-label">總資金（元）</div><input class="bt-input" id="pc-capital" type="number" value="1000000" min="0" step="10000"></div>
-        <div><div class="bt-label">每筆風險 %</div><input class="bt-input" id="pc-risk" type="number" value="1.5" min="0.1" max="100" step="0.1"></div>
-        <div><div class="bt-label">進場價</div><input class="bt-input" id="pc-entry" type="number" min="0" step="0.05" placeholder="如 1000"></div>
-        <div><div class="bt-label">停損價</div><input class="bt-input" id="pc-stop" type="number" min="0" step="0.05" placeholder="如 950"></div>
-        <div><div class="bt-label">目標價（選填）</div><input class="bt-input" id="pc-target" type="number" min="0" step="0.05" placeholder="如 1120"></div>
-        <div><div class="bt-label">手續費折讓<span style="color:#475569;font-size:11px;font-weight:400;">　1=無折讓 0.6=6折</span></div><input class="bt-input" id="pc-disc" type="number" value="1" min="0.1" max="1" step="0.05"></div>
-      </div>
-      <button class="btn-add" onclick="calcPosition()" style="margin-top:12px;padding:9px 18px;font-size:14px;">試算</button>
-      <div id="pc-result" style="margin-top:14px;color:#64748b;font-size:13px;">填入「總資金、每筆風險%、進場價、停損價」後按試算。</div>
-
-      <!-- 進場前 checklist -->
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid #1e293b;">
-        <div class="bt-label" style="margin-bottom:8px;">✅ 進場前自我檢查</div>
-        <label class="pc-chk"><input type="checkbox"> 消息面與技術面方向<strong>一致</strong>（不是只有單邊看好）</label>
-        <label class="pc-chk"><input type="checkbox"> 風報比 <strong>≥ 2</strong>（賺賠比划算才進）</label>
-        <label class="pc-chk"><input type="checkbox"> 單筆部位未超過總資金的合理上限</label>
-        <label class="pc-chk"><input type="checkbox"> 停損價設在<strong>關鍵支撐之外</strong>（不是隨手抓）</label>
-        <label class="pc-chk"><input type="checkbox"> 已接受「真的停損時最多虧多少」這個數字</label>
-      </div>
-    </div>
-
-    <!-- FIRE 影響鏈 -->
-    <div class="bt-panel" style="margin-top:16px;">
-      <div class="bt-panel-title">🔥 FIRE 影響鏈分析 <span style="color:#475569;font-size:12px;font-weight:400;">貼一則財經消息，AI 拆事實/脈絡/影響鏈/背景並找相關台股</span></div>
-      <textarea id="fire-input" class="bt-input" style="width:100%;min-height:110px;resize:vertical;font-family:inherit;line-height:1.6;" placeholder="貼上財經新聞、法說會重點或一段消息…"></textarea>
-      <div style="display:flex;gap:10px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:160px;"><div class="bt-label">主標的（選填）</div><input class="bt-input" id="fire-subject" type="text" placeholder="如 台積電 2330" autocomplete="off"></div>
-        <button id="fire-btn" class="btn-analyze" onclick="runFireAnalysis()" style="padding:10px 18px;">🔥 FIRE 分析</button>
-      </div>
-      <div id="fire-result" style="margin-top:14px;"></div>
-    </div>
-
-    <p style="color:#475569;font-size:11px;text-align:center;margin-top:14px;">🧪 試用沙盒 · 純技術/數學計算 · 不構成投資建議</p>
-  </div>
-</div>
-
 <!-- ANALYSIS MODAL -->
 <div id="analysisOverlay" class="overlay" onclick="overlayClick(event)">
   <div class="modal">
@@ -936,6 +887,25 @@ select.bt-input{cursor:pointer;}
           <div id="alertFormRows"></div>
         </div>
       </div>
+
+      <!-- FIRE 影響鏈（消息面 → 找受益股）-->
+      <div class="ai-box" id="fm-fire-box" style="margin-top:14px;">
+        <div class="ai-box-hdr">
+          <div class="ai-logo">
+            <div class="ai-badge" style="background:#ea580c;">🔥</div>
+            <span class="ai-title">FIRE 影響鏈</span>
+            <span class="ai-by">消息面 → 拆事實/脈絡/影響鏈/背景，找受益股</span>
+          </div>
+          <button id="fm-fire-btn" class="btn-analyze" onclick="runFireAnalysis()" style="background:#ea580c;">🔥 FIRE 分析</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap;">
+          <button onclick="fireFillNews()" class="btn-settings" style="font-size:11px;white-space:nowrap;">↻ 帶入該股新聞</button>
+          <span style="color:#475569;font-size:11px;">貼一段財經消息，或帶入該股新聞（需先跑上方 AI 分析）</span>
+        </div>
+        <textarea id="fm-fire-input" class="bt-input" style="width:100%;min-height:90px;resize:vertical;font-family:inherit;line-height:1.6;" placeholder="貼上財經新聞、法說會重點，或按「↻ 帶入該股新聞」"></textarea>
+        <div id="fm-fire-result" style="margin-top:12px;"></div>
+      </div>
+
       <div class="disclaimer">以上分析僅供參考，不構成投資建議，投資人應自行判斷。</div>
     </div>
   </div>
@@ -2172,6 +2142,7 @@ function openModal(ticker) {
     metric('月振幅', (d.range20||0).toFixed(1)+'%', '<span style="color:#64748b;font-size:11px;">量 '+fvol(d.volume)+'</span>');
 
   resetAI();
+  resetFire();
   chartPeriod = 'day';
   ['day', 'week', 'month'].forEach(function(p) {
     var btn = document.getElementById('pb-' + p);
@@ -3138,6 +3109,9 @@ function runAnalysis() {
       + '目前損益：' + pnlSign + pnlPct + '%'
       + (pnlAmt ? '（約 ' + (pnlPct >= 0 ? '+' : '') + pnlAmt + ' 元）' : '') + '\n\n';
   }
+
+  // 暫存該股新聞，供 Modal 內 FIRE 影響鏈一鍵帶入
+  _stockNewsText[d.ticker] = newsStr + (intlNewsStr ? '\n' + intlNewsStr : '');
 
   var prompt = '你是專業的台灣股市分析師，專門服務短中線操作（1-2個月進出）的投資人。操作邏輯：技術指標為主要進出依據，基本面用於確認方向。\n\n'
     + '【股票】' + d.ticker + ' ' + d.name + '　現價：' + fp(d.price) + ' TWD　'
@@ -4546,78 +4520,17 @@ function showPage(page) {
   document.getElementById('backtestPage').style.display = page === 'backtest' ? 'block' : 'none';
   var cp = document.getElementById('cryptoPage');
   if (cp) cp.style.display = page === 'crypto' ? 'block' : 'none';
-  var cap = document.getElementById('calcPage');
-  if (cap) cap.style.display = page === 'calc' ? 'block' : 'none';
   document.getElementById('nav-dashboard').classList.toggle('active', isDash);
   document.getElementById('nav-backtest').classList.toggle('active', page === 'backtest');
   var ncb = document.getElementById('nav-crypto');
   if (ncb) ncb.classList.toggle('active', page === 'crypto');
-  var ncl = document.getElementById('nav-calc');
-  if (ncl) ncl.classList.toggle('active', page === 'calc');
   // 首次進虛擬貨幣分頁 → 載入報價
   if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; renderMyCoins(); loadCryptoTickers(); }
 }
 
-// ══ 交易計算分頁（試用沙盒）═══════════════════════════
-// 台股交易成本（與 backtest/engine.js 同一套）：手續費 0.1425% 買賣各一次、證交稅 0.3% 賣出
-var TW_FEE = 0.001425, TW_TAX = 0.003;
-function pcNum(id){ var v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; }
-function pcMoney(n){ return Math.round(n).toLocaleString('en-US'); }
-
-// 部位試算：先定可承受虧損 → 反推張數/零股，含台股成本與風報比
-function calcPosition() {
-  var res = document.getElementById('pc-result');
-  var capital = pcNum('pc-capital'), riskPct = pcNum('pc-risk'),
-      entry = pcNum('pc-entry'), stop = pcNum('pc-stop'),
-      target = pcNum('pc-target'), disc = pcNum('pc-disc') || 1;
-  if (capital === null || riskPct === null || entry === null || stop === null) {
-    res.innerHTML = '<p style="color:#f59e0b;">請填入總資金、每筆風險%、進場價、停損價。</p>'; return;
-  }
-  if (entry <= stop) {
-    res.innerHTML = '<p style="color:#f87171;">停損價必須低於進場價（這裡只做多）。</p>'; return;
-  }
-  if (entry <= 0 || capital <= 0) { res.innerHTML = '<p style="color:#f87171;">價格與資金需大於 0。</p>'; return; }
-
-  var riskMoney = capital * riskPct / 100;          // 願意虧的上限（價差部分）
-  var perShareRisk = entry - stop;                  // 每股價差風險
-  var rawShares = riskMoney / perShareRisk;         // 理論股數
-  var shares = Math.floor(rawShares);               // 取整股（含零股，1 股起）
-  if (shares < 1) {
-    res.innerHTML = '<p style="color:#f59e0b;">以目前設定，連 1 股都超過風險上限——代表停損抓太寬或風險%太小。可放寬風險% 或縮小停損距離。</p>'; return;
-  }
-  var lots = Math.floor(shares / 1000), odd = shares % 1000;
-
-  // 成本：買進手續費 + （停損出場時）賣出手續費 + 證交稅
-  var feeBuy  = entry * shares * TW_FEE * disc;
-  var feeSell = stop  * shares * TW_FEE * disc;
-  var tax     = stop  * shares * TW_TAX;
-  var grossLoss = perShareRisk * shares;            // 純價差虧損
-  var totalLoss = grossLoss + feeBuy + feeSell + tax; // 含成本的真實最大虧損
-  var invest = entry * shares + feeBuy;             // 預估投入金額（含買進手續費）
-  var investPctOfCap = invest / capital * 100;
-
-  var rr = null, takeProfit = null;
-  if (target !== null && target > entry) {
-    var feeTpSell = target * shares * TW_FEE * disc, taxTp = target * shares * TW_TAX;
-    var grossGain = (target - entry) * shares;
-    takeProfit = grossGain - feeBuy - feeTpSell - taxTp; // 到目標價的淨利（含成本）
-    rr = (target - entry) / perShareRisk;               // 風報比（用價差，業界慣例）
-  }
-
-  var lotStr = lots > 0 ? (lots + ' 張' + (odd > 0 ? ' + ' + odd + ' 股（零股）' : '')) : (odd + ' 股（零股）');
-  var rrColor = rr === null ? '#64748b' : (rr >= 2 ? '#22c55e' : '#f59e0b');
-  var capWarn = investPctOfCap > 100 ? '<span style="color:#f87171;"> ⚠ 超過總資金，需融資或無法全買</span>' : '';
-
-  var html = '';
-  html += '<div class="pc-card" style="border-color:#1d4ed8;"><h4>📦 建議部位</h4><p style="font-size:16px;color:#fff;">' + lotStr + '　<span style="color:#64748b;font-size:13px;">（共 ' + shares.toLocaleString('en-US') + ' 股）</span></p></div>';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">';
-  html += '<div class="pc-card"><h4>💸 真實最大虧損</h4><p style="color:#f87171;font-size:15px;">≈ ' + pcMoney(totalLoss) + ' 元</p><p style="color:#64748b;font-size:11px;">純價差 ' + pcMoney(grossLoss) + ' + 手續費/稅 ' + pcMoney(feeBuy + feeSell + tax) + '</p></div>';
-  html += '<div class="pc-card"><h4>📊 風報比</h4><p style="color:' + rrColor + ';font-size:15px;">' + (rr === null ? '填目標價可算' : rr.toFixed(2) + ' : 1 ' + (rr >= 2 ? '✅' : '⚠ 偏低')) + '</p>' + (takeProfit !== null ? '<p style="color:#64748b;font-size:11px;">到目標淨賺 ≈ ' + pcMoney(takeProfit) + ' 元</p>' : '') + '</div>';
-  html += '<div class="pc-card"><h4>💰 預估投入</h4><p style="color:#cbd5e1;font-size:15px;">≈ ' + pcMoney(invest) + ' 元</p><p style="color:#64748b;font-size:11px;">佔總資金 ' + investPctOfCap.toFixed(1) + '%' + capWarn + '</p></div>';
-  html += '</div>';
-  html += '<p style="color:#475569;font-size:11px;margin-top:8px;">＊成本 = 手續費 0.1425%（買賣各一次，折讓 ×' + disc + '）+ 證交稅 0.3%（賣出）。未計最低手續費 20 元門檻，小額交易實際成本會略高。</p>';
-  res.innerHTML = html;
-}
+// ══ FIRE 影響鏈（個股 Modal 內）═══════════════════════
+// 各股已抓新聞暫存（runAnalysis 填入），供 FIRE 沿用。僅頁面生命週期，不持久化
+var _stockNewsText = {};
 
 // ── FIRE 影響鏈：專屬 AI 呼叫（複用 crypto 雙 Key/quota fallback 模式，按鈕文字獨立避免撞 crypto）
 function fireAICall(prompt, resEl, btn, onText) {
@@ -4654,12 +4567,28 @@ function fireAICall(prompt, resEl, btn, onText) {
   });
 }
 
+// 帶入該股已抓新聞（需先跑過上方 AI 分析）
+function fireFillNews() {
+  var news = _stockNewsText[current];
+  if (!news) { toast('請先按上方「開始分析」抓該股新聞，或自行貼上一段消息', 'err'); return; }
+  document.getElementById('fm-fire-input').value = news;
+}
+// 開 Modal / 切股票時重置 FIRE：清結果，輸入預填該股新聞（若已抓過）
+function resetFire() {
+  var inp = document.getElementById('fm-fire-input');
+  var resEl = document.getElementById('fm-fire-result');
+  if (resEl) resEl.innerHTML = '';
+  if (inp) inp.value = _stockNewsText[current] || '';
+  var btn = document.getElementById('fm-fire-btn');
+  if (btn) { btn.disabled = false; btn.textContent = '🔥 FIRE 分析'; }
+}
+
 function runFireAnalysis() {
-  var input = document.getElementById('fire-input').value.trim();
-  var subject = document.getElementById('fire-subject').value.trim();
-  var btn = document.getElementById('fire-btn');
-  var resEl = document.getElementById('fire-result');
-  if (input.length < 10) { toast('請貼一段夠長的消息內容', 'err'); return; }
+  var input = document.getElementById('fm-fire-input').value.trim();
+  var subject = current ? (current + ' ' + (STOCK_NAMES[current] || '')).trim() : '';
+  var btn = document.getElementById('fm-fire-btn');
+  var resEl = document.getElementById('fm-fire-result');
+  if (input.length < 10) { toast('請貼一段夠長的消息內容（或按「帶入該股新聞」）', 'err'); return; }
   btn.disabled = true; btn.innerHTML = '<div class="spin" style="width:12px;height:12px;"></div> 分析中...';
   resEl.innerHTML = '<p style="color:#60a5fa;">🔥 拆解 FIRE 四維 + 找相關台股中...</p>';
 
@@ -4683,7 +4612,7 @@ function runFireAnalysis() {
 
 // 解析 ===SECTION 分段；BULL/BEAR 抽代號對照 STOCK_NAMES 白名單做可點擊 tag
 function renderFireResult(text) {
-  var resEl = document.getElementById('fire-result');
+  var resEl = document.getElementById('fm-fire-result');
   function seg(tag) {
     var re = new RegExp('===' + tag + '\\s*\\n([\\s\\S]*?)(?=\\n===|$)');
     var m = text.match(re); return m ? m[1].trim() : '';
