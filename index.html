@@ -2797,6 +2797,21 @@ function closeBatch() {
   document.body.style.overflow = '';
 }
 
+// Gemini 模型 fallback：2.5-flash-lite 偶發 503 過載 → 逐一退到其他模型（429 也換，免費 tier 配額分模型）
+// 回傳最終 Response，與 fetch 相容，呼叫端的 .then(r=>r.json()) 與錯誤處理皆不用改
+var GEMINI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+function geminiGenerate(key, body) {
+  var i = 0;
+  function attempt() {
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODELS[i] + ':generateContent?key=' + key;
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body }).then(function(r) {
+      if (i < GEMINI_MODELS.length - 1 && (r.status === 404 || r.status === 429 || r.status === 500 || r.status === 503)) { i++; return attempt(); }
+      return r;
+    });
+  }
+  return attempt();
+}
+
 function runBatchAnalysis() {
   var apiKey = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
   if (!apiKey) { openSettings(); toast('請先設定 API Key', 'err'); return; }
@@ -2870,7 +2885,7 @@ function runBatchAnalysis() {
 
   console.log('[批次] 比較 ' + filtered.length + ' 檔，' + (isGemini ? 'Gemini' : 'Groq'));
 
-  fetch(url, { method: 'POST', headers: headers, body: body })
+  (isGemini ? geminiGenerate(apiKey, body) : fetch(url, { method: 'POST', headers: headers, body: body }))
     .then(function(r) {
       if (!r.ok) return r.json().then(function(e){ throw new Error((e.error && e.error.message) || 'HTTP '+r.status); });
       return r.json();
@@ -3196,7 +3211,7 @@ function runAnalysis() {
   function callWithKey(key, label) {
     var req = buildReqForKey(key);
     console.log('[AI] 使用：' + label);
-    return fetch(req.u, { method:'POST', headers:req.h, body:req.b })
+    return (req.isG ? geminiGenerate(key, req.b) : fetch(req.u, { method:'POST', headers:req.h, body:req.b }))
     .then(function(r) {
       if (!r.ok) return r.json().then(function(e){ throw new Error((e.error&&e.error.message)||'HTTP '+r.status); });
       return r.json();
@@ -4376,7 +4391,7 @@ function cryptoAICall(prompt, resEl, btn, onText) {
   function callKey(key, label) {
     var req = buildReq(key);
     console.log('[crypto AI] 使用：' + label);
-    return fetch(req.u, { method:'POST', headers:req.h, body:req.b })
+    return (req.isG ? geminiGenerate(key, req.b) : fetch(req.u, { method:'POST', headers:req.h, body:req.b }))
       .then(function(r){ if(!r.ok) return r.json().then(function(e){ throw new Error((e.error&&e.error.message)||'HTTP '+r.status); }); return r.json(); })
       .then(function(data){
         var text = req.isG
@@ -4620,7 +4635,7 @@ function fireAICall(prompt, resEl, btn, onText) {
   function callKey(key, label) {
     var req = buildReq(key);
     console.log('[FIRE] 使用：' + label);
-    return fetch(req.u, { method:'POST', headers:req.h, body:req.b })
+    return (req.isG ? geminiGenerate(key, req.b) : fetch(req.u, { method:'POST', headers:req.h, body:req.b }))
       .then(function(r){ if(!r.ok) return r.json().then(function(e){ throw new Error((e.error&&e.error.message)||'HTTP '+r.status); }); return r.json(); })
       .then(function(data){
         var text = req.isG
