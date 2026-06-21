@@ -551,6 +551,15 @@ select.bt-input{cursor:pointer;}
             </div>
           </div>
           <div class="bt-section">
+            <div class="bt-label">資料來源 / 週期</div>
+            <div class="bt-strategy-tabs">
+              <button class="bt-stab active" id="adv-src-finmind" onclick="setAdvSrc('finmind')">FinMind 日K</button>
+              <button class="bt-stab" id="adv-src-fugle60" onclick="setAdvSrc('fugle60')">Fugle 60分</button>
+              <button class="bt-stab" id="adv-src-fugle15" onclick="setAdvSrc('fugle15')">Fugle 15分</button>
+            </div>
+            <div id="adv-src-hint" style="display:none;margin-top:6px;font-size:11px;color:#93c5fd;line-height:1.5;">分K 需在「⚙ 設定」填 Fugle Key，最多 364 天；三國 240MA 暖機在 15 分 K 需較多根（建議改 60 分或縮短均線）。</div>
+          </div>
+          <div class="bt-section">
             <div class="bt-label">回測年數 <span id="adv-years-hint" style="color:#475569;font-size:11px;font-weight:400;"></span></div>
             <select class="bt-input" id="adv-years">
               <option value="1">1 年</option>
@@ -5714,10 +5723,43 @@ function renderBtChart(result, tradeIdx) {
 
 // ── 進階回測（三刀流 + ATR，共用 backtest/engine.js）──────────
 // 日期算法刻意與 CLI fetch_tw.js 一致（start.setFullYear(-years)），確保網頁/CLI 結果相同
+// 進階回測資料來源：'finmind'(日K) | 'fugle60' | 'fugle15'。日K 走 FinMind，分K 走 Fugle（複用 fetchFugleData）
+var advSrc = 'finmind';
+function setAdvSrc(s) {
+  advSrc = s;
+  document.getElementById('adv-src-finmind').classList.toggle('active', s === 'finmind');
+  document.getElementById('adv-src-fugle60').classList.toggle('active', s === 'fugle60');
+  document.getElementById('adv-src-fugle15').classList.toggle('active', s === 'fugle15');
+  document.getElementById('adv-src-hint').style.display = s === 'finmind' ? 'none' : '';
+}
+
 function fetchAdvCandles(ticker, years, cb) {
-  var key = 'adv_' + ticker + '_' + years;
+  var key = 'adv_' + advSrc + '_' + ticker + '_' + years;   // 來源納入快取鍵，日K/分K 不互相汙染
   var cached = getPriceCache(key);
   if (cached) { cb(null, cached); return; }
+  function finish(candles) {
+    if (!candles.length) { cb({msg: '無有效資料'}); return; }
+    setPriceCache(key, candles);
+    cb(null, candles);
+  }
+
+  if (advSrc !== 'finmind') {
+    // Fugle 分K：years → days，夾在 Fugle 364 天上限內
+    var timeframe = advSrc === 'fugle15' ? '15' : '60';
+    var days = Math.min(364, Math.round(years * 365));
+    fetchFugleData(ticker, days, timeframe, function(err, rows) {
+      if (err) { cb(err.status === 429 ? {msg: 'Fugle 請求過於頻繁，請稍候再試'} : err); return; }
+      // fetchFugleData 回 FinMind 格式 {date,open,max,min,close,volume} → 套與日K 相同的映射
+      finish(rows
+        .filter(function(d) { return d.close > 0 && d.max > 0; })
+        .map(function(d) {
+          return { time: d.date, open: d.open, high: d.max, low: d.min, close: d.close, volume: d.volume };
+        }));
+    });
+    return;
+  }
+
+  // FinMind 日K（原邏輯不動）
   var end = new Date();
   var start = new Date();
   start.setFullYear(start.getFullYear() - years);
@@ -5728,13 +5770,11 @@ function fetchAdvCandles(ticker, years, cb) {
     .then(function(r) { return r.json(); })
     .then(function(j) {
       if (j.status !== 200 || !j.data || !j.data.length) { cb({msg: j.msg || '無資料'}); return; }
-      var candles = j.data
+      finish(j.data
         .filter(function(d) { return d.close > 0 && d.max > 0; })
         .map(function(d) {
           return { time: d.date, open: d.open, high: d.max, low: d.min, close: d.close, volume: d.Trading_Volume };
-        });
-      setPriceCache(key, candles);
-      cb(null, candles);
+        }));
     })
     .catch(function(e) { cb({msg: e.message}); });
 }
@@ -5755,7 +5795,8 @@ function runAdvBacktest() {
   var ticker = (document.getElementById('adv-ticker').value || '').trim().toUpperCase();
   if (!ticker) { toast('請輸入股票代號', 'err'); return; }
   var years = +document.getElementById('adv-years').value;
-  toast('抓取 ' + ticker + ' 日K（' + years + ' 年）⋯');
+  var srcLabel = advSrc === 'finmind' ? '日K' : (advSrc === 'fugle60' ? '60分K' : '15分K');
+  toast('抓取 ' + ticker + ' ' + srcLabel + '（最多 ' + years + ' 年）⋯');
   fetchAdvCandles(ticker, years, function(err, candles) {
     if (err) { toast('資料取得失敗' + (err.msg ? '：' + err.msg : ''), 'err'); return; }
     if (candles.length < 60) { toast('資料不足（' + candles.length + ' 根）', 'err'); return; }
@@ -5770,7 +5811,7 @@ function runAdvBacktest() {
         useAtrRisk: document.getElementById('adv-atrrisk').checked
       };
       if (candles.length < params.lbPeriod + 30) {
-        toast('資料不足以暖機 ' + params.lbPeriod + 'MA（僅 ' + candles.length + ' 根），請拉長年數', 'err');
+        toast('資料不足以暖機 ' + params.lbPeriod + 'MA（僅 ' + candles.length + ' 根），請拉長年數' + (advSrc !== 'finmind' ? '、改 60 分或縮短劉備均線' : ''), 'err');
         return;
       }
     } else {
