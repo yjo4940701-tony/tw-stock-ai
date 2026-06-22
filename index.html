@@ -3272,7 +3272,8 @@ var screenConds = [
   { key:'nm',          label:'淨利率',        unit:'%',  op:'>', val:5,  on:false },
   { key:'nm_yoy',      label:'淨利率年增',    unit:'pp', op:'>', val:0,  on:false },
   { key:'rev_yoy',     label:'月營收 YoY',   unit:'%',  op:'>', val:10, on:false },
-  { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false }
+  { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false },
+  { key:'dividend_yield', label:'殖利率', unit:'%', op:'>', val:5, on:false, tvOnly:true }
 ];
 
 var _scope = 'watchlist'; // 'watchlist' | 'all'
@@ -3320,6 +3321,7 @@ function _runWatchlistScreener(hasInd, hasFund) {
   var tickers = activeGroup().tickers;
   if (!tickers.length) { toast('自選股清單是空的', 'err'); return; }
   var enabled = screenConds.filter(function(c) { return c.on; });
+  if (enabled.some(function(c) { return c.tvOnly; })) toast('殖利率僅「全市場」模式可篩選，自選股模式已略過此條件');
 
   var matches = tickers.filter(function(t) {
     // 財報條件
@@ -3327,6 +3329,7 @@ function _runWatchlistScreener(hasInd, hasFund) {
       var f = fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[t];
       if (!f || f.eps == null) return false;
       if (!enabled.every(function(c) {
+        if (c.tvOnly) return true;   // 殖利率僅全市場(TV)可篩，自選股無此資料 → 跳過不卡
         var v = f[c.key]; if (v == null) return false;
         return c.op === '>' ? v > c.val : v < c.val;
       })) return false;
@@ -3366,7 +3369,7 @@ var TV_SMA_PERIODS = [5, 10, 20, 30, 50, 60, 100, 120, 150, 200];
 var TV_COLUMNS = ['name', 'close', 'change', 'volume', 'average_volume_10d_calc',
   'RSI', 'Stoch.K', 'Stoch.D', 'MACD.macd', 'MACD.signal', 'W.R', 'ADX', 'ADX+DI', 'ADX-DI',
   'price_52_week_low', 'earnings_per_share_basic_ttm', 'gross_margin', 'operating_margin',
-  'net_margin', 'return_on_equity', 'price_earnings_ttm']
+  'net_margin', 'return_on_equity', 'price_earnings_ttm', 'dividends_yield']
   .concat(TV_SMA_PERIODS.map(function(p){ return 'SMA' + p; }));
 var TV_FUND_COL = { eps:'earnings_per_share_basic_ttm', gm:'gross_margin', om:'operating_margin', nm:'net_margin' };
 
@@ -3458,7 +3461,9 @@ function _runAllMarketScreener(hasInd, hasFund) {
   // EPS（兩邊都 TTM）與 YoY 衍生一律走 fundamentals.json
   screenConds.filter(function(c){ return c.on; }).forEach(function(c){
     var key = c.key, op = c.op, val = c.val;
-    if (_scrMarginTTM && TV_FUND_COL[key] && key !== 'eps') {
+    if (c.tvOnly) {                                         // 殖利率：fundamentals.json 沒有，只走 TV
+      colTests.push(function(r){ return _cmp(op, r['dividends_yield'], val); });
+    } else if (_scrMarginTTM && TV_FUND_COL[key] && key !== 'eps') {
       var col = TV_FUND_COL[key];                          // TV TTM 三率
       colTests.push(function(r){ return _cmp(op, r[col], val); });
     } else {
@@ -3548,9 +3553,10 @@ function _runAllMarketScreener(hasInd, hasFund) {
         if (r['operating_margin'] != null) mf.om = r['operating_margin'];
         if (r['net_margin']       != null) mf.nm = r['net_margin'];
       }
-      // ROE / PE：fundamentals.json 沒有，用 TV 補（TTM）
+      // ROE / PE / 殖利率：fundamentals.json 沒有，用 TV 補
       mf.roe = r['return_on_equity'];
       mf.pe  = r['price_earnings_ttm'];
+      mf.yield = r['dividends_yield'];
       return { sid: r.sid, f: mf };
     });
     renderScreenResults(window.lastScreenerResults);
@@ -3577,6 +3583,7 @@ function _runAllMarketScreenerLegacy(hasInd, hasFund) {
     var f = fundamentalsCache.stocks[sid];
     if (!f || f.eps == null) return;
     if (enabled.every(function(c) {
+      if (c.tvOnly) return true;   // 殖利率僅 TV 快路徑可篩，回退流程無此資料 → 跳過不卡
       var v = f[c.key]; if (v == null) return false;
       return c.op === '>' ? v > c.val : v < c.val;
     })) fundMatches.push(sid);
@@ -3816,7 +3823,8 @@ function resetScreener() {
     { key:'nm',          label:'淨利率',        unit:'%',  op:'>', val:5,  on:false },
     { key:'nm_yoy',      label:'淨利率年增',    unit:'pp', op:'>', val:0,  on:false },
     { key:'rev_yoy',     label:'月營收 YoY',   unit:'%',  op:'>', val:10, on:false },
-    { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false }
+    { key:'rev_cum_yoy', label:'累計營收 YoY', unit:'%',  op:'>', val:10, on:false },
+    { key:'dividend_yield', label:'殖利率', unit:'%', op:'>', val:5, on:false, tvOnly:true }
   ];
   renderScreenConds();
   document.getElementById('screenerResults').innerHTML = '';
@@ -3890,6 +3898,7 @@ function renderScreenResults(matches) {
     { key:'eps',         label:'EPS',     align:'right' },
     { key:'roe',         label:'ROE',     align:'right' },
     { key:'pe',          label:'PE',      align:'right' },
+    { key:'yield',       label:'殖利率',  align:'right' },
     { key:'gm',          label:'毛利率',  align:'right' },
     { key:'gm_yoy',      label:'毛利率增',align:'right' },
     { key:'om',          label:'營益率',  align:'right' },
@@ -3930,6 +3939,7 @@ function renderScreenResults(matches) {
       + '<td style="padding:6px 6px;text-align:right;color:#22c55e;font-weight:600;">' + (f.eps!=null?f.eps.toFixed(1):'-') + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#a78bfa;">' + (f.roe!=null?f.roe.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.pe!=null?f.pe.toFixed(1):'-') + '</td>'
+      + '<td style="padding:6px 6px;text-align:right;color:#fbbf24;">' + (f.yield!=null?f.yield.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.gm!=null?f.gm.toFixed(1)+'%':'-') + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:' + clr(f.gm_yoy) + ';">' + pp(f.gm_yoy) + '</td>'
       + '<td style="padding:6px 6px;text-align:right;color:#94a3b8;">' + (f.om!=null?f.om.toFixed(1)+'%':'-') + '</td>'
