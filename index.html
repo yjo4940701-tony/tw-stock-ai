@@ -3966,7 +3966,9 @@ function addFromScreener(ticker) {
   } else {
     toast(ticker + ' 已在清單中');
   }
-  runScreener();
+  // 只重繪現有結果以更新「＋→✓」狀態，不重跑掃描、不呼叫已淘汰的 runScreener()
+  // （舊函式只認財報條件，技術單篩時會把結果洗成「請至少勾選一個條件」）
+  if (window.lastScreenerResults) renderScreenResults(window.lastScreenerResults);
 }
 
 // ─────────────────────────────────
