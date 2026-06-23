@@ -3511,8 +3511,20 @@ function _runAllMarketScreener(hasInd, hasFund) {
     }
   }
 
-  // 有需歷史的條件 → 回退舊流程（逐股抓價驗證，完整保留）
-  if (needHistory) { _runAllMarketScreenerLegacy(hasInd, hasFund); return; }
+  // 有需歷史的條件（交叉/自訂週期等）→ 優先用全市場 OHLCV 即算；不可用則退 legacy 逐股抓價
+  if (needHistory) {
+    var _re = document.getElementById('screenerResults');
+    var _su = document.getElementById('screenerSub');
+    if (_re) _re.innerHTML = '<p style="color:#60a5fa;padding:20px 0;text-align:center;">⚡ 載入全市場日K…</p>';
+    ensureOHLCV(function(msg) {
+      if (_su) _su.textContent = msg;
+      if (_re) _re.innerHTML = '<p style="color:#60a5fa;padding:20px 0;text-align:center;">⚡ ' + msg + '</p>';
+    }).then(function(okOhlcv) {
+      if (okOhlcv) _runAllMarketScreenerOHLCV(hasInd, hasFund);
+      else _runAllMarketScreenerLegacy(hasInd, hasFund);
+    });
+    return;
+  }
 
   // 有 YoY/月營收條件但財報快取未載入 → 交給舊流程顯示提示
   if (fundTests.length && (!fundamentalsCache || !fundamentalsCache.stocks)) {
@@ -3666,6 +3678,140 @@ function _runAllMarketScreenerLegacy(hasInd, hasFund) {
       }
     });
   });
+}
+
+// ═══════════════════════════════════════════════════
+// 全市場日K（OHLCV）即時計算（2026-06-23）
+// 每晚 GitHub Actions 預算 data/ohlcv.json.gz（全市場 2 年 OHLCV）
+// 開頁載入(IndexedDB 快取) → 交叉/自訂週期等「需歷史」指標改純前端即算、涵蓋全市場
+// 取代逐股抓 FinMind 慢路徑（13 秒/檔）
+// ═══════════════════════════════════════════════════
+var OHLCV = null;           // { updated, dates, stocks:{sid:{o,h,l,c,v}} }，v 單位=張
+var _ohlcvLoading = null;
+
+function _ohlcvToday() {
+  var d = new Date();
+  return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+}
+// 極簡 IndexedDB kv（大檔超過 localStorage 上限，必須用 IDB）
+function _idb() {
+  return new Promise(function(res, rej) {
+    var r = indexedDB.open('twstock', 1);
+    r.onupgradeneeded = function() { r.result.createObjectStore('kv'); };
+    r.onsuccess = function() { res(r.result); };
+    r.onerror = function() { rej(r.error); };
+  });
+}
+function _idbGet(k) {
+  return _idb().then(function(db) { return new Promise(function(res, rej) {
+    var t = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+    t.onsuccess = function() { res(t.result); }; t.onerror = function() { rej(t.error); };
+  }); });
+}
+function _idbSet(k, v) {
+  return _idb().then(function(db) { return new Promise(function(res, rej) {
+    var t = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k);
+    t.onsuccess = function() { res(); }; t.onerror = function() { rej(t.error); };
+  }); });
+}
+
+// 確保 OHLCV 載入；回傳 Promise<bool>（false=不支援/失敗，呼叫端走 legacy）
+function ensureOHLCV(onProgress) {
+  if (OHLCV) return Promise.resolve(true);
+  if (_ohlcvLoading) return _ohlcvLoading;
+  _ohlcvLoading = (function() {
+    if (typeof DecompressionStream === 'undefined') {  // 舊瀏覽器不支援 → 降級 legacy
+      console.warn('[OHLCV] 瀏覽器不支援 DecompressionStream，改用逐股抓價');
+      return Promise.resolve(false);
+    }
+    var today = _ohlcvToday();
+    return _idbGet('ohlcv').then(function(c) {
+      if (c && c._fetchedDate === today && c.data) { OHLCV = c.data; return true; } // 當天已載過
+      if (onProgress) onProgress('下載全市場日K…（約幾秒～十幾秒，當天只一次）');
+      return fetch('data/ohlcv.json.gz?d=' + today).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var stream = r.body.pipeThrough(new DecompressionStream('gzip'));
+        return new Response(stream).text();
+      }).then(function(txt) {
+        OHLCV = JSON.parse(txt);
+        _idbSet('ohlcv', { _fetchedDate: today, data: OHLCV }).catch(function(){});
+        return true;
+      });
+    }).catch(function(e) {
+      console.warn('[OHLCV] 載入失敗，改用逐股抓價:', e && e.message);
+      return false;
+    });
+  })();
+  return _ohlcvLoading;
+}
+
+// 由 OHLCV 組單檔 mockD（對齊 legacy 的 mockD，確保結果一致）；無資料回 null
+function _ohlcvMockD(sid) {
+  var s = OHLCV.stocks[sid]; if (!s) return null;
+  var closes = [], highs = [], lows = [], vols = [];
+  for (var i = 0; i < s.c.length; i++) {
+    if (s.c[i] == null) continue;            // 跳過停牌/未上市日
+    closes.push(s.c[i]); highs.push(s.h[i]); lows.push(s.l[i]); vols.push(s.v[i]);
+  }
+  if (closes.length < 2) return null;
+  var n = closes.length - 1;
+  var rsiArr = calcRSI(closes, 14), ma5 = calcMA(closes, 5), ma20 = calcMA(closes, 20);
+  var lowWin = closes.slice(Math.max(0, n - 252));
+  return {
+    ticker: sid, rsi: rsiArr[n], closes: closes, highs: highs, lows: lows,
+    volumes: vols,                            // 已是「張」（後端存 股數/1000），不再除
+    pctFromLow: n >= 252 ? (closes[n] - Math.min.apply(null, lowWin)) / Math.min.apply(null, lowWin) * 100 : null,
+    isBullish: ma5[n] != null && ma20[n] != null && ma5[n] > ma20[n],
+    pct5d: n >= 5 ? (closes[n] - closes[n-5]) / closes[n-5] * 100 : null,
+    monthRev: stocks[sid] ? stocks[sid].monthRev : null
+  };
+}
+
+// 全市場 OHLCV 即時篩選（取代慢路徑 legacy 的逐股抓價）
+function _runAllMarketScreenerOHLCV(hasInd, hasFund) {
+  var resEl = document.getElementById('screenerResults');
+  var sub   = document.getElementById('screenerSub');
+
+  // 財報條件：用 fundamentals.json 算通過集合（tvOnly 殖利率無此資料 → 跳過，比照 legacy）
+  var enabled = screenConds.filter(function(c) { return c.on && !c.tvOnly; });
+  var fundSet = null;
+  if (enabled.length) {
+    if (!fundamentalsCache || !fundamentalsCache.stocks) {  // 財報未載入 → 退 legacy
+      _runAllMarketScreenerLegacy(hasInd, hasFund); return;
+    }
+    fundSet = {};
+    Object.keys(fundamentalsCache.stocks).forEach(function(sid) {
+      var f = fundamentalsCache.stocks[sid];
+      if (!f || f.eps == null) return;
+      if (enabled.every(function(c) {
+        var v = f[c.key]; if (v == null) return false;
+        return c.op === '>' ? v > c.val : v < c.val;
+      })) fundSet[sid] = true;
+    });
+  }
+  if (screenConds.some(function(c){ return c.on && c.tvOnly; }))
+    toast('殖利率僅 TV 快路徑可篩，與交叉/歷史類條件並用時本次略過殖利率');
+
+  // 遍歷全市場即時算技術指標
+  var afKeys = Object.keys(activeFilters);
+  var matches = [];
+  var ids = Object.keys(OHLCV.stocks);
+  for (var i = 0; i < ids.length; i++) {
+    var sid = ids[i];
+    if (fundSet && !fundSet[sid]) continue;
+    var d = _ohlcvMockD(sid);
+    if (!d) continue;
+    var ok = afKeys.every(function(k) { return matchFilter(d, k); });
+    if (ok && screenerCustomConds.length) ok = evalScreenerConds(screenerCustomConds, d);
+    if (ok) matches.push(sid);
+  }
+
+  window.lastScreenerResults = matches.map(function(sid) {
+    return { sid: sid, f: (fundamentalsCache && fundamentalsCache.stocks && fundamentalsCache.stocks[sid]) || {} };
+  });
+  renderScreenResults(window.lastScreenerResults);
+  if (sub) sub.textContent = '⚡ 全市場日K 即算（資料至 ' + (OHLCV.updated || '') + '・昨收）　符合：'
+    + matches.length + ' 檔' + (matches.length > 200 ? '（顯示前 200，可點欄位排序）' : '');
 }
 
 // 漸進式結果表格（財報資料 + 待驗證技術指標欄）
@@ -3985,8 +4131,11 @@ function calcMA(prices, n) {
 
 function calcRSI(prices, n) {
   n = n || 14;
+  // 全長對齊（result[i] = 截至 prices[i] 的 RSI）：預填 prices.length 個 null。
+  // 修正既有 off-by-one：舊版只 push n 個 null + 從 n+1 起算 → 長度 length-1 且漏 index n，
+  // 使 idx=length-1 的消費端（evalCondAtLastBar 自訂 RSI 條件）讀到 undefined。
   var result = [];
-  for (var k=0;k<n;k++) result.push(null);
+  for (var k=0;k<prices.length;k++) result.push(null);
   if (prices.length <= n) return result;
   var g=0, l=0;
   for (var i=1;i<=n;i++){
@@ -3994,11 +4143,12 @@ function calcRSI(prices, n) {
     if (diff>0) g+=diff; else l-=diff;
   }
   var ag=g/n, al=l/n;
+  result[n] = (al===0?100:100-100/(1+ag/al));    // index n：第一個可算的 RSI（先前漏掉）
   for (var i=n+1;i<prices.length;i++){
     var diff=(prices[i]||0)-(prices[i-1]||0);
     ag=(ag*(n-1)+Math.max(diff,0))/n;
     al=(al*(n-1)+Math.max(-diff,0))/n;
-    result.push(al===0?100:100-100/(1+ag/al));
+    result[i] = (al===0?100:100-100/(1+ag/al));
   }
   return result;
 }

@@ -14,5 +14,8 @@ backtest/cache/
 # Python / 暫存
 __pycache__/
 response.json
+# 全市場日K：只 commit 壓縮版 .gz；未壓縮測試檔與建底 log 不進版控
+data/ohlcv.json
+scripts/_backfill.log
 # Wrangler 本地快取
 worker/.wrangler/
