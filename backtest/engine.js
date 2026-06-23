@@ -177,10 +177,13 @@
         const s = tkSig(i);
         return s === 'MAIN_SHORT' || s === 'CORRECTION_SHORT';    // 轉空 / 牛市修正 → 收兵
       };
+      const openShort = i => tkSig(i) === 'MAIN_SHORT';           // 全軍做空（僅供訊號掃描通知，run() 不交易做空）
       return {
         entrySignal: i => openLong(i) && !openLong(i - 1),         // rising edge
         exitSignal: i => closeLong(i),
         activeSignal: i => openLong(i),                            // 目前處於做多區
+        shortEntrySignal: i => openShort(i) && !openShort(i - 1),  // 做空 rising edge（僅回報）
+        shortActiveSignal: i => openShort(i),                      // 目前處於做空區
         warmup: Math.max(p.lbPeriod + 1, p.atrPeriod) + 1
       };
     }
@@ -206,6 +209,8 @@
       entrySignal: i => score(i) >= p.confirmsNeeded && score(i - 1) < p.confirmsNeeded,
       exitSignal: i => emaF[i] != null && emaS[i] != null && emaF[i] < emaS[i],
       activeSignal: i => score(i) >= p.confirmsNeeded,             // 目前達確認門檻
+      shortEntrySignal: i => false,                               // 三刀流做空不在本次範圍
+      shortActiveSignal: i => false,
       warmup: Math.max(p.emaSlow, p.rsiPeriod, p.atrPeriod, p.macdSlow + p.macdSignal) + 1
     };
   }
@@ -216,11 +221,13 @@
     const closes = candles.map(c => c.close);
     const sig = buildSignals(closes, p);
     const i = closes.length - 1;
-    if (i < sig.warmup) return { strategy: p.strategy, ready: false, fresh: false, active: false, price: closes[i] };
+    if (i < sig.warmup) return { strategy: p.strategy, ready: false, fresh: false, active: false, freshShort: false, activeShort: false, price: closes[i] };
     return {
       strategy: p.strategy, ready: true,
       fresh: sig.entrySignal(i),     // 最新一根剛出現買進訊號
       active: sig.activeSignal(i),   // 最新一根處於做多條件
+      freshShort: sig.shortEntrySignal ? sig.shortEntrySignal(i) : false,  // 最新一根剛出現做空訊號
+      activeShort: sig.shortActiveSignal ? sig.shortActiveSignal(i) : false, // 最新一根處於做空條件
       price: closes[i], time: candles[i].time
     };
   }

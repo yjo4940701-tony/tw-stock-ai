@@ -1,0 +1,35 @@
+name: Crypto Scan（虛擬貨幣訊號掃描）
+
+on:
+  schedule:
+    - cron: '5 * * * *'       # 每小時整點後 5 分（等 1H K 線收好）；crypto 24h 全天候
+  workflow_dispatch:
+    inputs:
+      test:
+        description: '送一則 TG 測試訊息驗證通道（true/false）'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Crypto scan（三國·1H，有新訊號才推 TG）
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          if [ "${{ github.event.inputs.test }}" = "true" ]; then
+            node scripts/crypto_scan.js --test
+          else
+            node scripts/crypto_scan.js
+          fi
