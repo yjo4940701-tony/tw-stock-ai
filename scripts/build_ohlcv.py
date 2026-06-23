@@ -156,8 +156,10 @@ def trim(data, keep=KEEP_DAYS):
 def save(data):
     data['updated'] = data['dates'][-1] if data['dates'] else None
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with gzip.open(OUT, 'wt', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+    payload = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    # mtime=0：確定性壓縮，資料未變→位元相同→git 不會在假日 no-op 時誤 commit
+    with gzip.GzipFile(OUT, 'wb', mtime=0) as gz:
+        gz.write(payload)
     sz = os.path.getsize(OUT) / 1024 / 1024
     print('saved %s | dates=%d stocks=%d | %.1f MB (gz)' %
           (OUT, len(data['dates']), len(data['stocks']), sz))
