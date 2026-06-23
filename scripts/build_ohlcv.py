@@ -170,7 +170,24 @@ def main():
     ap.add_argument('--backfill', type=int, default=0,
                     help='回補近 N 天（首次建底，如 730）；省略=增量')
     ap.add_argument('--throttle', type=float, default=1.2, help='每日間隔秒')
+    ap.add_argument('--force', action='store_true',
+                    help='允許 backfill 覆蓋成更短的現有檔（保險預設禁止）')
     args = ap.parse_args()
+
+    # 🔴 保險：backfill 是「從空白重建」，若會把現有完整檔覆蓋成更短 → 拒絕（除非 --force）
+    # 防呆 2026-06-23 慘案：誤觸 backfill=5 把正式站 478 天 base 蓋成 3 天
+    if args.backfill and not args.force and os.path.exists(OUT):
+        try:
+            existing = load_data()
+            cur_days = len(existing.get('dates', []))
+            est_new  = int(args.backfill * 5 / 7)   # ~交易日估計
+            if cur_days > est_new:
+                print('[拒絕] 現有檔有 %d 個交易日，backfill %d 天只會建約 %d 天 → '
+                      '會覆蓋成更短的檔。' % (cur_days, args.backfill, est_new))
+                print('       若真要重建，加 --force；或用更大的 --backfill。增量請省略 --backfill。')
+                sys.exit(1)
+        except Exception:
+            pass   # 現有檔讀不出 → 視為可重建
 
     # --backfill 一律從空白重建（避免沿用舊檔殘留）；增量才讀現有檔
     data = {'updated': None, 'dates': [], 'stocks': {}} if args.backfill else load_data()
