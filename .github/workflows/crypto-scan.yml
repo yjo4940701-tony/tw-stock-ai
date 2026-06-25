@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Crypto scan（三國·1H，有新訊號才推 TG）
+      - name: Crypto scan（60MA穿越·4H，有新訊號才推 TG）
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
