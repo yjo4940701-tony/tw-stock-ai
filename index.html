@@ -697,6 +697,46 @@ select.bt-input{cursor:pointer;}
       <div id="crypto-scan-result" style="margin-top:12px;color:#64748b;font-size:13px;">選好策略與週期，按「開始掃描」（掃描「我的幣清單」裡所有幣的最新訊號）</div>
     </div>
 
+    <!-- 後台自動掃描設定 -->
+    <div class="bt-panel" style="margin-top:16px;">
+      <div class="bt-panel-title" style="margin-bottom:6px;">🛰️ 後台自動掃描設定 <span style="color:#475569;font-size:12px;font-weight:400;">雲端每小時自動掃「我的幣清單」，觸發就推 Telegram；改完按確認，下次掃描生效</span></div>
+      <div id="scancfg-current" style="font-size:12px;color:#60a5fa;margin-bottom:10px;">目前生效：載入中…</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+        <div><div class="bt-label">策略</div>
+          <select class="bt-input" id="scfg-strat" style="width:120px;" onchange="onScfgStratChange()">
+            <option value="60ma">60MA穿越</option>
+            <option value="threeKingdoms">三國</option>
+            <option value="threeBlade">三刀流</option>
+          </select>
+        </div>
+        <div><div class="bt-label">週期</div>
+          <select class="bt-input" id="scfg-tf" style="width:80px;">
+            <option value="1H">1H</option><option value="4H">4H</option><option value="1D">日K</option>
+          </select>
+        </div>
+        <div><div class="bt-label">方向</div>
+          <select class="bt-input" id="scfg-dir" style="width:80px;" onchange="onScfgStratChange()">
+            <option value="both">兩者</option><option value="long">做多</option><option value="short">做空</option>
+          </select>
+        </div>
+        <div id="scfg-p-60ma"><div class="bt-label">均線週期</div>
+          <input class="bt-input" id="scfg-ma" type="number" value="60" min="2" max="500" style="width:70px;"></div>
+        <div id="scfg-p-tk" style="display:none;align-items:flex-end;gap:8px;">
+          <div><div class="bt-label">劉備</div><input class="bt-input" id="scfg-lb" type="number" value="240" min="2" max="500" style="width:60px;"></div>
+          <div><div class="bt-label">關羽</div><input class="bt-input" id="scfg-gy" type="number" value="60" min="2" max="300" style="width:60px;"></div>
+          <div><div class="bt-label">張飛</div><input class="bt-input" id="scfg-zf" type="number" value="20" min="2" max="200" style="width:60px;"></div>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding-bottom:8px;"><input type="checkbox" id="scfg-bounce" checked>熊市反彈</label>
+        </div>
+        <div id="scfg-p-blade" style="display:none;align-items:flex-end;gap:8px;">
+          <div><div class="bt-label">EMA快</div><input class="bt-input" id="scfg-ef" type="number" value="9" min="2" max="100" style="width:60px;"></div>
+          <div><div class="bt-label">EMA慢</div><input class="bt-input" id="scfg-es" type="number" value="21" min="2" max="200" style="width:60px;"></div>
+          <div><div class="bt-label">RSI週期</div><input class="bt-input" id="scfg-rsi" type="number" value="14" min="2" max="100" style="width:60px;"></div>
+        </div>
+        <button class="btn-add" onclick="confirmScanCfg()" style="padding:10px 16px;font-size:13px;white-space:nowrap;">✓ 確認更新後台</button>
+      </div>
+      <div id="scfg-note" style="margin-top:8px;font-size:12px;color:#f59e0b;"></div>
+    </div>
+
     <!-- K 線圖 -->
     <div id="crypto-chart-box" class="bt-panel" style="display:none;margin-top:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -4607,6 +4647,61 @@ function setScanStrat(s) {
   document.getElementById('cscan-tk').classList.toggle('active', s === 'threeKingdoms');
 }
 
+// ── 後台自動掃描設定（存 Gist tw_crypto_scan_cfg，雲端 crypto_scan.js 讀）──────────
+var DEFAULT_SCAN_CFG = { strategy:'60ma', tf:'4H', direction:'both', maPeriod:60,
+  tk:{lb:240,gy:60,zf:20,allowBounce:true}, blade:{emaFast:9,emaSlow:21,rsiPeriod:14} };
+function loadScanCfg() {
+  try { return Object.assign({}, DEFAULT_SCAN_CFG, JSON.parse(localStorage.getItem('tw_crypto_scan_cfg') || '{}')); }
+  catch(e) { return Object.assign({}, DEFAULT_SCAN_CFG); }
+}
+function scfgLabel(c) {
+  var m = { '60ma':(c.maPeriod||60)+'MA穿越', threeKingdoms:'三國', threeBlade:'三刀流' };
+  var d = { both:'做多+做空', long:'只做多', short:'只做空' };
+  return (m[c.strategy]||c.strategy) + ' · ' + c.tf + ' · ' + (d[c.direction]||c.direction);
+}
+function _sv(id,v){ var e=document.getElementById(id); if(e&&v!=null) e.value=v; }
+function renderScanCfgUI() {
+  if (!document.getElementById('scfg-strat')) return;
+  var c = loadScanCfg();
+  _sv('scfg-strat', c.strategy); _sv('scfg-tf', c.tf); _sv('scfg-dir', c.direction);
+  _sv('scfg-ma', c.maPeriod||60);
+  if (c.tk) { _sv('scfg-lb',c.tk.lb); _sv('scfg-gy',c.tk.gy); _sv('scfg-zf',c.tk.zf);
+    var bc=document.getElementById('scfg-bounce'); if(bc) bc.checked = c.tk.allowBounce !== false; }
+  if (c.blade) { _sv('scfg-ef',c.blade.emaFast); _sv('scfg-es',c.blade.emaSlow); _sv('scfg-rsi',c.blade.rsiPeriod); }
+  document.getElementById('scancfg-current').textContent = '目前生效：' + scfgLabel(c)
+    + (c.updatedAt ? '（更新於 ' + c.updatedAt.slice(0,16).replace('T',' ') + '）' : '（預設）');
+  onScfgStratChange();
+}
+function onScfgStratChange() {
+  var s = document.getElementById('scfg-strat').value;
+  document.getElementById('scfg-p-60ma').style.display = s==='60ma' ? '' : 'none';
+  document.getElementById('scfg-p-tk').style.display   = s==='threeKingdoms' ? 'flex' : 'none';
+  document.getElementById('scfg-p-blade').style.display = s==='threeBlade' ? 'flex' : 'none';
+  var dir = document.getElementById('scfg-dir').value;
+  document.getElementById('scfg-note').textContent =
+    (s==='threeBlade' && dir!=='long') ? '⚠️ 三刀流目前不支援做空，將只推做多訊號' : '';
+}
+function confirmScanCfg() {
+  if (!localStorage.getItem('tw_gh_pat') || !localStorage.getItem('tw_gist_id')) {
+    toast('請先在 ⚙ 設定填 GitHub PAT 與 Gist ID 才能更新後台', 'err');
+    if (typeof openSettings === 'function') openSettings();
+    return;
+  }
+  var s = document.getElementById('scfg-strat').value;
+  var cfg = { strategy:s, tf:document.getElementById('scfg-tf').value,
+    direction:document.getElementById('scfg-dir').value, updatedAt:new Date().toISOString() };
+  if (s==='60ma') cfg.maPeriod = +document.getElementById('scfg-ma').value || 60;
+  if (s==='threeKingdoms') cfg.tk = { lb:+document.getElementById('scfg-lb').value||240,
+    gy:+document.getElementById('scfg-gy').value||60, zf:+document.getElementById('scfg-zf').value||20,
+    allowBounce:document.getElementById('scfg-bounce').checked };
+  if (s==='threeBlade') cfg.blade = { emaFast:+document.getElementById('scfg-ef').value||9,
+    emaSlow:+document.getElementById('scfg-es').value||21, rsiPeriod:+document.getElementById('scfg-rsi').value||14 };
+  localStorage.setItem('tw_crypto_scan_cfg', JSON.stringify(cfg));
+  if (typeof pushToGist === 'function') pushToGist();   // 整包寫回 Gist（含最新幣清單）
+  renderScanCfgUI();
+  toast('✅ 後台設定已更新，下次掃描（每小時）生效', 'ok');
+}
+
 function runCryptoScan() {
   if (typeof BTEngine === 'undefined') { toast('引擎未載入', 'err'); return; }
   if (!CRYPTO_BASKET.length) { document.getElementById('crypto-scan-result').innerHTML = '<span style="color:#f59e0b;">「我的幣清單」是空的，請先用上方搜尋加入幣種</span>'; return; }
@@ -4687,7 +4782,7 @@ function showPage(page) {
   var ncb = document.getElementById('nav-crypto');
   if (ncb) ncb.classList.toggle('active', page === 'crypto');
   // 首次進虛擬貨幣分頁 → 載入報價
-  if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; renderMyCoins(); loadCryptoTickers(); }
+  if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; renderMyCoins(); loadCryptoTickers(); renderScanCfgUI(); }
 }
 
 // ══ FIRE 影響鏈（個股 Modal 內）═══════════════════════
@@ -6150,7 +6245,7 @@ function loadFromBatch(ticker) {
 // ─────────────────────────────────
 // ⚠️ AI Key (tw_key1/tw_key2) 不同步 Gist（GitHub 會掃描並撤銷 key）
 // 手機的 AI Key 需手動填入設定頁
-var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts','tw_crypto_basket'];
+var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts','tw_crypto_basket','tw_crypto_scan_cfg'];
 var _gistSyncTimer = null;
 
 function getGistHeaders() {
@@ -6189,6 +6284,7 @@ function syncFromGist(silent) {
       // 重新載入 GROUPS 和畫面
       GROUPS = loadGroups();
       if (typeof loadCryptoBasket === 'function') { CRYPTO_BASKET = loadCryptoBasket(); if (typeof renderMyCoins === 'function') renderMyCoins(); }
+      if (typeof renderScanCfgUI === 'function') renderScanCfgUI();   // 同步後刷新後台掃描設定顯示
       renderTabs();
       renderGrid();
       updateAlertBadge();
