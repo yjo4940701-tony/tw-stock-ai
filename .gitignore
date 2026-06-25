@@ -11,6 +11,8 @@ secrets.json
 
 # 回測本地快取（FinMind 日K，當日重抓）
 backtest/cache/
+# 臨時策略分析腳本（_ 前綴，不進版控）
+backtest/_*.js
 # Python / 暫存
 __pycache__/
 response.json
