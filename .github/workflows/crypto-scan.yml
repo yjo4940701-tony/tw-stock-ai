@@ -2,7 +2,7 @@ name: Crypto Scan（虛擬貨幣訊號掃描）
 
 on:
   schedule:
-    - cron: '10 0,4,8,12,16,20 * * *'   # 每 4H（對齊派網 4H 收線 UTC 00/04/08/12/16/20，後 10 分跑）；crypto 24h
+    - cron: '5 * * * *'      # 每小時（配合網頁可調週期；後台只推「剛收線那根」→ 任何週期都只推一次）；crypto 24h
   workflow_dispatch:
     inputs:
       test:
