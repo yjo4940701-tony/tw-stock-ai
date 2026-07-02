@@ -774,9 +774,17 @@ select.bt-input{cursor:pointer;}
   </div>
 </div>
 
-<!-- CALENDAR PAGE（財經日曆，走 tw-stock-news Worker 的 tvcal 路由）-->
+<!-- CALENDAR PAGE（財經日曆 + 金十快訊）-->
 <div id="calendarPage" style="display:none;">
   <div class="main" style="padding-top:20px;">
+    <!-- 子頁籤：日曆 / 快訊 -->
+    <div class="bt-strategy-tabs" style="max-width:320px;margin-bottom:14px;">
+      <button class="bt-stab active" id="cal-subtab-cal" onclick="setCalTab('calendar')">📅 財經日曆</button>
+      <button class="bt-stab" id="cal-subtab-flash" onclick="setCalTab('flash')">⚡ 快訊</button>
+    </div>
+
+    <!-- 分頁 1：財經日曆（走 tw-stock-news Worker tvcal 路由）-->
+    <div id="cal-tab-calendar">
     <div class="bt-panel">
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
         <div class="bt-panel-title" style="margin:0;">📅 財經日曆 <span style="color:#475569;font-size:12px;font-weight:400;">未來兩週重大經濟事件（TradingView，每 30 分快取）</span></div>
@@ -798,6 +806,25 @@ select.bt-input{cursor:pointer;}
         時間為台灣時間。<span style="color:#22c55e;">實際值</span>優於預期以綠色、低於預期以紅色標示（僅供對照，實際多空方向依指標性質而定）。🔴🔴 高、🔴 中重要度。
       </div>
       <div id="cal-result" style="margin-top:14px;color:#64748b;font-size:13px;">載入中…</div>
+    </div>
+    </div>
+
+    <!-- 分頁 2：金十快訊（前端直抓 flash_newest.js，CORS 全開免 Worker）-->
+    <div id="cal-tab-flash" style="display:none;">
+    <div class="bt-panel">
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+        <div class="bt-panel-title" style="margin:0;">⚡ 財經快訊 <span style="color:#475569;font-size:12px;font-weight:400;">金十數據即時快訊（最新約 50 則）</span></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="display:flex;align-items:center;gap:5px;color:#94a3b8;font-size:12px;cursor:pointer;">
+            <input type="checkbox" id="flash-imp-only" onchange="renderJin10Flash()"> 只看重要
+          </label>
+          <span id="flash-updated" style="color:#475569;font-size:11px;"></span>
+          <button class="btn-settings" onclick="loadJin10Flash(true)" style="white-space:nowrap;">🔄 更新</button>
+        </div>
+      </div>
+      <div style="margin-top:8px;color:#64748b;font-size:11px;line-height:1.5;">時間為台灣時間。⭐ 為金十標記的重要快訊。停留此頁時每 60 秒自動更新。</div>
+      <div id="flash-result" style="margin-top:14px;color:#64748b;font-size:13px;">載入中…</div>
+    </div>
     </div>
   </div>
 </div>
@@ -4392,6 +4419,77 @@ function renderEconCalendar() {
   box.innerHTML = html;
 }
 
+// ── 日曆頁子頁籤切換（財經日曆 / 金十快訊）──────────
+var _flashTimer = null;
+function setCalTab(tab) {
+  document.getElementById('cal-subtab-cal').classList.toggle('active', tab === 'calendar');
+  document.getElementById('cal-subtab-flash').classList.toggle('active', tab === 'flash');
+  document.getElementById('cal-tab-calendar').style.display = tab === 'calendar' ? '' : 'none';
+  document.getElementById('cal-tab-flash').style.display = tab === 'flash' ? '' : 'none';
+  if (tab === 'flash') {
+    if (!window._jin10Loaded) { window._jin10Loaded = true; loadJin10Flash(); }
+    startFlashAutoRefresh();
+  } else {
+    stopFlashAutoRefresh();
+  }
+}
+function startFlashAutoRefresh() {
+  stopFlashAutoRefresh();
+  _flashTimer = setInterval(function(){ loadJin10Flash(true); }, 60000); // 每 60 秒
+}
+function stopFlashAutoRefresh() {
+  if (_flashTimer) { clearInterval(_flashTimer); _flashTimer = null; }
+}
+
+// ── 金十快訊（前端直抓 flash_newest.js，CORS 全開免 Worker）──────────
+var _jin10Raw = null;
+function loadJin10Flash(force) {
+  var box = document.getElementById('flash-result');
+  if (_jin10Raw && !force) { renderJin10Flash(); return; }
+  if (!_jin10Raw) box.innerHTML = '載入中…';
+  // 走 Worker（flash_newest.js 直連因重複 CORS 標頭被瀏覽器擋，需 server-side 代理）
+  fetch(CRYPTO_PROXY + '?type=jin10')
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (!j || j.status !== 'ok' || !Array.isArray(j.data)) throw new Error(j && j.message ? j.message : '格式異常');
+      _jin10Raw = j.data;
+      renderJin10Flash();
+      var now = new Date(Date.now() + 8*3600e3);
+      document.getElementById('flash-updated').textContent = '更新於 ' + now.toISOString().slice(11,19);
+    })
+    .catch(function(e){
+      if (!_jin10Raw) box.innerHTML = '<span style="color:#f87171;">快訊載入失敗：' + escapeHtml(e.message) + '</span>';
+    });
+}
+function _stripTags(s){ return String(s||'').replace(/<[^>]+>/g, ''); }
+function renderJin10Flash() {
+  var box = document.getElementById('flash-result');
+  if (!_jin10Raw) { box.innerHTML = '載入中…'; return; }
+  var impOnly = document.getElementById('flash-imp-only').checked;
+  var items = _jin10Raw.filter(function(a){
+    if (a.type !== 0) return false;                 // 只要文字快訊（排除圖片/VIP 等）
+    var d = a.data || {};
+    var text = _stripTags(d.content || d.title || '');
+    if (!/[一-鿿]/.test(text)) return false; // 只留含中文的（去除英文重複版）
+    if (impOnly && a.important !== 1) return false;
+    return true;
+  });
+  if (!items.length) { box.innerHTML = '<div style="padding:12px 0;color:#64748b;">目前沒有快訊' + (impOnly ? '（重要）' : '') + '。</div>'; return; }
+  var html = '';
+  items.forEach(function(a){
+    var d = a.data || {};
+    var text = _stripTags(d.content || d.title || '');
+    var hhmm = (a.time || '').slice(11,16);         // 金十時間本就北京時間=台灣時間
+    var isImp = a.important === 1;
+    html += '<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid #1e293b;' + (isImp ? 'background:rgba(245,158,11,.06);' : '') + '">'
+      + '<div style="color:#94a3b8;font-size:12px;white-space:nowrap;width:44px;flex-shrink:0;padding-top:1px;">' + hhmm + '</div>'
+      + '<div style="flex:1;color:' + (isImp ? '#fcd34d' : '#e2e8f0') + ';font-size:13px;line-height:1.55;font-weight:' + (isImp ? '600' : '400') + ';">'
+      + (isImp ? '⭐ ' : '') + escapeHtml(text) + '</div>'
+      + '</div>';
+  });
+  box.innerHTML = html;
+}
+
 function loadCryptoTickers() {
   var box = document.getElementById('crypto-ticker-table');
   box.innerHTML = '載入中⋯';
@@ -4981,6 +5079,8 @@ function showPage(page) {
   if (page === 'crypto' && !window._cryptoLoaded) { window._cryptoLoaded = true; renderMyCoins(); loadCryptoTickers(); renderScanCfgUI(); }
   // 首次進財經日曆分頁 → 載入日曆
   if (page === 'calendar' && !window._calLoaded) { window._calLoaded = true; loadEconCalendar(); }
+  // 離開日曆分頁 → 停掉快訊自動更新計時器
+  if (page !== 'calendar' && typeof stopFlashAutoRefresh === 'function') stopFlashAutoRefresh();
 }
 
 // ══ FIRE 影響鏈（個股 Modal 內）═══════════════════════

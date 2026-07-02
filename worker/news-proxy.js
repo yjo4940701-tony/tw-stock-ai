@@ -128,6 +128,33 @@ async function handleRequest(request, env) {
       }
     }
 
+    // ── 路由：金十數據快訊（type=jin10） ──────────
+    // flash_newest.js 直連前端會失敗：回應帶「重複的 Access-Control-Allow-Origin」標頭，
+    // 瀏覽器判定 CORS 無效 → Failed to fetch。故由 Worker server-side 抓（不受 CORS 限制），
+    // 解析出 `var newest = [...]` 回乾淨 JSON。
+    if (type === 'jin10') {
+      try {
+        const resp = await fetch('https://www.jin10.com/flash_newest.js', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          cf: { cacheTtl: 30, cacheEverything: true }   // 快訊即時，快取 30 秒護金十
+        });
+        const txt = await resp.text();
+        const m = txt.match(/var\s+newest\s*=\s*(\[[\s\S]*\])/);
+        if (!m) return json({ status: 'error', message: '解析失敗', data: [] }, 200);
+        // 直接把陣列字串塞進回應（已是合法 JSON），不在 Worker 端 JSON.parse 省 CPU
+        return new Response('{"status":"ok","data":' + m[1] + '}', {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json;charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=30'
+          }
+        });
+      } catch (e) {
+        return json({ status: 'error', message: '金十 fetch 失敗: ' + e.message, data: [] }, 200);
+      }
+    }
+
     // ── 路由：Google News（type=news，預設） ────────────
     const stockId   = url.searchParams.get('id')   || '';
     const stockName = url.searchParams.get('name') || '';
