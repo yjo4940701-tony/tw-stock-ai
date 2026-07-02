@@ -15,6 +15,7 @@
  *   --no-trail         關閉追蹤止盈
  *   --direction <long|short|both>  方向（預設 long；三國適用，三刀流做空不支援）
  *   --no-allow-correction          關閉三國牛市修正對稱空單（預設開）
+ *   --custom-long/--custom-short <json>  自訂均線條件（strategy=custom 用，JSON 字串，見 engine.js 註解）
  *   --trades           列出每筆交易
  *   --json             以 JSON 輸出（給程式接）
  */
@@ -37,11 +38,17 @@ function parseArgs(argv) {
 
 function buildParams(a) {
   const p = {};
-  // 策略：3k / kingdoms / threeKingdoms → 三國；其餘預設三刀流
+  // 策略：3k / kingdoms / threeKingdoms → 三國；custom → 自訂條件；其餘預設三刀流
   if (a.strategy) {
     var s = String(a.strategy).toLowerCase();
-    p.strategy = (s === '3k' || s === 'kingdoms' || s === 'threekingdoms' || s === '三國') ? 'threeKingdoms' : 'threeBlade';
+    if (s === '3k' || s === 'kingdoms' || s === 'threekingdoms' || s === '三國') p.strategy = 'threeKingdoms';
+    else if (s === 'custom' || s === '自訂') p.strategy = 'custom';
+    else p.strategy = 'threeBlade';
   }
+  if (a['custom-long'] != null) p.customLong = JSON.parse(a['custom-long']);
+  if (a['custom-short'] != null) p.customShort = JSON.parse(a['custom-short']);
+  // custom 策略的多空各自由條件清單決定，預設 both（避免忘記 --direction 時做空條件被靜默忽略）
+  if (p.strategy === 'custom' && a.direction == null) p.direction = 'both';
   if (a.sl != null) p.slMult = +a.sl;
   if (a.tp != null) p.tpMult = +a.tp;
   if (a.trail != null) p.trailMult = +a.trail;
@@ -65,6 +72,8 @@ function printReport(id, res) {
   const s = res.stats;
   const stratName = res.params.strategy === 'threeKingdoms'
     ? `三國 ${res.params.lbPeriod}/${res.params.gyPeriod}/${res.params.zfPeriod}MA` + (res.params.useAtrRisk ? ' + ATR風控' : '（純均線）')
+    : res.params.strategy === 'custom'
+    ? `自訂條件（做多${(res.params.customLong||[]).length}條/做空${(res.params.customShort||[]).length}條）` + (res.params.useAtrRisk ? ' + ATR風控' : '')
     : '三刀流 + ATR 風控';
   console.log(`\n===== ${id} 進階回測（${stratName}）=====`);
   console.log(`期間          ${s.period}（${s.bars} 根日K）`);

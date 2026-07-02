@@ -36,7 +36,7 @@ async function readGist() {
     const basket = Array.isArray(all.tw_crypto_basket) && all.tw_crypto_basket.length ? all.tw_crypto_basket : DEFAULT_BASKET;
     const cfg = Object.assign({}, DEFAULT_CFG, all.tw_crypto_scan_cfg || {});
     if (!TF_MAP[cfg.tf]) cfg.tf = DEFAULT_CFG.tf;                      // 週期保險
-    if (!['60ma', 'threeKingdoms', 'threeBlade'].includes(cfg.strategy)) cfg.strategy = DEFAULT_CFG.strategy;
+    if (!['60ma', 'threeKingdoms', 'threeBlade', 'custom'].includes(cfg.strategy)) cfg.strategy = DEFAULT_CFG.strategy;
     if (!['long', 'short', 'both'].includes(cfg.direction)) cfg.direction = 'both';
     return { basket, cfg };
   } catch (e) {
@@ -70,6 +70,11 @@ function evalSignal(candles, cfg) {
     if (ma[i] == null || ma[i - 1] == null) return { ready: false };
     long = closes[i] > ma[i] && closes[i - 1] <= ma[i - 1];
     short = closes[i] < ma[i] && closes[i - 1] >= ma[i - 1];
+  } else if (cfg.strategy === 'custom') {
+    const params = clean({ strategy: 'custom', customLong: cfg.custom && cfg.custom.long, customShort: cfg.custom && cfg.custom.short });
+    const s = E.lastSignal(candles.slice(0, i + 1), params);
+    if (!s.ready) return { ready: false };
+    long = !!s.fresh; short = !!s.freshShort; price = s.price;
   } else {
     const params = cfg.strategy === 'threeKingdoms'
       ? clean({ strategy: 'threeKingdoms', lbPeriod: cfg.tk && cfg.tk.lb, gyPeriod: cfg.tk && cfg.tk.gy, zfPeriod: cfg.tk && cfg.tk.zf, allowBounce: cfg.tk && cfg.tk.allowBounce })
@@ -89,7 +94,8 @@ function label(sym) {
   return `${base}/USDT${perp ? ' 永續' : ''}`;
 }
 function stratLabel(cfg) {
-  const m = { '60ma': `${cfg.maPeriod || 60}MA穿越`, threeKingdoms: '三國', threeBlade: '三刀流' };
+  const m = { '60ma': `${cfg.maPeriod || 60}MA穿越`, threeKingdoms: '三國', threeBlade: '三刀流',
+    custom: `自訂條件（做多${(cfg.custom && cfg.custom.long || []).length}條/做空${(cfg.custom && cfg.custom.short || []).length}條）` };
   return `${m[cfg.strategy] || cfg.strategy} · ${cfg.tf}`;
 }
 

@@ -114,7 +114,11 @@
 
   // ---------- 預設參數 ----------
   const DEFAULTS = {
-    strategy: 'threeBlade', // 'threeBlade'（三刀流）| 'threeKingdoms'（三國 240/60/20MA）
+    strategy: 'threeBlade', // 'threeBlade'（三刀流）| 'threeKingdoms'（三國 240/60/20MA）| 'custom'（自訂均線條件）
+    // --- 自訂條件（custom）：做多/做空各自一組 AND 條件，元素 {left, op, right}
+    //     left/right = {type:'close'} | {type:'ma', period:N}；op = '>' | '<' | 'crossUp' | 'crossDown' ---
+    customLong: [],
+    customShort: [],
     // --- 三刀流（threeBlade）---
     rsiPeriod: 14, rsiLow: 50, rsiHigh: 65,  // rsiLow = 回檔門檻（多頭中 RSI 回落到此之下再回升視為買點）
     emaFast: 9, emaSlow: 21,
@@ -158,6 +162,45 @@
   // 建立各策略的進場/出場/狀態訊號（只做多，台股現股不開槓桿）；run() 與 lastSignal() 共用
   // 回傳 entrySignal(i)=新進場(rising edge)、exitSignal(i)=出場、activeSignal(i)=目前處於做多條件、warmup
   function buildSignals(closes, p) {
+    if (p.strategy === 'custom') {
+      // 自訂均線條件：做多/做空各自一組 AND 條件（獨立設定，不互相對稱推導）
+      const longConds = p.customLong || [];
+      const shortConds = p.customShort || [];
+      const periods = new Set();
+      longConds.concat(shortConds).forEach(c => {
+        if (c.left && c.left.type === 'ma') periods.add(c.left.period);
+        if (c.right && c.right.type === 'ma') periods.add(c.right.period);
+      });
+      const maCache = {};
+      periods.forEach(period => { maCache[period] = sma(closes, period); });
+      const val = (side, i) => side.type === 'ma' ? maCache[side.period][i] : closes[i];
+      function condTrue(c, i) {
+        const l = val(c.left, i), r = val(c.right, i);
+        if (l == null || r == null) return false;
+        if (c.op === '>') return l > r;
+        if (c.op === '<') return l < r;
+        if (i < 1) return false;
+        const l0 = val(c.left, i - 1), r0 = val(c.right, i - 1);
+        if (l0 == null || r0 == null) return false;
+        if (c.op === 'crossUp') return l > r && l0 <= r0;
+        if (c.op === 'crossDown') return l < r && l0 >= r0;
+        return false;
+      }
+      // 條件清單為空＝該方向永不觸發（例如只想做多，做空條件留空即可）
+      const allTrue = (conds, i) => conds.length > 0 && conds.every(c => condTrue(c, i));
+      const openLong = i => allTrue(longConds, i);
+      const openShort = i => allTrue(shortConds, i);
+      const maxPeriod = periods.size ? Math.max(...periods) : 0;
+      return {
+        entrySignal: i => openLong(i) && !openLong(i - 1),
+        exitSignal: i => !openLong(i),               // 條件不再全部成立 → 出場（無對稱狀態機可用時的通用出場規則）
+        activeSignal: i => openLong(i),
+        shortEntrySignal: i => openShort(i) && !openShort(i - 1),
+        shortActiveSignal: i => openShort(i),
+        exitShortSignal: i => !openShort(i),
+        warmup: maxPeriod + 2
+      };
+    }
     if (p.strategy === 'threeKingdoms') {
       // 三國：劉備240方向 / 關羽60進出 / 張飛20收兵
       const lb = sma(closes, p.lbPeriod);
