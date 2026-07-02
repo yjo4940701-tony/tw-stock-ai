@@ -15,7 +15,9 @@
  *   --no-trail         關閉追蹤止盈
  *   --direction <long|short|both>  方向（預設 long；三國適用，三刀流做空不支援）
  *   --no-allow-correction          關閉三國牛市修正對稱空單（預設開）
- *   --custom-long/--custom-short <json>  自訂均線條件（strategy=custom 用，JSON 字串，見 engine.js 註解）
+ *   --custom-long/--custom-short <json>  自訂均線條件（strategy=custom 用，JSON 字串，見 engine.js 註解；
+ *                                         支援單組扁平陣列或多組 [[...],[...]] 組間 OR）
+ *   --no-atr-risk      強制關閉 ATR 風控層（custom 策略預設開，此旗標可覆寫）
  *   --trades           列出每筆交易
  *   --json             以 JSON 輸出（給程式接）
  */
@@ -28,6 +30,7 @@ function parseArgs(argv) {
     const k = argv[i];
     if (k === '--no-trail') { a.useTrailing = false; continue; }
     if (k === '--atr-risk') { a.atrRisk = true; continue; }
+    if (k === '--no-atr-risk') { a.atrRisk = false; continue; }
     if (k === '--no-allow-correction') { a.allowCorrection = false; continue; }
     if (k === '--trades') { a.showTrades = true; continue; }
     if (k === '--json') { a.json = true; continue; }
@@ -57,7 +60,8 @@ function buildParams(a) {
   if (a.lb != null) p.lbPeriod = +a.lb;
   if (a.gy != null) p.gyPeriod = +a.gy;
   if (a.zf != null) p.zfPeriod = +a.zf;
-  if (a.atrRisk === true) p.useAtrRisk = true;   // 三國可選擇加 ATR 風控層
+  if (a.atrRisk === true) p.useAtrRisk = true;   // 三國/自訂條件可選擇加 ATR 風控層
+  if (a.atrRisk === false) p.useAtrRisk = false; // 自訂條件預設開 ATR，用這個強制關閉
   if (a.capital != null) p.capital = +a.capital;
   if (a.useTrailing === false) p.useTrailing = false;
   if (a.direction != null) p.direction = a.direction;   // long / short / both
@@ -73,7 +77,7 @@ function printReport(id, res) {
   const stratName = res.params.strategy === 'threeKingdoms'
     ? `三國 ${res.params.lbPeriod}/${res.params.gyPeriod}/${res.params.zfPeriod}MA` + (res.params.useAtrRisk ? ' + ATR風控' : '（純均線）')
     : res.params.strategy === 'custom'
-    ? `自訂條件（做多${(res.params.customLong||[]).length}條/做空${(res.params.customShort||[]).length}條）` + (res.params.useAtrRisk ? ' + ATR風控' : '')
+    ? `自訂條件（做多${BT.normalizeGroups(res.params.customLong).length}組/做空${BT.normalizeGroups(res.params.customShort).length}組）` + (res.params.useAtrRisk ? ' + ATR風控' : '')
     : '三刀流 + ATR 風控';
   console.log(`\n===== ${id} 進階回測（${stratName}）=====`);
   console.log(`期間          ${s.period}（${s.bars} 根日K）`);

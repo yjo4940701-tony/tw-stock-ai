@@ -95,7 +95,7 @@ function label(sym) {
 }
 function stratLabel(cfg) {
   const m = { '60ma': `${cfg.maPeriod || 60}MA穿越`, threeKingdoms: '三國', threeBlade: '三刀流',
-    custom: `自訂條件（做多${(cfg.custom && cfg.custom.long || []).length}條/做空${(cfg.custom && cfg.custom.short || []).length}條）` };
+    custom: `自訂條件（做多${E.normalizeGroups(cfg.custom && cfg.custom.long).length}組/做空${E.normalizeGroups(cfg.custom && cfg.custom.short).length}組）` };
   return `${m[cfg.strategy] || cfg.strategy} · ${cfg.tf}`;
 }
 

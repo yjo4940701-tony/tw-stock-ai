@@ -159,18 +159,25 @@
     return p;
   }
 
+  // 自訂條件正規化：舊版扁平陣列 [cond,...]（單組 AND）→ 包成 [[cond,...]]；新版已是 [[cond,...],...] 原樣回傳
+  function normalizeGroups(list) {
+    if (!list || !list.length) return [];
+    return (list[0] && list[0].op) ? [list] : list;
+  }
+
   // 建立各策略的進場/出場/狀態訊號（只做多，台股現股不開槓桿）；run() 與 lastSignal() 共用
   // 回傳 entrySignal(i)=新進場(rising edge)、exitSignal(i)=出場、activeSignal(i)=目前處於做多條件、warmup
   function buildSignals(closes, p) {
     if (p.strategy === 'custom') {
-      // 自訂均線條件：做多/做空各自一組 AND 條件（獨立設定，不互相對稱推導）
-      const longConds = p.customLong || [];
-      const shortConds = p.customShort || [];
+      // 自訂均線條件：做多/做空各自一份「條件組清單」，組內 AND、組間 OR（獨立設定，不互相對稱推導）
+      // customLong/customShort 接受兩種格式：舊版「單組」扁平陣列 [cond,...]，或新版「多組」[[cond,...],[cond,...]]，一律用 normalizeGroups() 轉成後者
+      const longGroups = normalizeGroups(p.customLong);
+      const shortGroups = normalizeGroups(p.customShort);
       const periods = new Set();
-      longConds.concat(shortConds).forEach(c => {
+      longGroups.concat(shortGroups).forEach(group => group.forEach(c => {
         if (c.left && c.left.type === 'ma') periods.add(c.left.period);
         if (c.right && c.right.type === 'ma') periods.add(c.right.period);
-      });
+      }));
       const maCache = {};
       periods.forEach(period => { maCache[period] = sma(closes, period); });
       const val = (side, i) => side.type === 'ma' ? maCache[side.period][i] : closes[i];
@@ -186,14 +193,16 @@
         if (c.op === 'crossDown') return l < r && l0 >= r0;
         return false;
       }
-      // 條件清單為空＝該方向永不觸發（例如只想做多，做空條件留空即可）
-      const allTrue = (conds, i) => conds.length > 0 && conds.every(c => condTrue(c, i));
-      const openLong = i => allTrue(longConds, i);
-      const openShort = i => allTrue(shortConds, i);
+      // 組內全部成立才算組成立（AND）；組清單為空＝該方向永不觸發
+      const groupTrue = (group, i) => group.length > 0 && group.every(c => condTrue(c, i));
+      // 任一組成立即可（OR）
+      const anyGroupTrue = (groups, i) => groups.length > 0 && groups.some(g => groupTrue(g, i));
+      const openLong = i => anyGroupTrue(longGroups, i);
+      const openShort = i => anyGroupTrue(shortGroups, i);
       const maxPeriod = periods.size ? Math.max(...periods) : 0;
       return {
         entrySignal: i => openLong(i) && !openLong(i - 1),
-        exitSignal: i => !openLong(i),               // 條件不再全部成立 → 出場（無對稱狀態機可用時的通用出場規則）
+        exitSignal: i => !openLong(i),               // 所有組都不再成立 → 出場（無自訂出場語法時的通用規則）
         activeSignal: i => openLong(i),
         shortEntrySignal: i => openShort(i) && !openShort(i - 1),
         shortActiveSignal: i => openShort(i),
@@ -473,5 +482,5 @@
     };
   }
 
-  return { run, lastSignal, DEFAULTS, ema, rsi, macdHist, atr, sma };
+  return { run, lastSignal, DEFAULTS, ema, rsi, macdHist, atr, sma, normalizeGroups };
 });

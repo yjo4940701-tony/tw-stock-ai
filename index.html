@@ -248,6 +248,12 @@ select.bt-input{cursor:pointer;}
 .cond-del:hover{color:#ef4444;}
 .cond-add-btn{width:100%;background:rgba(59,130,246,.08);border:1px dashed #334155;color:#60a5fa;border-radius:8px;padding:6px;font-size:12px;cursor:pointer;transition:all .15s;}
 .cond-add-btn:hover{background:rgba(59,130,246,.15);border-color:#60a5fa;}
+.cond-group{border:1px solid #334155;border-radius:8px;padding:8px;margin-bottom:6px;background:rgba(255,255,255,.02);}
+.cond-group-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;color:#94a3b8;}
+.cond-group-hdr .cond-del{margin-left:0;font-size:11px;color:#64748b;}
+.cond-or-sep{text-align:center;color:#f59e0b;font-size:11px;font-weight:700;margin:2px 0 8px;}
+.cond-preset-btn{background:rgba(148,163,184,.08);border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;margin-right:6px;}
+.cond-preset-btn:hover{background:rgba(148,163,184,.15);color:#e2e8f0;}
 .cond-empty{color:#475569;font-size:11px;text-align:center;padding:8px 0;font-style:italic;}
 .cond-tpl-btn{background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;transition:all .15s;}
 .cond-tpl-btn:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
@@ -704,8 +710,6 @@ select.bt-input{cursor:pointer;}
       <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
         <div><div class="bt-label">策略</div>
           <select class="bt-input" id="scfg-strat" style="width:120px;" onchange="onScfgStratChange()">
-            <option value="60ma">60MA穿越</option>
-            <option value="threeKingdoms">三國</option>
             <option value="threeBlade">三刀流</option>
             <option value="custom">自訂條件</option>
           </select>
@@ -720,14 +724,6 @@ select.bt-input{cursor:pointer;}
             <option value="both">兩者</option><option value="long">做多</option><option value="short">做空</option>
           </select>
         </div>
-        <div id="scfg-p-60ma"><div class="bt-label">均線週期</div>
-          <input class="bt-input" id="scfg-ma" type="number" value="60" min="2" max="500" style="width:70px;"></div>
-        <div id="scfg-p-tk" style="display:none;align-items:flex-end;gap:8px;">
-          <div><div class="bt-label">劉備</div><input class="bt-input" id="scfg-lb" type="number" value="240" min="2" max="500" style="width:60px;"></div>
-          <div><div class="bt-label">關羽</div><input class="bt-input" id="scfg-gy" type="number" value="60" min="2" max="300" style="width:60px;"></div>
-          <div><div class="bt-label">張飛</div><input class="bt-input" id="scfg-zf" type="number" value="20" min="2" max="200" style="width:60px;"></div>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;padding-bottom:8px;"><input type="checkbox" id="scfg-bounce" checked>熊市反彈</label>
-        </div>
         <div id="scfg-p-blade" style="display:none;align-items:flex-end;gap:8px;">
           <div><div class="bt-label">EMA快</div><input class="bt-input" id="scfg-ef" type="number" value="9" min="2" max="100" style="width:60px;"></div>
           <div><div class="bt-label">EMA慢</div><input class="bt-input" id="scfg-es" type="number" value="21" min="2" max="200" style="width:60px;"></div>
@@ -736,12 +732,20 @@ select.bt-input{cursor:pointer;}
         <button class="btn-add" onclick="confirmScanCfg()" style="padding:10px 16px;font-size:13px;white-space:nowrap;">✓ 確認更新後台</button>
       </div>
       <div id="scfg-p-custom" style="display:none;margin-top:10px;">
-        <div class="bt-label" style="color:#22c55e;">做多條件（全部成立 AND）</div>
+        <div class="bt-label" style="color:#22c55e;">做多條件（組內 AND、組間 OR，留空＝不做多）</div>
+        <div style="margin:4px 0 8px;">快速套用：
+          <button type="button" class="cond-preset-btn" onclick="applyPreset60ma('scfg-long',60)">60MA穿越</button>
+          <button type="button" class="cond-preset-btn" onclick="applyPresetThreeKingdoms('scfg-long')">三國(站上/跌破三線)</button>
+        </div>
         <div id="scfg-long-rows"></div>
-        <button class="cond-add-btn" onclick="addCustomCond('scfg-long')">+ 新增做多條件</button>
-        <div class="bt-label" style="color:#ef4444;margin-top:10px;">做空條件（全部成立 AND，留空＝不做空）</div>
+        <button class="cond-add-btn" onclick="addCustomGroup('scfg-long')">+ 新增「或」條件組</button>
+        <div class="bt-label" style="color:#ef4444;margin-top:14px;">做空條件（組內 AND、組間 OR，留空＝不做空）</div>
+        <div style="margin:4px 0 8px;">快速套用：
+          <button type="button" class="cond-preset-btn" onclick="applyPreset60ma('scfg-short',60)">60MA穿越</button>
+          <button type="button" class="cond-preset-btn" onclick="applyPresetThreeKingdoms('scfg-short')">三國(站上/跌破三線)</button>
+        </div>
         <div id="scfg-short-rows"></div>
-        <button class="cond-add-btn" onclick="addCustomCond('scfg-short')">+ 新增做空條件</button>
+        <button class="cond-add-btn" onclick="addCustomGroup('scfg-short')">+ 新增「或」條件組</button>
         <div style="margin-top:6px;color:#64748b;font-size:11px;">💡 含「上穿/下穿」的條件通常只成立 1 根K棒，掃描會在那一根推播。</div>
       </div>
       <div id="scfg-note" style="margin-top:8px;font-size:12px;color:#f59e0b;"></div>
@@ -775,7 +779,6 @@ select.bt-input{cursor:pointer;}
           <div class="bt-label">策略</div>
           <div class="bt-strategy-tabs">
             <button class="bt-stab active" id="cbt-strat-tb" onclick="setCryptoBtStrat('threeBlade')">三刀流</button>
-            <button class="bt-stab" id="cbt-strat-tk" onclick="setCryptoBtStrat('threeKingdoms')">三國</button>
             <button class="bt-stab" id="cbt-strat-custom" onclick="setCryptoBtStrat('custom')">自訂條件</button>
           </div>
         </div>
@@ -808,8 +811,8 @@ select.bt-input{cursor:pointer;}
           <input type="checkbox" id="cbt-trail-on" checked> 啟用追蹤止盈
         </label>
       </div>
-      <!-- 三國參數 -->
-      <div class="bt-section" id="cbt-tk-params" style="display:none;margin-top:8px;">
+      <!-- 自訂條件參數（涵蓋原本 60MA穿越／三國，用下面「快速套用」一鍵帶入） -->
+      <div class="bt-section" id="cbt-custom-params" style="display:none;margin-top:8px;">
         <div><div class="bt-label">方向</div>
           <select class="bt-input" id="cbt-direction" style="width:140px;">
             <option value="long" selected>只做多</option>
@@ -817,37 +820,27 @@ select.bt-input{cursor:pointer;}
             <option value="both">多空都做</option>
           </select>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">
-          <div><div class="bt-label">劉備 方向</div><input class="bt-input" id="cbt-lb" type="number" value="240" min="60" max="300" step="10"></div>
-          <div><div class="bt-label">關羽 進出</div><input class="bt-input" id="cbt-gy" type="number" value="60" min="20" max="120" step="5"></div>
-          <div><div class="bt-label">張飛 收兵</div><input class="bt-input" id="cbt-zf" type="number" value="20" min="5" max="60" step="5"></div>
+        <div class="bt-label" style="color:#22c55e;margin-top:10px;">做多條件（組內 AND、組間 OR，留空＝不做多）</div>
+        <div style="margin:4px 0 8px;">快速套用：
+          <button type="button" class="cond-preset-btn" onclick="applyPreset60ma('cbt-long',60)">60MA穿越</button>
+          <button type="button" class="cond-preset-btn" onclick="applyPresetThreeKingdoms('cbt-long')">三國(站上/跌破三線)</button>
         </div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;color:#94a3b8;font-size:12px;cursor:pointer;">
-          <input type="checkbox" id="cbt-bounce" checked> 做熊市反彈（跌破劉備但站上關羽 → 短多）
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;color:#94a3b8;font-size:12px;cursor:pointer;">
-          <input type="checkbox" id="cbt-correction" checked> 做牛市修正空單（站上劉備但跌破關羽 → 短空，對稱於熊市反彈）
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;color:#94a3b8;font-size:12px;cursor:pointer;">
-          <input type="checkbox" id="cbt-atrrisk"> 加 ATR 停損保護層（原版純均線）
-        </label>
-        <div style="margin-top:8px;color:#64748b;font-size:11px;line-height:1.5;">劉備240MA 定多空 · 關羽60MA 抓進出 · 張飛20MA 收兵。需 240MA 暖機（日K 限 300 根 → 建議改短週期或減小均線）。</div>
-      </div>
-      <!-- 自訂條件參數 -->
-      <div class="bt-section" id="cbt-custom-params" style="display:none;margin-top:8px;">
-        <div class="bt-label" style="color:#22c55e;">做多條件（全部成立 AND）</div>
         <div id="cbt-long-rows"></div>
-        <button class="cond-add-btn" onclick="addCustomCond('cbt-long')">+ 新增做多條件</button>
-        <div class="bt-label" style="color:#ef4444;margin-top:10px;">做空條件（全部成立 AND，留空＝不做空）</div>
+        <button class="cond-add-btn" onclick="addCustomGroup('cbt-long')">+ 新增「或」條件組</button>
+        <div class="bt-label" style="color:#ef4444;margin-top:14px;">做空條件（組內 AND、組間 OR，留空＝不做空）</div>
+        <div style="margin:4px 0 8px;">快速套用：
+          <button type="button" class="cond-preset-btn" onclick="applyPreset60ma('cbt-short',60)">60MA穿越</button>
+          <button type="button" class="cond-preset-btn" onclick="applyPresetThreeKingdoms('cbt-short')">三國(站上/跌破三線)</button>
+        </div>
         <div id="cbt-short-rows"></div>
-        <button class="cond-add-btn" onclick="addCustomCond('cbt-short')">+ 新增做空條件</button>
+        <button class="cond-add-btn" onclick="addCustomGroup('cbt-short')">+ 新增「或」條件組</button>
         <label style="display:flex;align-items:center;gap:6px;margin-top:10px;color:#94a3b8;font-size:12px;cursor:pointer;">
           <input type="checkbox" id="cbt-custom-atrrisk" checked> 加 ATR 停損停利保護層（SL×2 TP×3 追蹤×2.5，建議開，尤其條件含上穿/下穿）
         </label>
-        <div style="margin-top:8px;color:#64748b;font-size:11px;line-height:1.5;">條件不再全部成立時出場（無自訂出場條件）。「上穿/下穿」通常只成立 1 根K棒，不開 ATR 保護層會進場下一根就出場。</div>
+        <div style="margin-top:8px;color:#64748b;font-size:11px;line-height:1.5;">條件不再全部成立時出場（無自訂出場條件）。「上穿/下穿」通常只成立 1 根K棒，不開 ATR 保護層會進場下一根就出場。三國預設 240MA 需暖機（日K 限 300 根 → 建議改短週期或加根數）。</div>
       </div>
       <div style="background:#3a2a1e;border-radius:6px;padding:7px 10px;font-size:11px;color:#fcd34d;line-height:1.5;margin-top:10px;">
-        ⚠ crypto 成本：taker 0.05%、無證交稅。三國需 240 根暖機（日K 限 300 根 → 僅約 60 根可交易，建議改短週期或加根數）。出場用當根收盤近似。做空部位不模擬保證金/槓桿/強平，<b>未計永續合約資金費率</b>，做空段報酬可能被高估。
+        ⚠ crypto 成本：taker 0.05%、無證交稅。出場用當根收盤近似。做空部位不模擬保證金/槓桿/強平，<b>未計永續合約資金費率</b>，做空段報酬可能被高估。
       </div>
       <div id="crypto-bt-result" style="margin-top:12px;"></div>
     </div>
@@ -4510,80 +4503,140 @@ function renderCryptoChart(ohlc, closes, intraday) {
 // ── crypto 進階回測（共用 engine.js + renderAdvResult）──────────
 var cryptoBtStrat = 'threeBlade';
 // ── 自訂均線條件產生器（共用：crypto回測 cbt-* 與 後台掃描設定 scfg-*）─────
-// listKey: 'cbt-long' | 'cbt-short' | 'scfg-long' | 'scfg-short'，各自獨立一組 AND 條件
+// listKey: 'cbt-long' | 'cbt-short' | 'scfg-long' | 'scfg-short'
+// customCondLists[listKey] = 條件組陣列，組內 AND、組間 OR：[ {conditions:[cond,...]}, {conditions:[cond,...]} ]
 var customCondLists = { 'cbt-long': [], 'cbt-short': [], 'scfg-long': [], 'scfg-short': [] };
 var CUSTOM_COND_OPS = [['>','大於'],['<','小於'],['crossUp','上穿'],['crossDown','下穿']];
-function condSideSelect(listKey, idx, side, c) {
+function condSideSelect(listKey, gi, idx, side, c) {
   var type = c[side + 'Type'] || 'close';
-  var html = '<select class="cond-sel" onchange="customCondSetField(\'' + listKey + '\',' + idx + ',\'' + side + 'Type\',this.value);renderCustomConds(\'' + listKey + '\')">'
+  var html = '<select class="cond-sel" onchange="customCondSetField(\'' + listKey + '\',' + gi + ',' + idx + ',\'' + side + 'Type\',this.value);renderCustomConds(\'' + listKey + '\')">'
     + '<option value="close"' + (type === 'close' ? ' selected' : '') + '>收盤價</option>'
     + '<option value="ma"' + (type === 'ma' ? ' selected' : '') + '>均線</option></select>';
   if (type === 'ma') {
     var period = c[side + 'Period'] != null ? c[side + 'Period'] : 20;
     html += '<input class="cond-num" type="number" min="2" max="500" value="' + period + '" style="width:60px;" '
-      + 'onchange="customCondSetField(\'' + listKey + '\',' + idx + ',\'' + side + 'Period\',+this.value)">';
+      + 'onchange="customCondSetField(\'' + listKey + '\',' + gi + ',' + idx + ',\'' + side + 'Period\',+this.value)">';
   }
   return html;
 }
-function renderCustomCondRow(listKey, c, idx) {
+function renderCustomCondRow(listKey, gi, c, idx) {
   var html = '<div class="cond-row entry">';
-  html += condSideSelect(listKey, idx, 'left', c);
-  html += '<select class="cond-sel" onchange="customCondSetField(\'' + listKey + '\',' + idx + ',\'op\',this.value)">'
+  html += condSideSelect(listKey, gi, idx, 'left', c);
+  html += '<select class="cond-sel" onchange="customCondSetField(\'' + listKey + '\',' + gi + ',' + idx + ',\'op\',this.value)">'
     + CUSTOM_COND_OPS.map(function(o) { return '<option value="' + o[0] + '"' + (c.op === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')
     + '</select>';
-  html += condSideSelect(listKey, idx, 'right', c);
-  html += '<button class="cond-del" onclick="customCondDel(\'' + listKey + '\',' + idx + ')" title="刪除">✕</button></div>';
+  html += condSideSelect(listKey, gi, idx, 'right', c);
+  html += '<button class="cond-del" onclick="customCondDel(\'' + listKey + '\',' + gi + ',' + idx + ')" title="刪除">✕</button></div>';
   return html;
 }
 function renderCustomConds(listKey) {
   var el = document.getElementById(listKey + '-rows');
   if (!el) return;
-  var list = customCondLists[listKey] || [];
-  el.innerHTML = list.length
-    ? list.map(function(c, i) { return renderCustomCondRow(listKey, c, i); }).join('')
-    : '<div style="color:#475569;font-size:12px;padding:4px 0;">尚無條件，點下方按鈕新增</div>';
+  var groups = customCondLists[listKey] || [];
+  if (!groups.length) { el.innerHTML = '<div style="color:#475569;font-size:12px;padding:4px 0;">尚無條件，點下方按鈕新增（或用下面的快速套用）</div>'; return; }
+  el.innerHTML = groups.map(function(g, gi) {
+    var rowsHtml = (g.conditions || []).map(function(c, ci) { return renderCustomCondRow(listKey, gi, c, ci); }).join('');
+    var box = '<div class="cond-group">'
+      + '<div class="cond-group-hdr"><span>條件組 ' + (gi + 1) + '（組內全部成立 AND）</span>'
+      + '<button class="cond-del" onclick="customGroupDel(\'' + listKey + '\',' + gi + ')" title="刪除整組">✕ 刪除整組</button></div>'
+      + rowsHtml
+      + '<button class="cond-add-btn" onclick="addCustomCond(\'' + listKey + '\',' + gi + ')">+ 新增條件到這組</button>'
+      + '</div>';
+    return box + (gi < groups.length - 1 ? '<div class="cond-or-sep">─ 或 OR ─</div>' : '');
+  }).join('');
 }
-function addCustomCond(listKey) {
+function addCustomGroup(listKey) {
   if (!customCondLists[listKey]) customCondLists[listKey] = [];
-  customCondLists[listKey].push({ leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 20 });
+  customCondLists[listKey].push({ conditions: [{ leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 20 }] });
   renderCustomConds(listKey);
 }
-function customCondDel(listKey, idx) { customCondLists[listKey].splice(idx, 1); renderCustomConds(listKey); }
-function customCondSetField(listKey, idx, field, value) { if (customCondLists[listKey][idx]) customCondLists[listKey][idx][field] = value; }
-// UI 列格式 → engine.js 參數格式
+function addCustomCond(listKey, gi) {
+  customCondLists[listKey][gi].conditions.push({ leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 20 });
+  renderCustomConds(listKey);
+}
+function customGroupDel(listKey, gi) { customCondLists[listKey].splice(gi, 1); renderCustomConds(listKey); }
+function customCondDel(listKey, gi, idx) {
+  customCondLists[listKey][gi].conditions.splice(idx, 1);
+  if (!customCondLists[listKey][gi].conditions.length) customCondLists[listKey].splice(gi, 1); // 組內條件刪光就把整組移除
+  renderCustomConds(listKey);
+}
+function customCondSetField(listKey, gi, idx, field, value) {
+  var c = customCondLists[listKey][gi] && customCondLists[listKey][gi].conditions[idx];
+  if (c) c[field] = value;
+}
+// UI 列格式 → engine.js 參數格式（[[cond,...],[cond,...]]，組間 OR）
 function condsToEngineFormat(listKey) {
-  return (customCondLists[listKey] || []).map(function(c) {
-    return {
-      left: c.leftType === 'ma' ? { type: 'ma', period: c.leftPeriod || 20 } : { type: 'close' },
-      op: c.op,
-      right: c.rightType === 'ma' ? { type: 'ma', period: c.rightPeriod || 20 } : { type: 'close' }
-    };
+  return (customCondLists[listKey] || []).map(function(g) {
+    return (g.conditions || []).map(function(c) {
+      return {
+        left: c.leftType === 'ma' ? { type: 'ma', period: c.leftPeriod || 20 } : { type: 'close' },
+        op: c.op,
+        right: c.rightType === 'ma' ? { type: 'ma', period: c.rightPeriod || 20 } : { type: 'close' }
+      };
+    });
   });
 }
-// engine.js 參數格式 → UI 列格式（讀回存檔用）
-function condsFromEngineFormat(arr) {
-  return (arr || []).map(function(c) {
-    return { leftType: c.left.type, leftPeriod: c.left.period, op: c.op, rightType: c.right.type, rightPeriod: c.right.period };
+// engine.js 參數格式 → UI 列格式（讀回存檔用；相容舊版扁平陣列＝單組）
+function condsFromEngineFormat(groups) {
+  if (!groups || !groups.length) return [];
+  var normalized = (groups[0] && groups[0].op) ? [groups] : groups;
+  return normalized.map(function(g) {
+    return { conditions: g.map(function(c) {
+      return { leftType: c.left.type, leftPeriod: c.left.period, op: c.op, rightType: c.right.type, rightPeriod: c.right.period };
+    }) };
   });
+}
+// 快速套用預設（附加一組 OR 條件，不清除既有條件；均線週期先套常用預設值，套用後可在條件列直接改）
+function applyPreset60ma(listKey, period) {
+  period = period || 60;
+  var isLong = /-long$/.test(listKey);
+  if (!customCondLists[listKey]) customCondLists[listKey] = [];
+  customCondLists[listKey].push({ conditions: [
+    { leftType: 'close', op: isLong ? 'crossUp' : 'crossDown', rightType: 'ma', rightPeriod: period }
+  ] });
+  renderCustomConds(listKey);
+  toast('已套用 60MA穿越 條件（可再調整週期）', 'ok');
+}
+function applyPresetThreeKingdoms(listKey) {
+  var isLong = /-long$/.test(listKey);
+  if (!customCondLists[listKey]) customCondLists[listKey] = [];
+  if (isLong) {
+    customCondLists[listKey].push({ conditions: [
+      { leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 240 },
+      { leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 60 },
+      { leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 20 }
+    ] });   // 全軍做多：站上三線
+    customCondLists[listKey].push({ conditions: [
+      { leftType: 'close', op: '<', rightType: 'ma', rightPeriod: 240 },
+      { leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 60 }
+    ] });   // 熊市反彈：跌破240但站上60
+  } else {
+    customCondLists[listKey].push({ conditions: [
+      { leftType: 'close', op: '<', rightType: 'ma', rightPeriod: 240 },
+      { leftType: 'close', op: '<', rightType: 'ma', rightPeriod: 60 },
+      { leftType: 'close', op: '<', rightType: 'ma', rightPeriod: 20 }
+    ] });   // 全軍做空：跌破三線
+    customCondLists[listKey].push({ conditions: [
+      { leftType: 'close', op: '>', rightType: 'ma', rightPeriod: 240 },
+      { leftType: 'close', op: '<', rightType: 'ma', rightPeriod: 60 }
+    ] });   // 牛市修正：站上240但跌破60
+  }
+  renderCustomConds(listKey);
+  toast('已套用 三國(240/60/20MA) 條件組（可再調整週期，或刪掉不要的組）', 'ok');
 }
 
 function setCryptoBtStrat(s) {
   cryptoBtStrat = s;
   document.getElementById('cbt-strat-tb').classList.toggle('active', s === 'threeBlade');
-  document.getElementById('cbt-strat-tk').classList.toggle('active', s === 'threeKingdoms');
   document.getElementById('cbt-strat-custom').classList.toggle('active', s === 'custom');
   document.getElementById('cbt-tb-params').style.display = s === 'threeBlade' ? 'block' : 'none';
-  document.getElementById('cbt-tk-params').style.display = s === 'threeKingdoms' ? 'block' : 'none';
   document.getElementById('cbt-custom-params').style.display = s === 'custom' ? 'block' : 'none';
   if (s === 'custom') { renderCustomConds('cbt-long'); renderCustomConds('cbt-short'); }
 }
 function resetCryptoBtParams() {
-  var d = { 'cbt-sl':2,'cbt-tp':3,'cbt-trail':2.5,'cbt-rsiLow':50,'cbt-confirms':'3','cbt-lb':240,'cbt-gy':60,'cbt-zf':20,'cbt-direction':'long' };
+  var d = { 'cbt-sl':2,'cbt-tp':3,'cbt-trail':2.5,'cbt-rsiLow':50,'cbt-confirms':'3','cbt-direction':'long' };
   Object.keys(d).forEach(function(id){ var el=document.getElementById(id); if(el) el.value=d[id]; });
   document.getElementById('cbt-trail-on').checked = true;
-  document.getElementById('cbt-bounce').checked = true;
-  document.getElementById('cbt-correction').checked = true;
-  document.getElementById('cbt-atrrisk').checked = false;
   document.getElementById('cbt-custom-atrrisk').checked = true;
   customCondLists['cbt-long'] = []; customCondLists['cbt-short'] = [];
   renderCustomConds('cbt-long'); renderCustomConds('cbt-short');
@@ -4613,25 +4666,13 @@ function runCryptoBacktest() {
     if (candles.length < 60) { toast('資料不足（' + candles.length + ' 根）', 'err'); return; }
     // crypto：taker 0.05%、無證交稅、可買小數
     var params = { strategy: cryptoBtStrat, capital: 10000, feeRate: 0.0005, taxRate: 0, fractional: true };
-    if (cryptoBtStrat === 'threeKingdoms') {
-      params.lbPeriod = +document.getElementById('cbt-lb').value;
-      params.gyPeriod = +document.getElementById('cbt-gy').value;
-      params.zfPeriod = +document.getElementById('cbt-zf').value;
-      params.allowBounce = document.getElementById('cbt-bounce').checked;
-      params.allowCorrection = document.getElementById('cbt-correction').checked;
-      params.direction = document.getElementById('cbt-direction').value;
-      params.useAtrRisk = document.getElementById('cbt-atrrisk').checked;
-      if (candles.length < params.lbPeriod + 30) {
-        toast('資料不足以暖機 ' + params.lbPeriod + 'MA（僅 ' + candles.length + ' 根），請加根數、改短週期或減小劉備均線', 'err');
-        return;
-      }
-    } else if (cryptoBtStrat === 'custom') {
+    if (cryptoBtStrat === 'custom') {
       params.customLong = condsToEngineFormat('cbt-long');
       params.customShort = condsToEngineFormat('cbt-short');
-      params.direction = 'both';   // 多空各自由條件清單決定，留空該側就不會觸發
+      params.direction = document.getElementById('cbt-direction').value;
       params.useAtrRisk = document.getElementById('cbt-custom-atrrisk').checked;
       if (!params.customLong.length && !params.customShort.length) {
-        toast('請至少新增一條做多或做空條件', 'err');
+        toast('請至少新增一組做多或做空條件（可用「快速套用」）', 'err');
         return;
       }
     } else {
@@ -4766,7 +4807,7 @@ function loadScanCfg() {
 }
 function scfgLabel(c) {
   var m = { '60ma':(c.maPeriod||60)+'MA穿越', threeKingdoms:'三國', threeBlade:'三刀流',
-    custom: '自訂條件（做多' + ((c.custom&&c.custom.long||[]).length) + '條/做空' + ((c.custom&&c.custom.short||[]).length) + '條）' };
+    custom: '自訂條件（做多' + BTEngine.normalizeGroups(c.custom&&c.custom.long).length + '組/做空' + BTEngine.normalizeGroups(c.custom&&c.custom.short).length + '組）' };
   var d = { both:'做多+做空', long:'只做多', short:'只做空' };
   return (m[c.strategy]||c.strategy) + ' · ' + c.tf + ' · ' + (d[c.direction]||c.direction);
 }
@@ -4775,9 +4816,6 @@ function renderScanCfgUI() {
   if (!document.getElementById('scfg-strat')) return;
   var c = loadScanCfg();
   _sv('scfg-strat', c.strategy); _sv('scfg-tf', c.tf); _sv('scfg-dir', c.direction);
-  _sv('scfg-ma', c.maPeriod||60);
-  if (c.tk) { _sv('scfg-lb',c.tk.lb); _sv('scfg-gy',c.tk.gy); _sv('scfg-zf',c.tk.zf);
-    var bc=document.getElementById('scfg-bounce'); if(bc) bc.checked = c.tk.allowBounce !== false; }
   if (c.blade) { _sv('scfg-ef',c.blade.emaFast); _sv('scfg-es',c.blade.emaSlow); _sv('scfg-rsi',c.blade.rsiPeriod); }
   if (c.custom) {
     customCondLists['scfg-long'] = condsFromEngineFormat(c.custom.long);
@@ -4789,8 +4827,6 @@ function renderScanCfgUI() {
 }
 function onScfgStratChange() {
   var s = document.getElementById('scfg-strat').value;
-  document.getElementById('scfg-p-60ma').style.display = s==='60ma' ? '' : 'none';
-  document.getElementById('scfg-p-tk').style.display   = s==='threeKingdoms' ? 'flex' : 'none';
   document.getElementById('scfg-p-blade').style.display = s==='threeBlade' ? 'flex' : 'none';
   document.getElementById('scfg-p-custom').style.display = s==='custom' ? 'block' : 'none';
   if (s==='custom') { renderCustomConds('scfg-long'); renderCustomConds('scfg-short'); }
@@ -4807,10 +4843,6 @@ function confirmScanCfg() {
   var s = document.getElementById('scfg-strat').value;
   var cfg = { strategy:s, tf:document.getElementById('scfg-tf').value,
     direction:document.getElementById('scfg-dir').value, updatedAt:new Date().toISOString() };
-  if (s==='60ma') cfg.maPeriod = +document.getElementById('scfg-ma').value || 60;
-  if (s==='threeKingdoms') cfg.tk = { lb:+document.getElementById('scfg-lb').value||240,
-    gy:+document.getElementById('scfg-gy').value||60, zf:+document.getElementById('scfg-zf').value||20,
-    allowBounce:document.getElementById('scfg-bounce').checked };
   if (s==='threeBlade') cfg.blade = { emaFast:+document.getElementById('scfg-ef').value||9,
     emaSlow:+document.getElementById('scfg-es').value||21, rsiPeriod:+document.getElementById('scfg-rsi').value||14 };
   if (s==='custom') {
@@ -6164,7 +6196,7 @@ function renderAdvResult(ticker, candles, params, opts) {
   var stratLabel = res.params.strategy === 'threeKingdoms'
     ? '三國 ' + res.params.lbPeriod + '/' + res.params.gyPeriod + '/' + res.params.zfPeriod + 'MA' + (res.params.useAtrRisk ? '+ATR' : '')
     : res.params.strategy === 'custom'
-    ? '自訂條件（做多' + (res.params.customLong||[]).length + '條/做空' + (res.params.customShort||[]).length + '條）' + (res.params.useAtrRisk ? '+ATR' : '')
+    ? '自訂條件（做多' + BTEngine.normalizeGroups(res.params.customLong).length + '組/做空' + BTEngine.normalizeGroups(res.params.customShort).length + '組）' + (res.params.useAtrRisk ? '+ATR' : '')
     : '三刀流';
   var clr = function(v) { return v >= 0 ? '#22c55e' : '#ef4444'; };
   var pct = function(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; };
