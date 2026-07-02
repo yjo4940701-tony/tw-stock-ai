@@ -94,6 +94,40 @@ async function handleRequest(request, env) {
       }
     }
 
+    // ── 路由：TradingView 財經日曆（type=tvcal） ──────────
+    // 例：?type=tvcal&from=2026-07-01T00:00:00.000Z&to=2026-07-14T00:00:00.000Z&countries=US,TW
+    // 前端不能設 Referer/User-Agent（被瀏覽器保護），故由 Worker 補上這兩個標頭繞過 TV 的 403。
+    if (type === 'tvcal') {
+      const now = new Date();
+      const from = url.searchParams.get('from') || new Date(now.getTime() - 2 * 864e5).toISOString();
+      const to   = url.searchParams.get('to')   || new Date(now.getTime() + 14 * 864e5).toISOString();
+      const countries = url.searchParams.get('countries') || 'US,TW';
+      const tvUrl = `https://economic-calendar.tradingview.com/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&countries=${encodeURIComponent(countries)}`;
+      try {
+        const resp = await fetch(tvUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+            'Referer': 'https://www.tradingview.com/',
+            'Origin': 'https://www.tradingview.com',
+            'Accept': 'application/json'
+          },
+          cf: { cacheTtl: 1800, cacheEverything: true }  // 日曆變動慢，快取 30 分鐘 → TV 極少被打
+        });
+        const text = await resp.text();
+        return new Response(text, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json;charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=1800',
+            'X-TV-Status': String(resp.status)
+          }
+        });
+      } catch (e) {
+        return json({ ok: false, message: 'TV 日曆 fetch 失敗: ' + e.message }, 502);
+      }
+    }
+
     // ── 路由：Google News（type=news，預設） ────────────
     const stockId   = url.searchParams.get('id')   || '';
     const stockName = url.searchParams.get('name') || '';
