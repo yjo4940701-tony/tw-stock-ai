@@ -13,6 +13,8 @@
  *   --confirms <2|3>   三刀流確認數
  *   --capital <N>      本金（預設 100 萬）
  *   --no-trail         關閉追蹤止盈
+ *   --direction <long|short|both>  方向（預設 long；三國適用，三刀流做空不支援）
+ *   --no-allow-correction          關閉三國牛市修正對稱空單（預設開）
  *   --trades           列出每筆交易
  *   --json             以 JSON 輸出（給程式接）
  */
@@ -25,6 +27,7 @@ function parseArgs(argv) {
     const k = argv[i];
     if (k === '--no-trail') { a.useTrailing = false; continue; }
     if (k === '--atr-risk') { a.atrRisk = true; continue; }
+    if (k === '--no-allow-correction') { a.allowCorrection = false; continue; }
     if (k === '--trades') { a.showTrades = true; continue; }
     if (k === '--json') { a.json = true; continue; }
     if (k.startsWith('--')) { a[k.slice(2)] = argv[++i]; }
@@ -50,6 +53,8 @@ function buildParams(a) {
   if (a.atrRisk === true) p.useAtrRisk = true;   // 三國可選擇加 ATR 風控層
   if (a.capital != null) p.capital = +a.capital;
   if (a.useTrailing === false) p.useTrailing = false;
+  if (a.direction != null) p.direction = a.direction;   // long / short / both
+  if (a.allowCorrection === false) p.allowCorrection = false;
   return p;
 }
 
@@ -75,14 +80,18 @@ function printReport(id, res) {
   console.log(`最長連勝/連敗 ${s.maxConsecWins} / ${s.maxConsecLosses}`);
   console.log(`出場原因      ${JSON.stringify(s.exitReasons)}`);
   console.log(`參數          SL×${res.params.slMult} TP×${res.params.tpMult} Trail×${res.params.trailMult} 確認${res.params.confirmsNeeded}刀 ${res.params.useTrailing ? '追蹤ON' : '追蹤OFF'}`);
+  if (res.params.strategy === 'threeKingdoms') {
+    console.log(`方向          ${{ long: '只做多', short: '只做空', both: '多空都做' }[res.params.direction] || res.params.direction}` +
+      (res.params.direction !== 'long' ? `（牛市修正對稱空單：${res.params.allowCorrection ? '開' : '關'}｜⚠ 未計永續資金費率）` : ''));
+  }
 }
 
 function printTrades(res) {
   console.log(`\n----- 交易明細 -----`);
-  console.log(`進場日       出場日       進場價   出場價   報酬     原因`);
+  console.log(`方向  進場日       出場日       進場價   出場價   報酬     原因`);
   for (const t of res.trades) {
     console.log(
-      `${t.entryTime}  ${t.exitTime}  ${String(t.entryPrice).padStart(7)}  ` +
+      `${(t.dir === 'short' ? '空' : '多')}    ${t.entryTime}  ${t.exitTime}  ${String(t.entryPrice).padStart(7)}  ` +
       `${String(t.exitPrice).padStart(7)}  ${pct(t.retPct).padStart(7)}  ${t.reason}`
     );
   }

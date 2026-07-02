@@ -2,10 +2,11 @@
  * 台股進階回測共用引擎 engine.js
  * - 純 JavaScript、零外部依賴
  * - UMD：Node (module.exports) 與 瀏覽器 (window.BTEngine) 共用
- * - 策略：三刀流（RSI + EMA 交叉 + MACD 柱狀轉向，三重確認）
- * - 風控：ATR 動態停損停利 + 追蹤止盈
- * - 成本：台股現股真實費率（買賣手續費 0.1425% + 賣出證交稅 0.3%）
- * - 現股不開槓桿、只做多（long-only），部位上限 = 本金
+ * - 策略：三刀流（RSI + EMA 交叉 + MACD 柱狀轉向，三重確認，只做多）｜三國（240/60/20MA，可做多/做空/兩者）
+ * - 風控：ATR 動態停損停利 + 追蹤止盈（多空方向鏡射）
+ * - 成本：台股現股真實費率（買賣手續費 0.1425% + 賣出證交稅 0.3%）；crypto 呼叫端另傳 taker費率、無稅
+ * - 不開槓桿：多單/空單部位上限皆 = 可用現金（無保證金放大、無強平模擬、無永續資金費率）
+ * - direction 預設 'long'（向下相容，不傳這個參數的舊呼叫行為完全不變）
  *
  * 輸入 candles: [{time, open, high, low, close, volume?}]（time 為 "YYYY-MM-DD" 字串）
  * 輸出 result: { params, trades[], equity[], stats{} }
@@ -125,8 +126,11 @@
     gyPeriod: 60,       // 關羽：進出場節奏
     zfPeriod: 20,       // 張飛：收兵/風控
     slopeBars: 3,       // 張飛斜率計算根數（保留，原版收兵出場停用）
-    allowBounce: true,  // 是否做熊市反彈（跌破240MA但站上60MA → 短多）
-    // --- 風控（兩策略共用，ATR 動態停損停利 + 追蹤止盈）---
+    allowBounce: true,      // 是否做熊市反彈（跌破240MA但站上60MA → 短多）
+    allowCorrection: true,  // 是否對稱做牛市修正空單（站上240MA但跌破60MA → 短空，僅 direction 含 short 時生效）
+    // --- 方向（三國適用；三刀流只做多，shortEntrySignal 恆 false）---
+    direction: 'long',  // 'long' | 'short' | 'both'
+    // --- 風控（兩策略共用，ATR 動態停損停利 + 追蹤止盈；做空時停損停利方向鏡射）---
     atrPeriod: 14,
     slMult: 2.0,        // 停損 = 進場價 - slMult * ATR
     tpMult: 3.0,        // 停利 = 進場價 + tpMult * ATR
@@ -177,13 +181,21 @@
         const s = tkSig(i);
         return s === 'MAIN_SHORT' || s === 'CORRECTION_SHORT';    // 轉空 / 牛市修正 → 收兵
       };
-      const openShort = i => tkSig(i) === 'MAIN_SHORT';           // 全軍做空（僅供訊號掃描通知，run() 不交易做空）
+      const openShort = i => {
+        const s = tkSig(i);
+        return s === 'MAIN_SHORT' || (p.allowCorrection && s === 'CORRECTION_SHORT');  // 全軍做空，可對稱納入牛市修正
+      };
+      const closeShort = i => {
+        const s = tkSig(i);
+        return s === 'MAIN_LONG' || s === 'BOUNCE_LONG';           // 轉多 / 熊市反彈 → 回補（對稱於 closeLong）
+      };
       return {
         entrySignal: i => openLong(i) && !openLong(i - 1),         // rising edge
         exitSignal: i => closeLong(i),
         activeSignal: i => openLong(i),                            // 目前處於做多區
-        shortEntrySignal: i => openShort(i) && !openShort(i - 1),  // 做空 rising edge（僅回報）
+        shortEntrySignal: i => openShort(i) && !openShort(i - 1),  // 做空 rising edge
         shortActiveSignal: i => openShort(i),                      // 目前處於做空區
+        exitShortSignal: i => closeShort(i),                       // 空單出場（回補）
         warmup: Math.max(p.lbPeriod + 1, p.atrPeriod) + 1
       };
     }
@@ -211,6 +223,7 @@
       activeSignal: i => score(i) >= p.confirmsNeeded,             // 目前達確認門檻
       shortEntrySignal: i => false,                               // 三刀流做空不在本次範圍
       shortActiveSignal: i => false,
+      exitShortSignal: i => false,
       warmup: Math.max(p.emaSlow, p.rsiPeriod, p.atrPeriod, p.macdSlow + p.macdSignal) + 1
     };
   }
@@ -245,17 +258,21 @@
     // 進出場訊號（run 與 lastSignal 共用同一套）
     const sig = buildSignals(closes, p);
     const entrySignal = sig.entrySignal, exitSignal = sig.exitSignal, warmup = sig.warmup;
+    const shortEntrySignal = sig.shortEntrySignal || (() => false);
+    const exitShortSignal = sig.exitShortSignal || (() => false);
+    const allowLong = p.direction !== 'short';
+    const allowShort = p.direction !== 'long';
 
     const trades = [];
     const equity = []; // [{time, equity}]
     let cash = p.capital;
-    let pos = null; // {shares, entryPrice, entryTime, entryATR, trailHigh, cost}
+    let pos = null; // {dir:'long'|'short', shares, entryPrice, entryTime, entryATR, trailHigh/trailLow, cost/entryValue}
 
     for (let i = 0; i < n; i++) {
       const c = candles[i];
       if (i >= warmup) {
         if (!pos) {
-          if (entrySignal(i)) {
+          if (allowLong && entrySignal(i)) {
             const price = c.close;
             // 以股計價：台股整股 floor、crypto 允許小數單位
             const raw = cash / (price * (1 + p.feeRate));
@@ -264,12 +281,25 @@
               const cost = price * shares * (1 + p.feeRate);
               cash -= cost;
               pos = {
-                shares, entryPrice: price, entryTime: c.time,
+                dir: 'long', shares, entryPrice: price, entryTime: c.time,
                 entryATR: atrArr[i] || 0, trailHigh: price, cost
               };
             }
+          } else if (allowShort && shortEntrySignal(i)) {
+            // 做空建倉＝賣出（不開槓桿，部位額度比照做多用等額現金）；比照現股賣出課稅
+            const price = c.close;
+            const raw = cash / (price * (1 + p.feeRate));
+            const shares = p.fractional ? raw : Math.floor(raw);
+            if (shares > 0) {
+              const entryValue = price * shares * (1 - p.feeRate - p.taxRate);
+              cash += entryValue;
+              pos = {
+                dir: 'short', shares, entryPrice: price, entryTime: c.time,
+                entryATR: atrArr[i] || 0, trailLow: price, entryValue
+              };
+            }
           }
-        } else {
+        } else if (pos.dir === 'long') {
           // 持倉中：先看 ATR 風控層（若啟用），再看策略出場訊號
           if (c.close > pos.trailHigh) pos.trailHigh = c.close;
           let exit = null;
@@ -283,24 +313,50 @@
           }
           if (!exit && exitSignal(i)) exit = 'SIGNAL';
           if (exit) closePosition(c.close, c.time, exit);
+        } else {
+          // 做空持倉：ATR 風控方向鏡射（漲破停損、跌破停利、追蹤停損由最低價往上抬）
+          if (c.close < pos.trailLow) pos.trailLow = c.close;
+          let exit = null;
+          if (p.useAtrRisk && pos.entryATR > 0 && atrArr[i] != null) {
+            const slPrice = pos.entryPrice + p.slMult * pos.entryATR;
+            const tpPrice = pos.entryPrice - p.tpMult * pos.entryATR;
+            const trailPrice = p.useTrailing ? pos.trailLow + p.trailMult * atrArr[i] : Infinity;
+            if (c.close >= slPrice) exit = 'SL';
+            else if (c.close <= tpPrice) exit = 'TP';
+            else if (p.useTrailing && c.close >= trailPrice && trailPrice < slPrice) exit = 'TRAIL';
+          }
+          if (!exit && exitShortSignal(i)) exit = 'SIGNAL';
+          if (exit) closePosition(c.close, c.time, exit);
         }
       }
-      // 逐根結算權益（mark-to-market）
-      const mv = pos ? pos.shares * c.close : 0;
+      // 逐根結算權益（mark-to-market；空單為負債，市值反向計）
+      const mv = pos ? (pos.dir === 'short' ? -pos.shares * c.close : pos.shares * c.close) : 0;
       equity.push({ time: c.time, equity: cash + mv });
     }
     // 收尾平倉
     if (pos) closePosition(candles[n - 1].close, candles[n - 1].time, 'EOD');
 
     function closePosition(price, time, reason) {
-      const proceeds = price * pos.shares * (1 - p.feeRate - p.taxRate);
-      cash += proceeds;
-      const pnl = proceeds - pos.cost;
-      trades.push({
-        entryTime: pos.entryTime, exitTime: time,
-        entryPrice: pos.entryPrice, exitPrice: price,
-        shares: pos.shares, pnl, retPct: pnl / pos.cost * 100, reason
-      });
+      let pnl;
+      if (pos.dir === 'short') {
+        const cost = price * pos.shares * (1 + p.feeRate); // 回補＝買進，不課證交稅
+        cash -= cost;
+        pnl = pos.entryValue - cost;
+        trades.push({
+          dir: 'short', entryTime: pos.entryTime, exitTime: time,
+          entryPrice: pos.entryPrice, exitPrice: price,
+          shares: pos.shares, pnl, retPct: pnl / (pos.entryPrice * pos.shares) * 100, reason
+        });
+      } else {
+        const proceeds = price * pos.shares * (1 - p.feeRate - p.taxRate);
+        cash += proceeds;
+        pnl = proceeds - pos.cost;
+        trades.push({
+          dir: 'long', entryTime: pos.entryTime, exitTime: time,
+          entryPrice: pos.entryPrice, exitPrice: price,
+          shares: pos.shares, pnl, retPct: pnl / pos.cost * 100, reason
+        });
+      }
       pos = null;
     }
 
