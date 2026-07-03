@@ -254,6 +254,9 @@ select.bt-input{cursor:pointer;}
 .cond-or-sep{text-align:center;color:#f59e0b;font-size:11px;font-weight:700;margin:2px 0 8px;}
 .cond-preset-btn{background:rgba(148,163,184,.08);border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;margin-right:6px;}
 .cond-preset-btn:hover{background:rgba(148,163,184,.15);color:#e2e8f0;}
+.judge-btn{align-self:flex-start;flex-shrink:0;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#60a5fa;border-radius:6px;padding:4px 9px;font-size:11px;cursor:pointer;white-space:nowrap;}
+.judge-btn:hover{background:rgba(59,130,246,.2);}
+.judge-btn:disabled{opacity:.5;cursor:default;}
 .cond-empty{color:#475569;font-size:11px;text-align:center;padding:8px 0;font-style:italic;}
 .cond-tpl-btn{background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;transition:all .15s;}
 .cond-tpl-btn:hover{background:#2563eb;border-color:#2563eb;color:#fff;}
@@ -4410,13 +4413,16 @@ function renderEconCalendar() {
         + '<td style="padding:7px 8px 7px 0;color:#94a3b8;white-space:nowrap;width:46px;vertical-align:top;">' + hhmm + '</td>'
         + '<td style="padding:7px 6px;white-space:nowrap;vertical-align:top;width:40px;">' + (CAL_COUNTRY_LABEL[e.country]||e.country) + '</td>'
         + '<td style="padding:7px 6px;white-space:nowrap;vertical-align:top;width:34px;">' + impDot + '</td>'
-        + '<td style="padding:7px 6px;color:#e2e8f0;vertical-align:top;">' + escapeHtml(e.title||'') + '</td>'
+        + '<td style="padding:7px 6px;color:#e2e8f0;vertical-align:top;">' + escapeHtml(e.title||'') + '<div id="judge-c-' + e.id + '"></div></td>'
         + '<td style="padding:7px 0 7px 6px;text-align:right;white-space:nowrap;vertical-align:top;">' + vals + '</td>'
+        + '<td style="padding:7px 0 7px 8px;vertical-align:top;"><button class="judge-btn" onclick="doJudgeCal(\'' + e.id + '\',this)" title="AI 判讀對股市多空（按一次花一次額度）">判多空</button></td>'
         + '</tr>';
     });
     html += '</table>';
   });
   box.innerHTML = html;
+  // 已判過的直接補回（不重花額度）
+  evts.forEach(function(e){ if (_newsJudgeCache['c'+e.id]) renderJudgeInto(document.getElementById('judge-c-'+e.id), _newsJudgeCache['c'+e.id]); });
 }
 
 // ── 日曆頁子頁籤切換（財經日曆 / 金十快訊）──────────
@@ -4481,13 +4487,95 @@ function renderJin10Flash() {
     var text = _stripTags(d.content || d.title || '');
     var hhmm = (a.time || '').slice(11,16);         // 金十時間本就北京時間=台灣時間
     var isImp = a.important === 1;
+    var id = a.id;
     html += '<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid #1e293b;' + (isImp ? 'background:rgba(245,158,11,.06);' : '') + '">'
       + '<div style="color:#94a3b8;font-size:12px;white-space:nowrap;width:44px;flex-shrink:0;padding-top:1px;">' + hhmm + '</div>'
       + '<div style="flex:1;color:' + (isImp ? '#fcd34d' : '#e2e8f0') + ';font-size:13px;line-height:1.55;font-weight:' + (isImp ? '600' : '400') + ';">'
-      + (isImp ? '⭐ ' : '') + escapeHtml(text) + '</div>'
+      + (isImp ? '⭐ ' : '') + escapeHtml(text)
+      + '<div id="judge-f-' + id + '"></div></div>'
+      + '<button class="judge-btn" onclick="doJudgeFlash(\'' + id + '\',this)" title="AI 判讀對股市多空（按一次花一次額度）">判多空</button>'
       + '</div>';
   });
   box.innerHTML = html;
+  // 已判過的直接補回（不重花額度）
+  items.forEach(function(a){ if (_newsJudgeCache['f'+a.id]) renderJudgeInto(document.getElementById('judge-f-'+a.id), _newsJudgeCache['f'+a.id]); });
+}
+
+// ── 利多利空判讀（按需 AI；沿用 Groq/Gemini + key1/key2 fallback + geminiGenerate 模型 fallback）──────────
+var _newsJudgeCache = {};   // id -> {tw, us, reason} 或 {error}
+function aiCallText(prompt) {
+  var apiKey = localStorage.getItem('tw_key1') || localStorage.getItem('tw_groq') || localStorage.getItem('tw_gemini');
+  var apiKey2 = localStorage.getItem('tw_key2');
+  if (!apiKey) return Promise.reject(new Error('NO_KEY'));
+  function buildReq(key) {
+    var isG = key.indexOf('gsk_') !== 0;  // gsk_=Groq，其餘一律 Gemini
+    if (isG) return { isG:true, b: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.4,maxOutputTokens:512} }) };
+    return { isG:false, u:'https://api.groq.com/openai/v1/chat/completions', h:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      b: JSON.stringify({ model:'openai/gpt-oss-120b', messages:[{role:'user',content:prompt}], temperature:0.4, max_tokens:512 }) };
+  }
+  function callKey(key) {
+    var req = buildReq(key);
+    return (req.isG ? geminiGenerate(key, req.b) : fetch(req.u,{method:'POST',headers:req.h,body:req.b}))
+      .then(function(r){ if(!r.ok) return r.json().then(function(e){ throw new Error((e.error&&e.error.message)||'HTTP '+r.status); }); return r.json(); })
+      .then(function(data){
+        var t = req.isG ? (data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0]&&data.candidates[0].content.parts[0].text)
+                        : (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content);
+        if (!t) throw new Error('回應格式異常');
+        return t;
+      });
+  }
+  function isQuota(m){ return m.indexOf('quota')!==-1||m.indexOf('high demand')!==-1||m.indexOf('rate limit')!==-1||m.indexOf('429')!==-1; }
+  return callKey(apiKey).catch(function(e){ if (apiKey2 && isQuota(e.message)) return callKey(apiKey2); throw e; });
+}
+function buildJudgePrompt(text) {
+  return '你是專業財經分析師。以下是一則財經消息或經濟數據：\n「' + text + '」\n\n'
+    + '請判斷這則消息對「台股大盤」與「美股大盤」分別偏多、偏空還是中性。\n'
+    + '重要：不要只用「實際數字比預期高就是利多」的死規則。要看當下市場邏輯綜合判斷——'
+    + '例如就業或通膨數據疲軟，常因升高降息期待反而利多股市；數據過熱可能因升息擔憂反而利空。台股與美股方向可能不同。\n\n'
+    + '嚴格照以下三行格式、繁體中文回答，不要任何開場白或多餘文字：\n台股:偏多\n美股:偏多\n理由:（一句話，40字內，說明為什麼）';
+}
+function parseJudge(text) {
+  function pick(label){ var m = text.match(new RegExp(label + '\\s*[:：]\\s*(偏多|偏空|中性)')); return m ? m[1] : null; }
+  var rm = text.match(/理由\s*[:：]\s*([\s\S]+)/);
+  return { tw: pick('台股'), us: pick('美股'), reason: rm ? rm[1].trim().split('\n')[0] : text.trim().slice(0,60) };
+}
+function judgeBadge(dir) {
+  if (dir === '偏多') return '<span style="color:#22c55e;font-weight:600;">🔺偏多</span>';
+  if (dir === '偏空') return '<span style="color:#ef4444;font-weight:600;">🔻偏空</span>';
+  return '<span style="color:#94a3b8;font-weight:600;">⚖️中性</span>';
+}
+function renderJudgeInto(el, r) {
+  if (!el) return;
+  if (r.error) { el.innerHTML = '<div style="margin-top:6px;color:#f87171;font-size:12px;">判讀失敗：' + escapeHtml(r.error) + '</div>'; return; }
+  el.innerHTML = '<div style="margin-top:6px;padding:7px 10px;background:rgba(15,23,42,.6);border:1px solid #1e293b;border-radius:6px;font-size:12px;line-height:1.6;">'
+    + '台股 ' + judgeBadge(r.tw) + '　美股 ' + judgeBadge(r.us)
+    + '<br><span style="color:#cbd5e1;">' + escapeHtml(r.reason) + '</span>'
+    + '<span style="color:#475569;">　·　⚠ AI 判讀僅供參考、非投資建議</span></div>';
+}
+function doJudge(cacheKey, text, btn, targetId) {
+  var el = document.getElementById(targetId);
+  if (_newsJudgeCache[cacheKey]) { renderJudgeInto(el, _newsJudgeCache[cacheKey]); return; }  // 判過直接顯示不重花
+  btn.disabled = true; var old = btn.textContent; btn.textContent = '判讀中…';
+  if (el) el.innerHTML = '<div style="margin-top:6px;color:#64748b;font-size:12px;">AI 判讀中…</div>';
+  aiCallText(buildJudgePrompt(text)).then(function(t){
+    var r = parseJudge(t); _newsJudgeCache[cacheKey] = r; renderJudgeInto(el, r);
+  }).catch(function(e){
+    if (e.message === 'NO_KEY') { openSettings(); toast('請先在 ⚙ 設定填 AI API Key', 'err'); if (el) el.innerHTML=''; }
+    else renderJudgeInto(el, { error: e.message });
+  }).then(function(){ btn.disabled = false; btn.textContent = old; });
+}
+function doJudgeFlash(id, btn) {
+  var a = (_jin10Raw||[]).filter(function(x){ return String(x.id)===String(id); })[0];
+  if (!a) return;
+  var text = _stripTags((a.data||{}).content || (a.data||{}).title || '');
+  doJudge('f'+id, text, btn, 'judge-f-'+id);
+}
+function doJudgeCal(id, btn) {
+  var e = (_econCalRaw||[]).filter(function(x){ return String(x.id)===String(id); })[0];
+  if (!e) return;
+  var text = (e.title||'') + '（' + (CAL_COUNTRY_LABEL[e.country]||e.country) + '經濟數據）'
+    + (e.actual!=null?' 實際'+e.actual:'') + (e.forecast!=null?' 預期'+e.forecast:'') + (e.previous!=null?' 前值'+e.previous:'');
+  doJudge('c'+id, text, btn, 'judge-c-'+id);
 }
 
 function loadCryptoTickers() {
