@@ -19,5 +19,7 @@ response.json
 # 全市場日K：只 commit 壓縮版 .gz；未壓縮測試檔與建底 log 不進版控
 data/ohlcv.json
 scripts/_backfill.log
+# 台股掃描去重狀態（GitHub Actions cache 保存，不進版控）
+scripts/.tw_scan_state.json
 # Wrangler 本地快取
 worker/.wrangler/

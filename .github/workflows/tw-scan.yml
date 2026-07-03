@@ -1,0 +1,53 @@
+name: TW Scan（台股自訂條件訊號掃描）
+
+on:
+  schedule:
+    - cron: '*/5 1-5 * * 1-5'   # 盤中每 5 分鐘（UTC 1:00-5:55 = 台灣 9:00-13:55，週一至五）
+    - cron: '0 6 * * 1-5'        # 收盤確認（UTC 6:00 = 台灣 14:00，收盤後、夜間 build-ohlcv 之前）
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '手動執行模式'
+        type: choice
+        options: [intraday, close, test]
+        default: intraday
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 取得台灣日期（去重狀態的 cache key）
+        id: d
+        run: echo "date=$(TZ=Asia/Taipei date +%F)" >> "$GITHUB_OUTPUT"
+
+      # 去重狀態跨 run 保存：rolling cache（key 帶 run_id 保證每次 save 新 entry，restore-keys 取當天最新）
+      - name: Restore 去重狀態
+        uses: actions/cache@v4
+        with:
+          path: scripts/.tw_scan_state.json
+          key: tw-scan-state-${{ steps.d.outputs.date }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            tw-scan-state-${{ steps.d.outputs.date }}-
+
+      - name: 台股掃描（有符合條件才推 TG）
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_MODE: ${{ github.event.inputs.mode }}
+        run: |
+          if [ "$DISPATCH_MODE" = "test" ]; then
+            node scripts/tw_scan.js --test
+          elif [ "$DISPATCH_MODE" = "close" ] || [ "$EVENT_SCHEDULE" = "0 6 * * 1-5" ]; then
+            node scripts/tw_scan.js --close
+          else
+            node scripts/tw_scan.js
+          fi

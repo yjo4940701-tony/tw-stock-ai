@@ -409,6 +409,40 @@ select.bt-input{cursor:pointer;}
   </div>
 
   <div id="watchGrid" class="grid" style="display:none;"></div>
+
+  <!-- 台股自動掃描設定（盤中每5分掃自選股，符合自訂條件推 TG）-->
+  <div class="bt-panel" id="tws-panel" style="margin-top:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleTwScanPanel()">
+      <div class="bt-panel-title" style="margin:0;">📡 台股自動掃描設定 <span style="color:#475569;font-size:12px;font-weight:400;">盤中每 5 分自動掃自選股，符合自訂條件就推 Telegram（盤中觸發 + 收盤確認）</span></div>
+      <button class="btn-settings" id="tws-toggle" style="white-space:nowrap;">展開 ▾</button>
+    </div>
+    <div id="tws-body" style="display:none;margin-top:12px;">
+      <div id="tws-current" style="font-size:12px;color:#60a5fa;margin-bottom:12px;">目前生效：載入中…</div>
+      <div style="margin-bottom:12px;"><span class="bt-label" style="display:inline;margin-right:8px;">方向</span>
+        <select class="bt-input" id="tws-dir" style="width:auto;">
+          <option value="both">兩者</option><option value="long" selected>做多</option><option value="short">做空</option>
+        </select>
+      </div>
+      <div class="bt-label" style="color:#22c55e;">做多條件（每組內 AND、多組之間 OR）</div>
+      <div id="tws-long-rows"></div>
+      <div style="margin:6px 0 4px;">
+        <button class="cond-add-btn" style="width:auto;display:inline-block;" onclick="addCustomGroup('tws-long')">+ 新增「或」條件組</button>
+        <button class="cond-preset-btn" onclick="applyPreset60ma('tws-long',20)">快速：收盤上穿 MA20</button>
+        <button class="cond-preset-btn" onclick="applyPresetThreeKingdoms('tws-long')">快速：三國站上三線</button>
+      </div>
+      <div class="bt-label" style="color:#ef4444;margin-top:12px;">做空條件（每組內 AND、多組之間 OR；留空＝不做空）</div>
+      <div id="tws-short-rows"></div>
+      <div style="margin:6px 0 4px;">
+        <button class="cond-add-btn" style="width:auto;display:inline-block;" onclick="addCustomGroup('tws-short')">+ 新增「或」條件組</button>
+        <button class="cond-preset-btn" onclick="applyPreset60ma('tws-short',20)">快速：收盤下穿 MA20</button>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn-add" onclick="confirmTwScanCfg()" style="padding:10px 16px;font-size:13px;">✓ 確認更新後台</button>
+        <span style="color:#64748b;font-size:11px;">存到雲端後，下個交易時段（每 5 分）自動生效。純技術訊號、不花 AI 額度。</span>
+      </div>
+      <div id="tws-note" style="margin-top:8px;font-size:12px;color:#f59e0b;"></div>
+    </div>
+  </div>
 </div>
 
 <!-- BACKTEST PAGE -->
@@ -4730,7 +4764,7 @@ var cryptoBtStrat = 'threeBlade';
 // ── 自訂均線條件產生器（共用：crypto回測 cbt-* 與 後台掃描設定 scfg-*）─────
 // listKey: 'cbt-long' | 'cbt-short' | 'scfg-long' | 'scfg-short'
 // customCondLists[listKey] = 條件組陣列，組內 AND、組間 OR：[ {conditions:[cond,...]}, {conditions:[cond,...]} ]
-var customCondLists = { 'cbt-long': [], 'cbt-short': [], 'scfg-long': [], 'scfg-short': [] };
+var customCondLists = { 'cbt-long': [], 'cbt-short': [], 'scfg-long': [], 'scfg-short': [], 'tws-long': [], 'tws-short': [] };
 var CUSTOM_COND_OPS = [['>','大於'],['<','小於'],['crossUp','上穿'],['crossDown','下穿']];
 function condSideSelect(listKey, gi, idx, side, c) {
   var type = c[side + 'Type'] || 'close';
@@ -5078,6 +5112,51 @@ function confirmScanCfg() {
   if (typeof pushToGist === 'function') pushToGist();   // 整包寫回 Gist（含最新幣清單）
   renderScanCfgUI();
   toast('✅ 後台設定已更新，下次掃描（每小時）生效', 'ok');
+}
+
+// ── 台股自動掃描設定（存 Gist tw_stock_scan_cfg，雲端 scripts/tw_scan.js 讀）──────────
+function toggleTwScanPanel() {
+  var body = document.getElementById('tws-body');
+  var open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  document.getElementById('tws-toggle').textContent = open ? '收合 ▴' : '展開 ▾';
+  if (open && !window._twsLoaded) { window._twsLoaded = true; loadTwScanCfg(); }
+}
+function twsScanLabel(c) {
+  if (!c || !c.custom) return '尚未設定';
+  var d = { both:'做多+做空', long:'只做多', short:'只做空' };
+  var nl = (window.BTEngine ? BTEngine.normalizeGroups(c.custom.long).length : (c.custom.long||[]).length);
+  var ns = (window.BTEngine ? BTEngine.normalizeGroups(c.custom.short).length : (c.custom.short||[]).length);
+  return '自訂條件（做多' + nl + '組/做空' + ns + '組）· ' + (d[c.direction] || c.direction || 'both');
+}
+function loadTwScanCfg() {
+  var c = null;
+  try { c = JSON.parse(localStorage.getItem('tw_stock_scan_cfg') || 'null'); } catch (e) {}
+  if (c) {
+    if (c.direction) document.getElementById('tws-dir').value = c.direction;
+    if (c.custom) {
+      customCondLists['tws-long'] = condsFromEngineFormat(c.custom.long);
+      customCondLists['tws-short'] = condsFromEngineFormat(c.custom.short);
+    }
+  }
+  renderCustomConds('tws-long'); renderCustomConds('tws-short');
+  document.getElementById('tws-current').textContent = '目前生效：' + twsScanLabel(c)
+    + (c && c.updatedAt ? '（更新於 ' + c.updatedAt.slice(0,16).replace('T',' ') + '）' : (c ? '' : '（未設定）'));
+}
+function confirmTwScanCfg() {
+  if (!localStorage.getItem('tw_gh_pat') || !localStorage.getItem('tw_gist_id')) {
+    toast('請先在 ⚙ 設定填 GitHub PAT 與 Gist ID 才能更新後台', 'err');
+    if (typeof openSettings === 'function') openSettings();
+    return;
+  }
+  var cfg = { direction: document.getElementById('tws-dir').value,
+    custom: { long: condsToEngineFormat('tws-long'), short: condsToEngineFormat('tws-short') },
+    updatedAt: new Date().toISOString() };
+  if (!cfg.custom.long.length && !cfg.custom.short.length) { toast('請至少新增一組做多或做空條件', 'err'); return; }
+  localStorage.setItem('tw_stock_scan_cfg', JSON.stringify(cfg));
+  if (typeof pushToGist === 'function') pushToGist();
+  loadTwScanCfg();
+  toast('✅ 台股掃描設定已更新，下個交易時段自動生效', 'ok');
 }
 
 function runCryptoScan() {
@@ -6529,7 +6608,7 @@ function loadFromBatch(ticker) {
 // ─────────────────────────────────
 // ⚠️ AI Key (tw_key1/tw_key2) 不同步 Gist（GitHub 會掃描並撤銷 key）
 // 手機的 AI Key 需手動填入設定頁
-var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts','tw_crypto_basket','tw_crypto_scan_cfg'];
+var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts','tw_crypto_basket','tw_crypto_scan_cfg','tw_stock_scan_cfg'];
 var _gistSyncTimer = null;
 
 function getGistHeaders() {
