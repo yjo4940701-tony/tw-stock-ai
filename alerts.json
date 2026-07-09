@@ -7,7 +7,9 @@
     "type": "stop",
     "direction": "below",
     "createdAt": "2026-06-11T14:22:25.659Z",
-    "triggered": false
+    "triggered": true,
+    "triggeredAt": "2026-07-09T10:40:26.566526",
+    "triggeredPrice": 144.5
   },
   {
     "id": 1781187874043,
