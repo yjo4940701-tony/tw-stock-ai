@@ -2,11 +2,11 @@ name: Update Revenue
 
 on:
   schedule:
-    - cron: '0 2 11 * *'  # ¨C¤ë11¤é 10:00 AM ¥xÆW®É¶¡
+    - cron: '0 2 11 * *'  # ï¿½Cï¿½ï¿½11ï¿½ï¿½ 10:00 AM ï¿½xï¿½Wï¿½É¶ï¿½
   workflow_dispatch:
     inputs:
       range:
-        description: 'ªÑ²¼½d³ò¡]all = ¥þ³¡¦P®É¶]¡^'
+        description: 'ï¿½Ñ²ï¿½ï¿½dï¿½ï¿½]all = ï¿½ï¿½ï¿½ï¿½ï¿½Pï¿½É¶]ï¿½^'
         required: false
         default: '1000-1999'
         type: choice
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        range: ${{ fromJSON(github.event_name == 'schedule' || github.event.inputs.range == 'all' && '["1000-1999","2000-2999","3000-4999","5000-9999"]' || format('["{0}"]', github.event.inputs.range)) }}
+        range: ${{ fromJSON((github.event_name == 'schedule' || github.event.inputs.range == 'all') && '["1000-1999","2000-2999","3000-4999","5000-9999"]' || format('["{0}"]', github.event.inputs.range)) }}
       fail-fast: false
 
     steps:
@@ -78,7 +78,7 @@ jobs:
               except Exception as e:
                   print(f"Skip {f}: {e}")
 
-          print(f"¥»¦¸§ó·s¡G{len(rev_map)} ÀÉ")
+          print(f"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½sï¿½G{len(rev_map)} ï¿½ï¿½")
 
           with open("data/fundamentals.json", encoding="utf-8") as f:
               fund = json.load(f)
@@ -97,7 +97,7 @@ jobs:
               json.dump(fund, f, ensure_ascii=False, separators=(",", ":"))
 
           valid = sum(1 for v in stocks.values() if v.get("rev_yoy") is not None)
-          print(f"rev_yoy ²Ö­p¦³­È¡G{valid} ÀÉ")
+          print(f"rev_yoy ï¿½Ö­pï¿½ï¿½ï¿½È¡G{valid} ï¿½ï¿½")
           EOF
 
       - name: Commit and push
