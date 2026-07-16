@@ -409,40 +409,6 @@ select.bt-input{cursor:pointer;}
   </div>
 
   <div id="watchGrid" class="grid" style="display:none;"></div>
-
-  <!-- 台股自動掃描設定（盤中每5分掃自選股，符合自訂條件推 TG）-->
-  <div class="bt-panel" id="tws-panel" style="margin-top:24px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleTwScanPanel()">
-      <div class="bt-panel-title" style="margin:0;">📡 台股自動掃描設定 <span style="color:#475569;font-size:12px;font-weight:400;">盤中每 5 分自動掃自選股，符合自訂條件就推 Telegram（盤中觸發 + 收盤確認）</span></div>
-      <button class="btn-settings" id="tws-toggle" style="white-space:nowrap;">展開 ▾</button>
-    </div>
-    <div id="tws-body" style="display:none;margin-top:12px;">
-      <div id="tws-current" style="font-size:12px;color:#60a5fa;margin-bottom:12px;">目前生效：載入中…</div>
-      <div style="margin-bottom:12px;"><span class="bt-label" style="display:inline;margin-right:8px;">方向</span>
-        <select class="bt-input" id="tws-dir" style="width:auto;">
-          <option value="both">兩者</option><option value="long" selected>做多</option><option value="short">做空</option>
-        </select>
-      </div>
-      <div class="bt-label" style="color:#22c55e;">做多條件（每組內 AND、多組之間 OR）</div>
-      <div id="tws-long-rows"></div>
-      <div style="margin:6px 0 4px;">
-        <button class="cond-add-btn" style="width:auto;display:inline-block;" onclick="addCustomGroup('tws-long')">+ 新增「或」條件組</button>
-        <button class="cond-preset-btn" onclick="applyPreset60ma('tws-long',20)">快速：收盤上穿 MA20</button>
-        <button class="cond-preset-btn" onclick="applyPresetThreeKingdoms('tws-long')">快速：三國站上三線</button>
-      </div>
-      <div class="bt-label" style="color:#ef4444;margin-top:12px;">做空條件（每組內 AND、多組之間 OR；留空＝不做空）</div>
-      <div id="tws-short-rows"></div>
-      <div style="margin:6px 0 4px;">
-        <button class="cond-add-btn" style="width:auto;display:inline-block;" onclick="addCustomGroup('tws-short')">+ 新增「或」條件組</button>
-        <button class="cond-preset-btn" onclick="applyPreset60ma('tws-short',20)">快速：收盤下穿 MA20</button>
-      </div>
-      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn-add" onclick="confirmTwScanCfg()" style="padding:10px 16px;font-size:13px;">✓ 確認更新後台</button>
-        <span style="color:#64748b;font-size:11px;">存到雲端後，下個交易時段（每 5 分）自動生效。純技術訊號、不花 AI 額度。</span>
-      </div>
-      <div id="tws-note" style="margin-top:8px;font-size:12px;color:#f59e0b;"></div>
-    </div>
-  </div>
 </div>
 
 <!-- BACKTEST PAGE -->
@@ -605,6 +571,40 @@ select.bt-input{cursor:pointer;}
       <div class="bt-panel">
         <div class="bt-panel-title">🏆 批次回測結果（點任一列查看詳細）</div>
         <div id="bt-batch-table" style="overflow-x:auto;margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <!-- 台股自動掃描設定（盤中每5分掃自選股，符合自訂條件推 TG）-->
+    <div class="bt-panel" id="tws-panel" style="margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleTwScanPanel()">
+        <div class="bt-panel-title" style="margin:0;">📡 台股自動掃描設定 <span style="color:#475569;font-size:12px;font-weight:400;">盤中每 5 分自動掃自選股，符合自訂條件就推 Telegram（盤中觸發 + 收盤確認）</span></div>
+        <button class="btn-settings" id="tws-toggle" style="white-space:nowrap;">展開 ▾</button>
+      </div>
+      <div id="tws-body" style="display:none;margin-top:12px;">
+        <div id="tws-current" style="font-size:12px;color:#60a5fa;margin-bottom:12px;">目前生效：載入中…</div>
+        <div style="margin-bottom:12px;"><span class="bt-label" style="display:inline;margin-right:8px;">方向</span>
+          <select class="bt-input" id="tws-dir" style="width:auto;">
+            <option value="both">兩者</option><option value="long" selected>做多</option><option value="short">做空</option>
+          </select>
+        </div>
+        <div class="bt-label" style="color:#22c55e;">做多條件（每組內 AND、多組之間 OR）</div>
+        <div id="tws-long-rows"></div>
+        <div style="margin:6px 0 4px;">
+          <button class="cond-add-btn" style="width:auto;display:inline-block;" onclick="addCustomGroup('tws-long')">+ 新增「或」條件組</button>
+          <button class="cond-preset-btn" onclick="applyPreset60ma('tws-long',20)">快速：收盤上穿 MA20</button>
+          <button class="cond-preset-btn" onclick="applyPresetThreeKingdoms('tws-long')">快速：三國站上三線</button>
+        </div>
+        <div class="bt-label" style="color:#ef4444;margin-top:12px;">做空條件（每組內 AND、多組之間 OR；留空＝不做空）</div>
+        <div id="tws-short-rows"></div>
+        <div style="margin:6px 0 4px;">
+          <button class="cond-add-btn" style="width:auto;display:inline-block;" onclick="addCustomGroup('tws-short')">+ 新增「或」條件組</button>
+          <button class="cond-preset-btn" onclick="applyPreset60ma('tws-short',20)">快速：收盤下穿 MA20</button>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-add" onclick="confirmTwScanCfg()" style="padding:10px 16px;font-size:13px;">✓ 確認更新後台</button>
+          <span style="color:#64748b;font-size:11px;">存到雲端後，下個交易時段（每 5 分）自動生效。純技術訊號、不花 AI 額度。</span>
+        </div>
+        <div id="tws-note" style="margin-top:8px;font-size:12px;color:#f59e0b;"></div>
       </div>
     </div>
 
