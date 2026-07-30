@@ -17,6 +17,8 @@
     "type": "stop",
     "direction": "below",
     "createdAt": "2026-06-11T14:24:34.043Z",
-    "triggered": false
+    "triggered": true,
+    "triggeredAt": "2026-07-30T10:04:20.237808",
+    "triggeredPrice": 27.9
   }
 ]
