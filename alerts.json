@@ -1,15 +1,5 @@
 [
   {
-    "id": 1781187874043,
-    "ticker": "2353",
-    "name": "宏碁",
-    "price": 28,
-    "type": "stop",
-    "direction": "below",
-    "createdAt": "2026-06-11T14:24:34.043Z",
-    "triggered": false
-  },
-  {
     "id": 1782133594288,
     "ticker": "1514",
     "name": "亞力",
