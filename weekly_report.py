@@ -169,7 +169,7 @@ def ai_summary(data_text):
             raise RuntimeError(f'所有 Gemini 模型皆不可用（{last}）')
         r = requests.post('https://api.groq.com/openai/v1/chat/completions',
                           headers={'Authorization': 'Bearer ' + k},
-                          json={'model': 'llama-3.3-70b-versatile',
+                          json={'model': 'openai/gpt-oss-120b',
                                 'messages': [{'role': 'user', 'content': prompt}],
                                 'temperature': 0.6, 'max_tokens': 256}, timeout=30)
         r.raise_for_status()
