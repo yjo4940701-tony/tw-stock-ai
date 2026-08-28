@@ -1113,7 +1113,9 @@ select.bt-input{cursor:pointer;}
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
       <label class="form-label">Gist ID <span style="color:#64748b;font-size:11px;">（手機 ↔ 電腦同步自選股與設定）</span></label>
       <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;color:#64748b;line-height:1.6;">
-        📱 設定後自選股、API Key、持倉記錄自動跨裝置同步<br>
+        📱 設定後自選股、持倉記錄、價格提醒自動跨裝置同步<br>
+        <strong style="color:#fbbf24;">⚠️ API Key 不同步</strong>：Gist 的內容不需認證就能讀取，
+        放 Key 等於公開。每台裝置請各自在上方填一次（填完就存在該裝置，不必再填）。<br>
         ① 前往 <a href="https://gist.github.com" target="_blank" style="color:#60a5fa;">gist.github.com</a> → New Gist<br>
         ② 檔名填 <strong style="color:#e2e8f0;">tw-stock-settings.json</strong>，內容填 <code style="color:#94a3b8;">{}</code><br>
         ③ 點「Create secret gist」→ 複製網址中的 ID（32 位英數字）
@@ -6606,9 +6608,13 @@ function loadFromBatch(ticker) {
 // ─────────────────────────────────
 // GitHub Gist 跨裝置同步
 // ─────────────────────────────────
-// ⚠️ AI Key (tw_key1/tw_key2) 不同步 Gist（GitHub 會掃描並撤銷 key）
-// 手機的 AI Key 需手動填入設定頁
-var SYNC_KEYS = ['tw_finmind','tw_fugle','tw_finnhub','tw_groups','tw_positions','tw_alerts','tw_crypto_basket','tw_crypto_scan_cfg','tw_stock_scan_cfg'];
+// ⚠️ 所有 API Key 一律不同步 Gist，每台裝置各自填一次（存自己的 localStorage）
+//    tw_key1/tw_key2（AI）：GitHub Secret Scanning 會掃到並撤銷
+//    tw_finmind/tw_fugle/tw_finnhub：2026-08-27 移除——Gist ID 硬寫在公開 repo
+//    的 fetch_institutional.py，任何人不需認證就能讀走整份設定（實測 HTTP 200）。
+//    寫入要 PAT，但「讀取」完全不設防，所以 key 放進來等於公開。
+//    ⚠️ 別因為「同步方便」把任何 key 加回這個陣列。
+var SYNC_KEYS = ['tw_groups','tw_positions','tw_alerts','tw_crypto_basket','tw_crypto_scan_cfg','tw_stock_scan_cfg'];
 var _gistSyncTimer = null;
 
 function getGistHeaders() {
