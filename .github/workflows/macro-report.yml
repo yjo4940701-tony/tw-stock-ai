@@ -26,18 +26,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies
+        run: pip install requests
+
       - name: Fetch macro data
         run: |
           python scripts/fetch_macro.py
           python scripts/fetch_macro_tw.py
           python scripts/fetch_etf_universe.py
 
-      - name: Build regime + targets
+      - name: Build regime + targets + history stats
         run: |
           python scripts/macro_regime.py
           python scripts/macro_targets.py
+          python scripts/macro_history_stats.py
 
       - name: Build report (plaintext stays in RUNNER_TEMP, never committed)
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_API_KEY2: ${{ secrets.AI_API_KEY2 }}
         run: |
           SLOT="${{ github.event.inputs.slot }}"
           if [ -z "$SLOT" ]; then

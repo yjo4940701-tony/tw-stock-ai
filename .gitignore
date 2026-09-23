@@ -30,4 +30,5 @@ data/macro_tw.json
 data/macro_regime.json
 data/macro_targets.json
 data/etf_universe.json
+data/macro_history_stats.json
 _scratch_*
