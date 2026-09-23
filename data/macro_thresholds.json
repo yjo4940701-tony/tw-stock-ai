@@ -1,0 +1,31 @@
+{
+  "_說明": "以下門檻是我（Claude）的假設，不是官方定義，可自行調整。唯一有來源的是景氣燈號分區(紅燈38~45=過熱，來源 MacroMicro 引用國發會)。",
+  "tw_growth": {
+    "signal_hot": 38,
+    "pmi_expand": 50,
+    "pmi_strong": 55,
+    "export_orders_strong_yoy": 10,
+    "ip_strong_yoy": 5
+  },
+  "us_growth": {
+    "unemployment_rising_pp": 0.2,
+    "payrolls_weak_thousand": 50
+  },
+  "inflation": {
+    "target": 2.0,
+    "rising_delta_pp": 0.15,
+    "falling_delta_pp": -0.15
+  },
+  "global_rates": {
+    "fed_move_pp_90d": 0.2
+  },
+  "commodities": {
+    "oil_up_pct_90d": 10,
+    "oil_down_pct_90d": -10
+  },
+  "stale_days": {
+    "manual": 35,
+    "daily": 12,
+    "monthly": 95
+  }
+}

@@ -23,3 +23,9 @@ scripts/_backfill.log
 scripts/.tw_scan_state.json
 # Wrangler 本地快取
 worker/.wrangler/
+
+# 總經報告：明文判讀結論與報告只在排程執行時產生，不進版控（repo 只放加密版 macro_report.enc.json）
+data/macro.json
+data/macro_tw.json
+data/macro_regime.json
+data/macro_targets.json

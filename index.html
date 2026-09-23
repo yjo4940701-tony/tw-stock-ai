@@ -360,6 +360,7 @@ select.bt-input{cursor:pointer;}
     <button class="nav-btn" id="nav-backtest" onclick="showPage('backtest')">📈 <span class="btn-text">回測</span></button>
     <button class="nav-btn" id="nav-crypto" onclick="showPage('crypto')">🪙 <span class="btn-text">虛擬貨幣</span></button>
     <button class="nav-btn" id="nav-calendar" onclick="showPage('calendar')">📅 <span class="btn-text">日曆</span></button>
+    <button class="nav-btn" id="nav-macro" onclick="showPage('macro')">🌐 <span class="btn-text">總經</span></button>
     <button class="btn-settings" onclick="openScreener()" style="border-color:rgba(124,58,237,.5);color:#a78bfa;">🔍 <span class="btn-text">選股</span></button>
     <button class="btn-settings" onclick="openAlertList()" style="position:relative;">🔔 <span class="btn-text">提醒</span><span class="alert-badge" id="alertBadge" style="display:none;">0</span></button>
     <button class="btn-settings" onclick="openSettings()">⚙ <span class="btn-text">設定</span></button>
@@ -812,6 +813,23 @@ select.bt-input{cursor:pointer;}
 </div>
 
 <!-- CALENDAR PAGE（財經日曆 + 金十快訊）-->
+<div id="macroPage" style="display:none;padding:12px 14px;">
+  <style>
+    #macroBody table{border-collapse:collapse;width:100%;font-size:12px;margin:6px 0 14px}
+    #macroBody th,#macroBody td{border:1px solid var(--border,#333);padding:4px 6px;text-align:left}
+    #macroBody h2{margin:4px 0}#macroBody h3{margin:14px 0 4px}#macroBody h4{margin:10px 0 2px}
+    #macroBody .mr-disc{opacity:.7;font-size:12px}
+    #macroBody .mr-warn{border:1px solid #d9a441;border-radius:6px;padding:6px 10px;margin:8px 0}
+    #macroBody{overflow-x:auto}
+  </style>
+  <div id="macroLock" style="max-width:360px;margin:30px auto;text-align:center;">
+    <div style="font-size:15px;margin-bottom:8px;">🔒 總經報告（加密）</div>
+    <input type="password" id="macroPw" placeholder="輸入密碼" autocomplete="off" style="width:100%;padding:8px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')unlockMacro()">
+    <button class="nav-btn" style="margin-top:8px;" onclick="unlockMacro()">解鎖</button>
+    <div id="macroMsg" style="margin-top:8px;font-size:12px;opacity:.8;"></div>
+  </div>
+  <div id="macroBody" style="display:none;"></div>
+</div>
 <div id="calendarPage" style="display:none;">
   <div class="main" style="padding-top:20px;">
     <!-- 子頁籤：日曆 / 快訊 -->
@@ -5238,6 +5256,10 @@ function showPage(page) {
   if (cp) cp.style.display = page === 'crypto' ? 'block' : 'none';
   var calp = document.getElementById('calendarPage');
   if (calp) calp.style.display = page === 'calendar' ? 'block' : 'none';
+  var mp = document.getElementById('macroPage');
+  if (mp) mp.style.display = page === 'macro' ? 'block' : 'none';
+  var nmc = document.getElementById('nav-macro');
+  if (nmc) nmc.classList.toggle('active', page === 'macro');
   document.getElementById('nav-dashboard').classList.toggle('active', isDash);
   document.getElementById('nav-backtest').classList.toggle('active', page === 'backtest');
   var ncb = document.getElementById('nav-crypto');
@@ -5250,6 +5272,32 @@ function showPage(page) {
   if (page === 'calendar' && !window._calLoaded) { window._calLoaded = true; loadEconCalendar(); }
   // 離開日曆分頁 → 停掉快訊自動更新計時器
   if (page !== 'calendar' && typeof stopFlashAutoRefresh === 'function') stopFlashAutoRefresh();
+}
+
+// ══ 總經加密報告：AES-256-GCM + PBKDF2-SHA256，參數與 scripts/encrypt_report.js 相同 ══
+// 密碼只留在記憶體、不存 localStorage。密文公開但無密碼無法解讀；GCM 驗證失敗即拒絕（也防竄改）。
+function unlockMacro() {
+  var pw = document.getElementById('macroPw').value, msg = document.getElementById('macroMsg');
+  if (!pw) { msg.textContent = '請輸入密碼'; return; }
+  msg.textContent = '解密中…';
+  var ub = function(s) { return Uint8Array.from(atob(s), function(c) { return c.charCodeAt(0); }); };
+  fetch('data/macro_report.enc.json?t=' + Date.now()).then(function(r) {
+    if (!r.ok) throw new Error('尚無報告（排程還沒產生，或未設定 REPORT_PASSWORD）');
+    return r.json();
+  }).then(function(j) {
+    return crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']).then(function(base) {
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: ub(j.salt), iterations: j.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    }).then(function(k) {
+      return crypto.subtle.decrypt({ name: 'AES-GCM', iv: ub(j.iv) }, k, ub(j.ct));
+    });
+  }).then(function(pt) {
+    document.getElementById('macroBody').innerHTML = new TextDecoder().decode(pt);
+    document.getElementById('macroBody').style.display = 'block';
+    document.getElementById('macroLock').style.display = 'none';
+    document.getElementById('macroPw').value = '';
+  }).catch(function(e) {
+    msg.textContent = (e && e.name === 'OperationError') ? '密碼錯誤' : ('失敗：' + (e && e.message || e));
+  });
 }
 
 // ══ FIRE 影響鏈（個股 Modal 內）═══════════════════════

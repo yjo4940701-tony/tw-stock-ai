@@ -1,0 +1,19 @@
+{
+  "_說明": "國發會/中經院網站擋程式請求，這兩項需手動更新。每筆必須有 value/date/source，缺任一項就不會被採用。數值取自 macro-cycle-taiwan-etf-2026-09-20.md §5.1（該文件標示的來源）。",
+  "business_signal_score": {
+    "name": "景氣對策信號綜合判斷分數(7月)",
+    "value": 41,
+    "prev": 41,
+    "date": "2026-07",
+    "published": "2026-08-27",
+    "source": "國發會，經 Newtalk 轉述 https://newtalk.tw/news/view/2026-08-27/1056114"
+  },
+  "pmi_manufacturing": {
+    "name": "中經院製造業 PMI(8月)",
+    "value": 62.5,
+    "prev": 61.5,
+    "date": "2026-08",
+    "published": "2026-09-01",
+    "source": "中經院，經鉅亨網轉述 https://news.cnyes.com/news/id/6594132"
+  }
+}

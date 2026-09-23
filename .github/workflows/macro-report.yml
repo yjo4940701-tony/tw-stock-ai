@@ -1,0 +1,84 @@
+name: Macro Report（總經循環報告）
+
+on:
+  schedule:
+    - cron: '0 0 * * *'    # 台灣時間 08:00（早報，美股收盤後）
+    - cron: '0 9 * * *'    # 台灣時間 17:00（晚報，台股收盤後）
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'am 或 pm'
+        default: 'am'
+
+concurrency:
+  group: macro-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch macro data
+        run: |
+          python scripts/fetch_macro.py
+          python scripts/fetch_macro_tw.py
+
+      - name: Build regime + targets
+        run: |
+          python scripts/macro_regime.py
+          python scripts/macro_targets.py
+
+      - name: Build report (plaintext stays in RUNNER_TEMP, never committed)
+        run: |
+          SLOT="${{ github.event.inputs.slot }}"
+          if [ -z "$SLOT" ]; then
+            [ "$(date -u +%H)" = "09" ] && SLOT=pm || SLOT=am
+          fi
+          python scripts/macro_report.py "$RUNNER_TEMP/mr" --slot "$SLOT"
+
+      - name: Encrypt report
+        id: enc
+        env:
+          REPORT_PASSWORD: ${{ secrets.REPORT_PASSWORD }}
+        run: |
+          if [ -z "$REPORT_PASSWORD" ]; then
+            echo "REPORT_PASSWORD 未設定，略過網頁報告（TG 摘要照發）"
+            echo "done=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/encrypt_report.js "$RUNNER_TEMP/mr/report.html" data/macro_report.enc.json
+          # 洩漏檢查：密文不可含明文關鍵字
+          if grep -q "階段判斷" data/macro_report.enc.json; then echo "密文含明文，中止"; exit 1; fi
+          echo "done=yes" >> "$GITHUB_OUTPUT"
+
+      - name: Commit encrypted report only
+        if: steps.enc.outputs.done == 'yes'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/macro_report.enc.json
+          # 只允許這一個檔案進 commit
+          [ "$(git diff --staged --name-only)" = "data/macro_report.enc.json" ] || [ -z "$(git diff --staged --name-only)" ] || { echo "staged 內容異常"; exit 1; }
+          git diff --staged --quiet || git commit -m "data: update macro report (encrypted) [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push failed, retry $i/3..."
+            sleep 10
+          done
+
+      - name: Send Telegram summary
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -sf -m 30 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT_ID}" \
+            --data-urlencode "text@$RUNNER_TEMP/mr/tg.txt" -o /dev/null && echo "TG sent"
