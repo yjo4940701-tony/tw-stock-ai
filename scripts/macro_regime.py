@@ -137,8 +137,17 @@ def main():
     reg = {'台灣': regime(tw_g, tw_i), '美國': regime(us_g, us_i)}
 
     # ---- 資料新鮮度 ----
+    # 手動項目：估計「下一筆新資料」的公布日，今天已過還沒更新就提醒（比單純算天數準）
+    # 景氣對策信號約每月月底(27日)公布上月資料；中經院 PMI 約每月首個工作日公布上月資料
+    NEXT_PUBLISH_DAY = {'business_signal_score': 27, 'pmi_manufacturing': 3}
     for k, v in m.items():
-        if age_days(v.get('published') or v['date']) > T['stale_days']['manual']:
+        cur_month = date.fromisoformat(v['date'] + '-01') if len(v['date']) == 7 else date.fromisoformat(v['date'][:7] + '-01')
+        next_month = date(cur_month.year + (cur_month.month == 12), cur_month.month % 12 + 1, 1)
+        due_day = NEXT_PUBLISH_DAY.get(k, 27)
+        due = date(next_month.year + (due_day > 28 and next_month.month == 12), next_month.month % 12 + 1 if due_day > 28 else next_month.month, min(due_day, 28))
+        if date.today() >= due:
+            warns.append(f"手動資料應已有新一期：{v['name']}（現有 {v['date']}，預估公布日 {due.isoformat()} 已過，請更新 data/macro_tw_manual.json）")
+        elif age_days(v.get('published') or v['date']) > T['stale_days']['manual']:
             warns.append(f"手動資料過期：{v['name']}（{v['date']}，公布 {v.get('published','?')}）")
     for k, v in a.items():
         if age_days(v['date']) > T["stale_days"]["monthly"]:
