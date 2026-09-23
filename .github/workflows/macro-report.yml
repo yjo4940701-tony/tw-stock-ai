@@ -30,6 +30,7 @@ jobs:
         run: |
           python scripts/fetch_macro.py
           python scripts/fetch_macro_tw.py
+          python scripts/fetch_etf_universe.py
 
       - name: Build regime + targets
         run: |

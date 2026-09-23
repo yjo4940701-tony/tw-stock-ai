@@ -50,14 +50,12 @@ def main():
             h.append(f"<tr><td>{e(v['name'])}</td><td>{e(str(v['value']))}</td><td>{e(str(v.get('prev','—')))}</td><td>{e(v['date'])}</td><td>{e(v['source'][:40])}{'（手動）' if grp=='manual' else ''}</td></tr>")
     h.append('</table>')
 
-    h.append(f"<h3>階段對應 ETF（框架清單＋現況數據）</h3><p class='mr-disc'>價格至 {e(tg_['price_data_date'])}、法人至 {e(tg_['inst_data_date'])}</p>")
+    h.append(f"<h3>階段對應 ETF（全市場動態選股，非固定清單）</h3><p class='mr-disc'>候選共 {tg_['universe_count']} 檔全市場 ETF；價格至 {e(tg_['price_data_date'])}、法人至 {e(tg_['inst_data_date'])}</p>")
     for g, v in tg_['groups'].items():
-        h.append(f"<h4>{e(g)}：{e(v['sectors'])}</h4><table><tr><th>ETF</th><th>類型</th><th>1月%</th><th>3月%</th><th>距MA60%</th><th>法人5日(張)</th><th>提醒</th></tr>")
+        h.append(f"<h4>{e(g)}：{e(v['sectors'])}（候選池 {v['candidate_pool_size']} 檔，取近1月動能前 {len(v['etfs'])} 名）</h4><table><tr><th>ETF</th><th>名稱</th><th>類別</th><th>1月%</th><th>3月%</th><th>距MA60%</th><th>法人5日(張)</th><th>提醒</th></tr>")
         for x in v['etfs']:
-            h.append(f"<tr><td>{e(x['id'])}</td><td>{e(x['type'])}</td><td>{fmt(x.get('ret_1m'))}</td><td>{fmt(x.get('ret_3m'))}</td><td>{fmt(x.get('vs_ma60_pct'))}</td><td>{x.get('inst_5d_total','—')}</td><td>{e(x['note'])}</td></tr>")
+            h.append(f"<tr><td>{e(x['id'])}</td><td>{e(x['name'])}</td><td>{e(x['category'])}</td><td>{fmt(x.get('ret_1m'))}</td><td>{fmt(x.get('ret_3m'))}</td><td>{fmt(x.get('vs_ma60_pct'))}</td><td>{x.get('inst_5d_total','—')}</td><td>{e(x['note'])}</td></tr>")
         h.append('</table>')
-    for sid, x in tg_['mixed'].items():
-        h.append(f"<p><b>{e(sid)}</b>：{e(x['note'])}｜1月 {fmt(x.get('ret_1m'))}%｜3月 {fmt(x.get('ret_3m'))}%</p>")
     h.append('<h4>限制</h4><ul>' + ''.join(f'<li>{e(c)}</li>' for c in tg_['caveats']) + '</ul>')
     open(os.path.join(out_dir, 'report.html'), 'w', encoding='utf-8').write('\n'.join(h))
 
