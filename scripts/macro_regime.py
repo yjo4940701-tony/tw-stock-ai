@@ -138,13 +138,18 @@ def main():
 
     # ---- 資料新鮮度 ----
     # 手動項目：估計「下一筆新資料」的公布日，今天已過還沒更新就提醒（比單純算天數準）
-    # 景氣對策信號約每月月底(27日)公布上月資料；中經院 PMI 約每月首個工作日公布上月資料
+    # 現有資料是「X月的活動」，公布於 X+1 月（如7月資料於8月27日公布）。
+    # 下一筆是「X+1月的活動」，故公布於 X+2 月：先 +1 月拿到下一期期別，再 +1 月拿到公布月。
+    def add_months(d, n):
+        m0 = d.month - 1 + n
+        return date(d.year + m0 // 12, m0 % 12 + 1, 1)
     NEXT_PUBLISH_DAY = {'business_signal_score': 27, 'pmi_manufacturing': 3}
     for k, v in m.items():
-        cur_month = date.fromisoformat(v['date'] + '-01') if len(v['date']) == 7 else date.fromisoformat(v['date'][:7] + '-01')
-        next_month = date(cur_month.year + (cur_month.month == 12), cur_month.month % 12 + 1, 1)
+        cur_month = date.fromisoformat((v['date'] if len(v['date']) == 7 else v['date'][:7]) + '-01')
+        next_period = add_months(cur_month, 1)   # 下一期資料的期別（如 8月）
+        publish_month = add_months(cur_month, 2)  # 下一期資料的公布月（如 9月）
         due_day = NEXT_PUBLISH_DAY.get(k, 27)
-        due = date(next_month.year + (due_day > 28 and next_month.month == 12), next_month.month % 12 + 1 if due_day > 28 else next_month.month, min(due_day, 28))
+        due = date(publish_month.year, publish_month.month, min(due_day, 28))
         if date.today() >= due:
             warns.append(f"手動資料應已有新一期：{v['name']}（現有 {v['date']}，預估公布日 {due.isoformat()} 已過，請更新 data/macro_tw_manual.json）")
         elif age_days(v.get('published') or v['date']) > T['stale_days']['manual']:
