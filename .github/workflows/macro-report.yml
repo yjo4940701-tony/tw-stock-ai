@@ -2,13 +2,19 @@ name: Macro Report（總經循環報告）
 
 on:
   schedule:
-    - cron: '0 0 * * *'    # 台灣時間 08:00（早報，美股收盤後）
-    - cron: '0 9 * * *'    # 台灣時間 17:00（晚報，台股收盤後）
+    # 08:00 台北為主，08:00 未準時執行的話 GitHub cron 常有延遲（實測曾延到 10:58），
+    # 09:30/11:00 是備援；gate 判斷「今天 am 發過了沒」，發過就跳過，不會重複發送
+    - cron: '0 0 * * *'    # 台灣 08:00 主要
+    - cron: '30 1 * * *'   # 台灣 09:30 備援1
+    - cron: '0 3 * * *'    # 台灣 11:00 備援2
+    - cron: '0 9 * * *'    # 台灣 17:00 主要
+    - cron: '30 10 * * *'  # 台灣 18:30 備援1
+    - cron: '0 12 * * *'   # 台灣 20:00 備援2
   workflow_dispatch:
     inputs:
       slot:
-        description: 'am 或 pm'
-        default: 'am'
+        description: 'am 或 pm（留空自動依現在時段判斷）'
+        default: ''
 
 concurrency:
   group: macro-report
@@ -29,31 +35,41 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Decide slot / dedup gate
+        id: gate
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SLOT: ${{ github.event.inputs.slot }}
+        run: python scripts/macro_report_gate.py check >> "$GITHUB_OUTPUT"
+
+      - name: Skip notice
+        if: steps.gate.outputs.skip == 'yes'
+        run: echo "今天 ${{ steps.gate.outputs.slot }} 已發送過，這是備援觸發，略過避免重複發送"
+
       - name: Fetch macro data
+        if: steps.gate.outputs.skip != 'yes'
         run: |
           python scripts/fetch_macro.py
           python scripts/fetch_macro_tw.py
           python scripts/fetch_etf_universe.py
 
       - name: Build regime + targets + history stats
+        if: steps.gate.outputs.skip != 'yes'
         run: |
           python scripts/macro_regime.py
           python scripts/macro_targets.py
           python scripts/macro_history_stats.py
 
       - name: Build report (plaintext stays in RUNNER_TEMP, never committed)
+        if: steps.gate.outputs.skip != 'yes'
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_API_KEY2: ${{ secrets.AI_API_KEY2 }}
-        run: |
-          SLOT="${{ github.event.inputs.slot }}"
-          if [ -z "$SLOT" ]; then
-            [ "$(date -u +%H)" = "09" ] && SLOT=pm || SLOT=am
-          fi
-          python scripts/macro_report.py "$RUNNER_TEMP/mr" --slot "$SLOT"
+        run: python scripts/macro_report.py "$RUNNER_TEMP/mr" --slot "${{ steps.gate.outputs.slot }}"
 
       - name: Encrypt report
         id: enc
+        if: steps.gate.outputs.skip != 'yes'
         env:
           REPORT_PASSWORD: ${{ secrets.REPORT_PASSWORD }}
         run: |
@@ -68,12 +84,11 @@ jobs:
           echo "done=yes" >> "$GITHUB_OUTPUT"
 
       - name: Commit encrypted report only
-        if: steps.enc.outputs.done == 'yes'
+        if: steps.gate.outputs.skip != 'yes' && steps.enc.outputs.done == 'yes'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add data/macro_report.enc.json
-          # 只允許這一個檔案進 commit
           [ "$(git diff --staged --name-only)" = "data/macro_report.enc.json" ] || [ -z "$(git diff --staged --name-only)" ] || { echo "staged 內容異常"; exit 1; }
           git diff --staged --quiet || git commit -m "data: update macro report (encrypted) [skip ci]"
           for i in 1 2 3; do
@@ -83,6 +98,8 @@ jobs:
           done
 
       - name: Send Telegram summary
+        id: tg
+        if: steps.gate.outputs.skip != 'yes'
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -90,3 +107,18 @@ jobs:
           curl -sf -m 30 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TG_CHAT_ID}" \
             --data-urlencode "text@$RUNNER_TEMP/mr/tg.txt" -o /dev/null && echo "TG sent"
+
+      # 只有 TG 真的送出去才標記「今天發過了」，避免 TG 失敗時備援也被誤跳過
+      - name: Mark slot as sent + commit state
+        if: steps.gate.outputs.skip != 'yes' && steps.tg.outcome == 'success'
+        run: |
+          python scripts/macro_report_gate.py mark "${{ steps.gate.outputs.slot }}"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/macro_report_state.json
+          git diff --staged --quiet || git commit -m "data: mark macro report ${{ steps.gate.outputs.slot }} sent [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break
+            echo "Push failed, retry $i/3..."
+            sleep 10
+          done
