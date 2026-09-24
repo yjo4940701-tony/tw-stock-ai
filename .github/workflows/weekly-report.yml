@@ -21,6 +21,13 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Fetch macro data for weekly report's macro section
+        continue-on-error: true   # 抓失敗也不擋主流程；weekly_report.py 讀不到檔案會自動略過總經段
+        run: |
+          python scripts/fetch_macro.py
+          python scripts/fetch_macro_tw.py
+          python scripts/macro_regime.py
+
       - name: Send weekly report
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}

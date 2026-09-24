@@ -129,6 +129,18 @@ def get_eps(watchlist):
             if t in stocks and stocks[t].get('eps') is not None}
 
 
+def get_macro_regime():
+    """讀 data/macro_regime.json（由 workflow 在本次跑前現抓現算，見 weekly-report.yml）。
+    不存在或壞掉 → 回 None，週報照常出（總經只是加值，不可拖垮主流程）。"""
+    try:
+        with open('data/macro_regime.json', encoding='utf-8') as f:
+            reg = json.load(f)
+        return reg
+    except Exception as e:
+        print(f'讀 macro_regime.json 失敗（略過總經段）: {e}')
+        return None
+
+
 def ai_summary(data_text):
     """把週報三段數據丟給 AI，回 1-2 句『本週持股重點』。
     Key 從環境變數 AI_API_KEY（備用 AI_API_KEY2）讀，自動判斷 Groq(gsk_)/Gemini(AIza)。
@@ -255,9 +267,28 @@ def main():
         lines.append('⭐ <b>高 EPS（TTM）</b>')
         for sid, e in top_eps:
             lines.append(f'　{label(sid)}　{e:.1f} 元')
+        lines.append('')
 
-    # ④ AI 一句話總結 → 插在最上方當開場（用前三段數據生成；無 AI_API_KEY 則略過）
-    data_text = re.sub(r'</?b>', '', '\n'.join(lines[3:]).strip())
+    stock_lines_end = len(lines)  # AI 摘要只餵個股段落，總經段落另外附加、不混進 prompt
+
+    # ④ 總經循環（data/macro_regime.json，由 workflow 現抓現算；只列階段+方向，不重複算，
+    #    完整版含ETF/歷史統計/AI摘要在加密網頁報告，見儀表板🌐總經）
+    reg = get_macro_regime()
+    if reg:
+        arrow = {'up': '▲', 'down': '▼', 'flat': '－', 'mixed': '◆'}
+        lines.append('🌐 <b>總經階段</b>（框架推演，非投資建議）')
+        for k, v in reg.get('regime', {}).items():
+            lines.append(f'　{k}：{v}')
+        key_dims = {r['dim']: r for r in reg.get('scorecard', [])}
+        for d in ('台灣成長', '台灣通膨', '美國通膨'):
+            if d in key_dims:
+                lines.append(f"　{arrow.get(key_dims[d]['dir'],'')} {d}：{key_dims[d]['fact'][:40]}")
+        if reg.get('triggers'):
+            lines.append('　⚠ ' + '；'.join(reg['triggers'][:2]))
+        lines.append('　完整版（ETF動能/歷史統計/AI摘要）需密碼，見儀表板🌐總經')
+
+    # ⑤ AI 一句話總結 → 插在最上方當開場（用前三段數據生成；無 AI_API_KEY 則略過）
+    data_text = re.sub(r'</?b>', '', '\n'.join(lines[3:stock_lines_end]).strip())
     summary = ai_summary(data_text)
     if summary:
         lines[3:3] = ['🤖 <b>本週重點</b>', f'　{summary}', '']
