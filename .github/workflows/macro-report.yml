@@ -40,6 +40,7 @@ jobs:
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           DISPATCH_SLOT: ${{ github.event.inputs.slot }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
         run: python scripts/macro_report_gate.py check >> "$GITHUB_OUTPUT"
 
       - name: Skip notice
