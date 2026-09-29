@@ -1,0 +1,7 @@
+name = "macro-trigger"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+[triggers]
+# 0 0 UTC = 台灣 08:00 早報；0 9 UTC = 台灣 17:00 晚報
+crons = ["0 0 * * *", "0 9 * * *"]
