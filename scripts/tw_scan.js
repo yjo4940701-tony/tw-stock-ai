@@ -28,10 +28,29 @@ const PHASE = CLOSE ? 'close' : 'intraday';
 const twToday = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 
 // ── Gist：自選股清單 + 掃描設定 ──────────
+// 帶 GITHUB_TOKEN（Actions 內建）→ 額度 1000 次/小時；未帶時是共用 IP 的 60 次/小時，容易被擋
+// 讀取失敗（被限流/網路問題）回傳 null，由 main 略過本次，不讓整個 job 失敗
 async function readGist() {
-  const r = await fetch(`https://api.github.com/gists/${GIST_ID}`);
-  const g = await r.json();
-  const files = g.files || {};
+  const base = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'tw-stock-ai-scan' };
+  const token = process.env.GITHUB_TOKEN;
+  // 先用 token，被拒（例如 token 無權讀 Gist）就退回未登入讀取
+  const variants = token ? [{ ...base, 'Authorization': `Bearer ${token}` }, base] : [base];
+  let g = null, lastErr = '';
+  for (let i = 1; i <= 3 && !g; i++) {
+    for (const headers of variants) {
+      try {
+        const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, { headers });
+        const j = await r.json();
+        if (r.ok && j.files && Object.keys(j.files).length) { g = j; break; }
+        lastErr = `HTTP ${r.status} ${(j && j.message) || ''}`.trim();
+      } catch (e) { lastErr = e.message; }
+    }
+    if (g) break;
+    console.warn(`[Gist] 讀取失敗（第 ${i}/3 次）：${lastErr}`);
+    if (i < 3) await new Promise(res => setTimeout(res, 3000));
+  }
+  if (!g) return null;
+  const files = g.files;
   const f = files['tw-stock-settings.json'] || Object.values(files)[0];
   const all = JSON.parse(f.content);
   // 自選股：蒐集所有群組的代號去重
@@ -108,7 +127,9 @@ async function main() {
     await tgSend('📈 台股訊號掃描 — TG 通道測試 ✅（一次性測試訊息）');
     return;
   }
-  const { tickers, cfg } = await readGist();
+  const gist = await readGist();
+  if (!gist) { console.log('讀不到 Gist 設定（多半是 GitHub API 暫時限流），本次略過，下次排程再試。'); return; }
+  const { tickers, cfg } = gist;
   if (!cfg || !cfg.custom || (!(cfg.custom.long || []).length && !(cfg.custom.short || []).length)) {
     console.log('尚未設定台股掃描條件（tw_stock_scan_cfg 空），跳過。'); return;
   }
