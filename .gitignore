@@ -32,3 +32,5 @@ data/macro_targets.json
 data/etf_universe.json
 data/macro_history_stats.json
 _scratch_*
+
+worker/*/.wrangler/
