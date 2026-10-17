@@ -33,9 +33,10 @@ def curl_json(url):
 
 def main():
     now = datetime.now(timezone.utc)
-    frm = (now - timedelta(days=120)).strftime('%Y-%m-%dT00:00:00.000Z')
+    # 抓 400 天：除了取最新值，也保留 CPI 年增率歷史，供 macro_regime 算「連續幾個月高於 2%」
+    frm = (now - timedelta(days=400)).strftime('%Y-%m-%dT00:00:00.000Z')
     to = (now + timedelta(days=1)).strftime('%Y-%m-%dT00:00:00.000Z')
-    out = {'fetched': now.isoformat(timespec='seconds'), 'auto': {}, 'manual': {}}
+    out = {'fetched': now.isoformat(timespec='seconds'), 'auto': {}, 'manual': {}, 'history': {}}
     try:
         d = curl_json(f'{WORKER}?type=tvcal&countries=TW&from={frm}&to={to}')
         events = sorted(d.get('result', []), key=lambda e: e.get('date', ''))
@@ -45,9 +46,25 @@ def main():
                 k, name = WANT[t]
                 out['auto'][k] = {'name': name, 'value': e['actual'], 'prev': e.get('previous'),
                                   'date': e['date'][:10], 'source': 'TradingView 財經日曆'}
+                if k == 'cpi_yoy':
+                    out['history'].setdefault(k, []).append([e['date'][:10], e['actual']])
     except Exception as ex:
         print('tvcal FAIL:', ex, file=sys.stderr)
         out['auto_error'] = str(ex)
+
+    # 市場事件觀察：加權指數、費半（TV Scanner，延遲報價快照）。只供「事件」提醒，不參與階段判斷
+    MARKET = {'TWSE:IX0001': '加權指數', 'NASDAQ:SOX': '費城半導體'}
+    out['market'] = {}
+    for sym, name in MARKET.items():
+        try:
+            m = curl_json(f'https://scanner.tradingview.com/symbol?symbol={sym}'
+                          '&fields=close,change,High.1M,Perf.W&no_404=true')
+            if m and m.get('close') and m.get('High.1M'):
+                out['market'][sym] = {'name': name, 'close': m['close'], 'high_1m': m['High.1M'],
+                                      'chg_1d_pct': m.get('change'), 'perf_w_pct': m.get('Perf.W'),
+                                      'source': 'TradingView Scanner（延遲報價快照）'}
+        except Exception as ex:
+            print(f'market {sym} FAIL:', ex, file=sys.stderr)
 
     mp = os.path.join(BASE, 'macro_tw_manual.json')
     if os.path.exists(mp):

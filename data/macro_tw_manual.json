@@ -9,11 +9,11 @@
     "source": "國發會，經中央社轉述 https://www.cna.com.tw/news/afe/202609290255.aspx"
   },
   "pmi_manufacturing": {
-    "name": "中經院製造業 PMI(8月)",
-    "value": 62.5,
-    "prev": 61.5,
-    "date": "2026-08",
-    "published": "2026-09-01",
-    "source": "中經院，經鉅亨網轉述 https://news.cnyes.com/news/id/6594132"
+    "name": "中經院製造業 PMI(9月)",
+    "value": 63.4,
+    "prev": 62.5,
+    "date": "2026-09",
+    "published": "2026-10-01",
+    "source": "中經院 https://www.cier.edu.tw/focus-ch/33187/"
   }
 }

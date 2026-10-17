@@ -184,9 +184,12 @@ def main():
     key = {r['dim']: r for r in reg['scorecard']}
     for d in ('台灣成長', '台灣通膨', '美國通膨', '大宗商品(WTI)'):
         if d in key:
-            L.append(f"• {d} {ARROW.get(key[d]['dir'],'')} {key[d]['fact'][:48]}")
+            L.append(f"• {d} {ARROW.get(key[d]['dir'],'')} {key[d]['fact'][:72]}")
     for t in reg['triggers']:
         L.append(f'⚠ {t}')
+    ev = key.get('市場事件觀察')
+    if ev and ev['note'].startswith('事件'):
+        L.append(f"📉 {ev['note']}")
     for w in reg['warnings'][:3]:
         L.append(f'🕒 {w}')
     top = []

@@ -14,7 +14,8 @@
   "inflation": {
     "target": 2.0,
     "rising_delta_pp": 0.15,
-    "falling_delta_pp": -0.15
+    "falling_delta_pp": -0.15,
+    "persist_months": 3
   },
   "global_rates": {
     "fed_move_pp_90d": 0.2
@@ -22,6 +23,10 @@
   "commodities": {
     "oil_up_pct_90d": 10,
     "oil_down_pct_90d": -10
+  },
+  "market_event": {
+    "drawdown_1m_pct": 8,
+    "day_drop_pct": 3
   },
   "stale_days": {
     "manual": 35,

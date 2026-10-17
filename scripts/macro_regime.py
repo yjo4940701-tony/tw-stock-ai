@@ -68,17 +68,34 @@ def main():
     if 'cpi_yoy' in a:
         c = a['cpi_yoy']
         d = infl_dir(c['value'], c['prev'], T)
-        hi = c['value'] > T['inflation']['target']
-        # 水準與方向並列：兩者一致才定案，矛盾就標 mixed（不強行二選一）
-        if d == 'flat':
+        tgt = T['inflation']['target']
+        hi = c['value'] > tgt
+        # 連續幾個月高於目標（從最新一期往回數）。2026-10-17 加：原本只比單月，9月CPI從2.54掉到2.04
+        # 就被判成「交界」，但其實已連4個月>2%；看持續性比較不會被單月波動帶著跑。
+        hist = [v for _, v in sorted(tw.get('history', {}).get('cpi_yoy', []))]
+        streak = 0
+        for v in reversed(hist):
+            if v > tgt:
+                streak += 1
+            else:
+                break
+        persist = T['inflation'].get('persist_months', 3)
+        note = ''
+        # 水準與方向並列：兩者一致才定案，矛盾就標 mixed（不強行二選一）；但已連續多月高於目標則以持續性為準
+        if hi and streak >= persist:
+            tw_i = 'up'
+            if d == 'down':
+                note = f'單月回落，但已連 {streak} 個月高於 {tgt}%，以持續性為準'
+        elif d == 'flat':
             tw_i = 'up' if hi else 'down'
         elif (d == 'up') == hi:
             tw_i = d
         else:
             tw_i = 'mixed'
-        rows.append(row('台灣通膨', f"CPI {c['value']}%（前 {c['prev']}%，{c['date']}）；水準{'高於' if hi else '低於'}{T['inflation']['target']}%目標、方向{ {'up':'上升','down':'回落','flat':'持平'}[d] }",
-                        tw_i, {'up': '過熱/滯脹', 'down': '復甦/衰退', 'mixed': '水準與方向矛盾，介於兩階段'}[tw_i],
-                        '單月 CPI 波動大，不強行二選一' if tw_i == 'mixed' else ''))
+            note = '單月 CPI 波動大，不強行二選一'
+        streak_txt = f'、連 {streak} 個月高於 {tgt}%' if hist else '（無歷史資料，無法算持續月數）'
+        rows.append(row('台灣通膨', f"CPI {c['value']}%（前 {c['prev']}%，{c['date']}）；水準{'高於' if hi else '低於'}{tgt}%目標、方向{ {'up':'上升','down':'回落','flat':'持平'}[d] }{streak_txt}",
+                        tw_i, {'up': '過熱/滯脹', 'down': '復甦/衰退', 'mixed': '水準與方向矛盾，介於兩階段'}[tw_i], note))
         if d == 'down' and c['value'] - c['prev'] <= -0.3:
             triggers.append('台灣 CPI 明顯回落')
 
@@ -126,6 +143,22 @@ def main():
                         'up' if pc >= T['commodities']['oil_up_pct_90d'] else ('down' if pc <= T['commodities']['oil_down_pct_90d'] else 'flat'),
                         '過熱/滯脹特徵' if pc > 0 else ''))
     rows.append(row('供給面', '無自動資料（文件僅有 PMI 細項的新聞轉述）', 'n/a', '未納入判斷'))
+
+    # ---- 市場事件觀察（不參與階段判斷）----
+    # 2026-10-17 加：區分「事件」與「階段轉換」。大跌是事件，列為觀察點，不改變美林階段。
+    events = []
+    ME = T.get('market_event', {})
+    mk_facts = []
+    for sym, mk in tw.get('market', {}).items():
+        dd = (mk['close'] / mk['high_1m'] - 1) * 100
+        mk_facts.append(f"{mk['name']} {mk['close']:,.0f}（距近月高 {dd:+.1f}%、單日 {mk.get('chg_1d_pct') or 0:+.1f}%）")
+        if dd <= -ME.get('drawdown_1m_pct', 8):
+            events.append(f"{mk['name']}距近一月高點 {dd:.1f}%")
+        if (mk.get('chg_1d_pct') or 0) <= -ME.get('day_drop_pct', 3):
+            events.append(f"{mk['name']}單日跌 {mk['chg_1d_pct']:.1f}%")
+    if mk_facts:
+        rows.append(row('市場事件觀察', '；'.join(mk_facts), 'n/a', '不參與階段判斷',
+                        ('事件：' + '、'.join(events) + '。屬事件，不等於階段轉換，列為後續觀察') if events else '無明顯事件'))
 
     # ---- 階段 ----
     def regime(g, i):
