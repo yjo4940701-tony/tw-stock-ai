@@ -68,7 +68,8 @@ def classify(name, code):
 
 
 def curl_json(url):
-    p = subprocess.run(['curl', '-sf', '-m', '30', url], capture_output=True, timeout=60)
+    p = subprocess.run(['curl', '-sf', '-m', '60', '--retry', '3', '--retry-delay', '5', '--retry-all-errors', url],
+                       capture_output=True, timeout=300)
     if p.returncode:
         raise RuntimeError(f'curl exit {p.returncode}: {url}')
     return json.loads(p.stdout.decode())
@@ -80,7 +81,11 @@ def main():
     for x in twse:
         if x['Code'][:2] == '00':
             items[x['Code']] = {'name': x['Name'], 'market': 'TWSE'}
-    tpex = curl_json('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes')
+    try:  # 櫃買 API 偶爾逾時：上櫃 ETF 少，抓不到就只用上市，不讓整份報告失敗
+        tpex = curl_json('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes')
+    except Exception as ex:
+        print('TPEX FAIL（本次略過上櫃 ETF）:', ex, file=sys.stderr)
+        tpex = []
     for x in tpex:
         if x['SecuritiesCompanyCode'][:2] == '00':
             items[x['SecuritiesCompanyCode']] = {'name': x['CompanyName'], 'market': 'TPEx'}
