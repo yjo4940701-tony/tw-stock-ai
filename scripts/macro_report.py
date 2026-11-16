@@ -123,12 +123,17 @@ def main():
         h.append(f'<div class="mr-warn"><b>🤖 AI 白話摘要</b><p>{e(ai_text)}</p><p class="mr-disc">AI 僅改寫已算好的事實，不預測漲跌、不給買賣建議，數字皆來自下方各節。</p></div>')
 
     h.append('<h3>階段判斷</h3><ul>' + ''.join(f'<li><b>{e(k)}</b>：{e(v)}</li>' for k, v in reg['regime'].items()) + '</ul>')
+    bc = reg.get('bias_count')
+    if bc:
+        h.append(f"<p><b>對股市的框架傾向</b>：🔺偏多 {bc['偏多']} 項｜🔻偏空 {bc['偏空']} 項｜⚖️中性 {bc['中性']} 項"
+                 "<br><span class='mr-disc'>依教科書對應：成長上升偏多；通膨、利率、油價上升偏空。是「該方向通常被視為利多或利空」，不是股價預測。</span></p>")
     if reg['triggers']:
         h.append('<div class="mr-warn"><b>需重新檢視（§9 觸發）</b><ul>' + ''.join(f'<li>{e(t)}</li>' for t in reg['triggers']) + '</ul></div>')
     if reg['warnings']:
         h.append('<div class="mr-warn"><b>資料警示</b><ul>' + ''.join(f'<li>{e(t)}</li>' for t in reg['warnings']) + '</ul></div>')
-    h.append('<h3>記分卡</h3><table><tr><th>維度</th><th>方向</th><th>事實</th><th>備註</th></tr>' + ''.join(
-        f"<tr><td>{e(r['dim'])}</td><td>{ARROW.get(r['dir'], e(r['dir']))}</td><td>{e(r['fact'])}</td><td>{e(r['note'])}</td></tr>" for r in reg['scorecard']) + '</table>')
+    BIAS_ICON = {'偏多': '🔺偏多', '偏空': '🔻偏空', '中性': '⚖️中性'}
+    h.append('<h3>記分卡</h3><table><tr><th>維度</th><th>方向</th><th>對股市</th><th>事實</th><th>備註</th></tr>' + ''.join(
+        f"<tr><td>{e(r['dim'])}</td><td>{ARROW.get(r['dir'], e(r['dir']))}</td><td>{BIAS_ICON.get(r.get('bias'), '—')}</td><td>{e(r['fact'])}</td><td>{e(r['note'])}</td></tr>" for r in reg['scorecard']) + '</table>')
 
     h.append('<h3>美國指標</h3><table><tr><th>指標</th><th>最新</th><th>年增</th><th>資料日期</th></tr>')
     for sid, s in us.items():
@@ -184,7 +189,10 @@ def main():
     key = {r['dim']: r for r in reg['scorecard']}
     for d in ('台灣成長', '台灣通膨', '美國通膨', '大宗商品(WTI)'):
         if d in key:
-            L.append(f"• {d} {ARROW.get(key[d]['dir'],'')} {key[d]['fact'][:72]}")
+            L.append(f"• {d} {ARROW.get(key[d]['dir'],'')}（{key[d].get('bias','')}）{key[d]['fact'][:72]}")
+    if reg.get('bias_count'):
+        bc = reg['bias_count']
+        L.append(f"對股市框架傾向：偏多{bc['偏多']}／偏空{bc['偏空']}／中性{bc['中性']}（非預測）")
     for t in reg['triggers']:
         L.append(f'⚠ {t}')
     ev = key.get('市場事件觀察')

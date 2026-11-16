@@ -196,8 +196,28 @@ def main():
         if 'error' in s:
             warns.append(f"抓取失敗：{s['name']}")
 
+    # ---- 對股市的框架傾向（2026-11-16 加，使用者要求）----
+    # 教科書式的對應：成長上升偏多；通膨/利率/油價上升偏空（壓估值、增成本）。
+    # 這是「該方向通常被視為利多或利空」的框架標註，不是對股價的預測。
+    GOOD_WHEN_UP = {'台灣成長', '美國成長'}
+    BAD_WHEN_UP = {'台灣通膨', '美國通膨', '台灣政策利率', '全球利率(Fed)', '大宗商品(WTI)'}
+    for r in rows:
+        dr = r['dir']
+        if r['dim'] == '市場事件觀察':
+            r['bias'] = '偏空' if r['note'].startswith('事件') else '中性'
+        elif dr in ('flat', 'mixed', 'n/a'):
+            r['bias'] = '中性'
+        elif r['dim'] in GOOD_WHEN_UP:
+            r['bias'] = '偏多' if dr == 'up' else '偏空'
+        elif r['dim'] in BAD_WHEN_UP:
+            r['bias'] = '偏空' if dr == 'up' else '偏多'
+        else:
+            r['bias'] = '中性'
+    bias_count = {b: sum(1 for r in rows if r['bias'] == b) for b in ('偏多', '偏空', '中性')}
+
     out = {'generated': datetime.now(timezone.utc).isoformat(timespec='seconds'),
            'regime': reg, 'scorecard': rows, 'triggers': triggers, 'warnings': warns,
+           'bias_count': bias_count,
            'growth_dir': {'tw': tw_g, 'us': us_g}, 'inflation_dir': {'tw': tw_i, 'us': us_i},
            'disclaimer': '框架推演，非預測或投資建議；門檻為假設值，見 macro_thresholds.json'}
     json.dump(out, open(os.path.join(D, 'macro_regime.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
