@@ -7,6 +7,8 @@
     "type": "add",
     "direction": "below",
     "createdAt": "2026-11-16T11:07:38.130Z",
-    "triggered": false
+    "triggered": true,
+    "triggeredAt": "2026-11-16T17:27:38.644257",
+    "triggeredPrice": 113.0
   }
 ]
