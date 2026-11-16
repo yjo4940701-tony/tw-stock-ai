@@ -2,10 +2,10 @@
 """台灣總經指標 → data/macro_tw.json
 
 自動：TV 財經日曆（經 tw-stock-news Worker 的 tvcal 路由）取各指標最新實際值。
-手動：景氣對策信號、中經院製造業 PMI（國發會/中經院網站擋程式請求，無可靠自動來源）
-      讀 data/macro_tw_manual.json，必須帶 date/source，缺欄位就不採用。
+自動：景氣對策信號（國發會政府開放資料 zip）、中經院 PMI（中央社搜尋標題解析）。
+備援：自動失敗時讀 data/macro_tw_manual.json（必須帶 date/source）。
 """
-import json, os, subprocess, sys
+import csv, io, json, os, re, subprocess, sys, zipfile
 from datetime import datetime, timedelta, timezone
 
 BASE = os.path.join(os.path.dirname(__file__), '..', 'data')
@@ -29,6 +29,64 @@ def curl_json(url):
     if p.returncode:
         raise RuntimeError(f'curl exit {p.returncode}')
     return json.loads(p.stdout.decode())
+
+
+def curl_bytes(url):
+    p = subprocess.run(['curl', '-sfL', '-m', '60', '-A', 'Mozilla/5.0', url], capture_output=True, timeout=90)
+    if p.returncode:
+        raise RuntimeError(f'curl exit {p.returncode}')
+    return p.stdout
+
+
+def fetch_ndc_signal():
+    """國發會「景氣指標及燈號」政府開放資料（data.gov.tw 6099）→ 最新一期綜合分數。
+    下載網址從 data.gov.tw API 動態取得，國發會換檔名也不會壞。"""
+    meta = json.loads(curl_bytes('https://data.gov.tw/api/v2/rest/dataset/6099').decode())
+    url = meta['result']['distribution'][0]['resourceDownloadUrl']
+    z = zipfile.ZipFile(io.BytesIO(curl_bytes(url)))
+    for info in z.infolist():
+        txt = z.read(info).decode('utf-8-sig', 'replace')
+        if '景氣對策信號綜合分數' not in txt.split('\n', 1)[0]:
+            continue
+        rows = [r for r in csv.DictReader(io.StringIO(txt)) if (r.get('景氣對策信號綜合分數') or '').strip()]
+        last, prev = rows[-1], rows[-2]
+        d = last['Date'].strip()
+        return {'name': f"景氣對策信號綜合判斷分數({int(d[4:])}月)", 'value': int(float(last['景氣對策信號綜合分數'])),
+                'prev': int(float(prev['景氣對策信號綜合分數'])), 'date': f'{d[:4]}-{d[4:]}',
+                'light': last.get('景氣對策信號'), 'source': '國發會 政府開放資料（自動）', 'auto': True}
+    raise RuntimeError('zip 內找不到景氣對策信號欄位')
+
+
+def fetch_cna_pmi():
+    """中經院 PMI：中經院網站擋程式，改從中央社搜尋結果標題解析「N月PMI xx.x%」。"""
+    from urllib.parse import quote
+    def search(q):
+        return curl_bytes('https://www.cna.com.tw/search/hysearchws.aspx?q=' + quote(q)).decode('utf-8', 'replace')
+    found = parse_pmi(search('中經院 PMI'))
+    if not found:
+        raise RuntimeError('中央社搜尋結果找不到 PMI 標題')
+    # 同一個月可能有多篇，取最早發布的（通常是中經院發布當天的那篇）
+    found.sort(key=lambda x: (x['date'], x['published']))
+    latest_date = max(x['date'] for x in found)
+    last = next(x for x in found if x['date'] == latest_date)
+    prev = next((x['value'] for x in reversed(found) if x['date'] < latest_date), None)
+    if prev is None:  # 搜尋結果只剩本月 → 另搜上個月
+        pm = int(latest_date[5:]) - 1 or 12
+        prev = next((x['value'] for x in parse_pmi(search(f'{pm}月PMI 中經院')) if x['date'] < latest_date), None)
+    return {'name': f"中經院製造業 PMI({int(last['date'][5:])}月)", 'value': last['value'], 'prev': prev,
+            'date': last['date'], 'published': last['published'],
+            'source': f"中經院，中央社標題解析（自動）{last['url']}", 'auto': True}
+
+
+def parse_pmi(html):
+    found = []
+    for m in re.finditer(r'href="(/news/\w+/\d+\.aspx)"(?:(?!href=).)*?<h2>([^<]*?(\d{1,2})月(?:製造業)?PMI\s*([\d.]+)%[^<]*)</h2>\s*<time[^>]*datetime="(\d{4})-(\d{2})-(\d{2})', html, re.S):
+        href, title, mon, val, py, pm, pd = m.groups()
+        mon, py = int(mon), int(py)
+        yr = py - 1 if mon > int(pm) else py
+        found.append({'date': f'{yr}-{mon:02d}', 'value': float(val), 'published': f'{py}-{pm}-{pd}',
+                      'url': 'https://www.cna.com.tw' + href})
+    return found
 
 
 def main():
@@ -66,16 +124,31 @@ def main():
         except Exception as ex:
             print(f'market {sym} FAIL:', ex, file=sys.stderr)
 
+    # 先讀手動檔當備援，再用自動來源覆蓋（自動抓到且期別不舊於手動才採用）
     mp = os.path.join(BASE, 'macro_tw_manual.json')
+    m = {}
     if os.path.exists(mp):
         m = json.load(open(mp, encoding='utf-8'))
         for k, v in m.items():
             if k.startswith('_'):
                 continue
             if v.get('value') is not None and v.get('date') and v.get('source'):
-                out['manual'][k] = v
+                out['manual'][k] = dict(v, auto=False)
             else:
                 print(f'manual {k} 缺 value/date/source，略過', file=sys.stderr)
+    for k, fn in (('business_signal_score', fetch_ndc_signal), ('pmi_manufacturing', fetch_cna_pmi)):
+        try:
+            v = fn()
+            old = out['manual'].get(k)
+            if v and (not old or v['date'] >= old['date']):
+                if v.get('prev') is None and old:  # 前值抓不到 → 用備援檔推
+                    v['prev'] = old.get('prev') if old['date'] == v['date'] else old['value']
+                out['manual'][k] = v
+                if not old or v['date'] > old['date']:  # 新一期 → 寫回備援檔，下個月當前值
+                    m[k] = {kk: v[kk] for kk in ('name', 'value', 'prev', 'date', 'published', 'source') if v.get(kk) is not None}
+                    json.dump(m, open(mp, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+        except Exception as ex:
+            print(f'{k} 自動抓取 FAIL（沿用手動檔）:', ex, file=sys.stderr)
 
     with open(os.path.join(BASE, 'macro_tw.json'), 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, indent=1)

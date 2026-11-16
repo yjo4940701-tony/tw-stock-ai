@@ -89,7 +89,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add data/macro_report.enc.json
+          git add data/macro_report.enc.json data/macro_tw_manual.json
           [ "$(git diff --staged --name-only)" = "data/macro_report.enc.json" ] || [ -z "$(git diff --staged --name-only)" ] || { echo "staged 內容異常"; exit 1; }
           git diff --staged --quiet || git commit -m "data: update macro report (encrypted) [skip ci]"
           for i in 1 2 3; do

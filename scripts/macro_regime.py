@@ -6,7 +6,7 @@
 台灣與美國分開判斷（台股看台灣，美國是全球背景）。
 """
 import json, os, sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 D = os.path.join(os.path.dirname(__file__), '..', 'data')
 load = lambda n: json.load(open(os.path.join(D, n), encoding='utf-8'))
@@ -183,6 +183,11 @@ def main():
         publish_month = add_months(cur_month, 2)  # 下一期資料的公布月（如 9月）
         due_day = NEXT_PUBLISH_DAY.get(k, 27)
         due = date(publish_month.year, publish_month.month, min(due_day, 28))
+        if v.get('auto'):
+            # 自動來源（開放資料/新聞）可能比官方發布晚幾天，給 7 天緩衝才警示
+            if date.today() >= due + timedelta(days=7):
+                warns.append(f"自動來源尚未出現新一期：{v['name']}（現有 {v['date']}，預估公布日 {due.isoformat()}），可手動填 data/macro_tw_manual.json 暫代")
+            continue
         if date.today() >= due:
             warns.append(f"手動資料應已有新一期：{v['name']}（現有 {v['date']}，預估公布日 {due.isoformat()} 已過，請更新 data/macro_tw_manual.json）")
         elif age_days(v.get('published') or v['date']) > T['stale_days']['manual']:

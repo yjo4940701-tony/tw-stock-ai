@@ -144,7 +144,7 @@ def main():
     h.append('</table><h3>台灣指標</h3><table><tr><th>指標</th><th>最新</th><th>前值</th><th>日期</th><th>來源</th></tr>')
     for grp in ('auto', 'manual'):
         for k, v in tw[grp].items():
-            h.append(f"<tr><td>{e(v['name'])}</td><td>{e(str(v['value']))}</td><td>{e(str(v.get('prev','—')))}</td><td>{e(v['date'])}</td><td>{e(v['source'][:40])}{'（手動）' if grp=='manual' else ''}</td></tr>")
+            h.append(f"<tr><td>{e(v['name'])}</td><td>{e(str(v['value']))}</td><td>{e(str(v.get('prev','—')))}</td><td>{e(v['date'])}</td><td>{e(v['source'][:40])}{'（手動）' if grp=='manual' and not v.get('auto') else ''}</td></tr>")
     h.append('</table>')
 
     h.append(f"<h3>階段對應 ETF（全市場動態選股，非固定清單）</h3><p class='mr-disc'>候選共 {tg_['universe_count']} 檔全市場 ETF；價格至 {e(tg_['price_data_date'])}、法人至 {e(tg_['inst_data_date'])}</p>")
